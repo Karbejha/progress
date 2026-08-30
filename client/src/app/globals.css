@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Cairo:wght@400;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f4f3ed;
+  --foreground: #0c3e35;
+  --brand-primary: #0c3e35;
+  --brand-primary-dark: #05261e;
+  --brand-primary-darker: #031814;
+  --brand-primary-hover: #072923;
+  --brand-primary-light: #165b4f;
+  --brand-gold: #d4af37;
+  --brand-gold-muted: #c5a059;
+  --brand-card: #edece4;
+  --brand-sand: #f4f3ed;
+  --brand-border: #d2d1c9;
+  --brand-muted: #5e736e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-qomra), 'Tajawal', 'Cairo', sans-serif;
+  background-color: #f4f3ed;
+  color: #0c3e35;
+  min-height: 100vh;
+  direction: rtl;
+  text-align: right;
+  overflow-x: hidden;
+}
+
+/* Slim brand-tinted scrollbars matching Comercial-Circuit */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(12, 62, 53, 0.3) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(12, 62, 53, 0.25);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(12, 62, 53, 0.45);
+}
+
+/* Brand Cards & Panels */
+.brand-card {
+  background: #ffffff;
+  border: 1px solid #d2d1c9;
+  border-radius: 1.25rem;
+  box-shadow: 0 4px 20px -2px rgba(5, 38, 30, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brand-card-hover:hover {
+  border-color: #0c3e35;
+  box-shadow: 0 12px 30px -4px rgba(5, 38, 30, 0.12);
+  transform: translateY(-2px);
+}
+
+.brand-card-sand {
+  background: #edece4;
+  border: 1px solid #d2d1c9;
+  border-radius: 1.5rem;
+}
+
+.brand-card-dark {
+  background: #05261e;
+  color: #ffffff;
+  border: 1px solid rgba(210, 209, 201, 0.2);
+  border-radius: 1.5rem;
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: #0c3e35;
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(12, 62, 53, 0.2);
+}
+
+.btn-primary:hover {
+  background-color: #072923;
+  box-shadow: 0 6px 16px rgba(12, 62, 53, 0.3);
+}
+
+.btn-gold {
+  background-color: #d4af37;
+  color: #031814;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.25);
+}
+
+.btn-gold:hover {
+  background-color: #c5a059;
+}
+
+.btn-outline {
+  background: transparent;
+  color: #0c3e35;
+  border: 1px solid #d2d1c9;
+  border-radius: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.btn-outline:hover {
+  background-color: rgba(12, 62, 53, 0.05);
+  border-color: #0c3e35;
+}
+
+/* Print specific styles */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .brand-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    color: #000000 !important;
+  }
+}

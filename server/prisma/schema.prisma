@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  GENERAL_DIRECTOR
+  ASSISTANT_DIRECTOR
+  DIRECTOR
+}
+
+enum Priority {
+  URGENT
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum PlanStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+  CANCELLED
+}
+
+enum SummaryStatus {
+  DRAFT
+  SUBMITTED
+  ACKNOWLEDGED
+  FEEDBACK_GIVEN
+}
+
+model Directorate {
+  id           String             @id @default(uuid())
+  code         String             @unique
+  name         String
+  category     String             @default("OPERATIONAL")
+  description  String?
+  icon         String?            @default("Ship")
+  displayOrder Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  users        User[]
+  dailyPlans   DailyPlan[]
+  dailySummaries DailySummary[]
+  feedbacks    ExecutiveFeedback[]
+}
+
+model User {
+  id            String             @id @default(uuid())
+  email         String             @unique
+  username      String             @unique
+  password      String
+  fullName      String
+  title         String
+  role          Role               @default(DIRECTOR)
+  phone         String?
+  avatarUrl     String?
+  directorateId String?
+  directorate   Directorate?       @relation(fields: [directorateId], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  dailyPlans    DailyPlan[]
+  dailySummaries DailySummary[]
+  feedbacksSent ExecutiveFeedback[] @relation("SentFeedbacks")
+  announcements Announcement[]
+}
+
+model DailyPlan {
+  id            String             @id @default(uuid())
+  directorateId String
+  directorate   Directorate        @relation(fields: [directorateId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planDate      DateTime
+  status        PlanStatus         @default(SUBMITTED)
+  submittedAt   DateTime?          @default(now())
+  generalFocus  String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tasks         PlanTask[]
+  dailySummary  DailySummary?
+  feedbacks     ExecutiveFeedback[]
+
+  @@unique([directorateId, planDate])
+}
+
+model PlanTask {
+  id                   String     @id @default(uuid())
+  dailyPlanId          String
+  dailyPlan            DailyPlan  @relation(fields: [dailyPlanId], references: [id], onDelete: Cascade)
+  title                String
+  description          String?
+  priority             Priority   @default(NORMAL)
+  estimatedHours       Float      @default(1.0)
+  status               TaskStatus @default(PENDING)
+  completionPercentage Int        @default(0)
+  completionNote       String?
+  displayOrder         Int        @default(0)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+}
+
+model DailySummary {
+  id                    String              @id @default(uuid())
+  dailyPlanId           String              @unique
+  dailyPlan             DailyPlan           @relation(fields: [dailyPlanId], references: [id], onDelete: Cascade)
+  directorateId         String
+  directorate           Directorate         @relation(fields: [directorateId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  summaryDate           DateTime
+  summaryText           String
+  achievements          String[]            @default([])
+  challenges            String?
+  directorNotes         String?
+  urgentFlag            Boolean             @default(false)
+  tomorrowPlanPreview   String?
+  overallCompletionRate Float               @default(0.0)
+  status                SummaryStatus       @default(SUBMITTED)
+  submittedAt           DateTime            @default(now())
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  feedbacks             ExecutiveFeedback[]
+}
+
+model ExecutiveFeedback {
+  id             String        @id @default(uuid())
+  dailyPlanId    String?
+  dailyPlan      DailyPlan?    @relation(fields: [dailyPlanId], references: [id], onDelete: SetNull)
+  dailySummaryId String?
+  dailySummary   DailySummary? @relation(fields: [dailySummaryId], references: [id], onDelete: SetNull)
+  directorateId  String
+  directorate    Directorate   @relation(fields: [directorateId], references: [id], onDelete: Cascade)
+  fromUserId     String
+  fromUser       User          @relation("SentFeedbacks", fields: [fromUserId], references: [id], onDelete: Cascade)
+  feedbackText   String
+  rating         Int?
+  isRead         Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  priority  Priority @default(NORMAL)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
