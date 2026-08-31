@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { User } from '../types';
+import { User, Announcement } from '../types';
+import { api } from '../services/api';
 import { getSocket } from '../lib/socket';
+import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
 import {
   Shield,
   Ship,
@@ -19,6 +21,7 @@ import {
   ChevronDown,
   Clock,
   ChevronLeft,
+  Megaphone,
 } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
@@ -49,6 +52,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+
+  const notifRef = React.useRef<HTMLDivElement>(null);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
 
   // Modals
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -57,6 +64,91 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
   const isGeneralDirector =
     currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowNotifications(false);
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  // Load read status & announcements
+  useEffect(() => {
+    if (!currentUser) return;
+
+    setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
+
+    const handleReadUpdate = (e: any) => {
+      if (e.detail?.userId === currentUser.id) {
+        setReadAnnouncementIds(e.detail.readIds || getReadAnnouncementIds(currentUser.id));
+      }
+    };
+
+    window.addEventListener('announcements:read_updated', handleReadUpdate);
+
+    // Fetch existing announcements from server
+    const fetchInitialAnnouncements = async () => {
+      try {
+        const anns = await api.getAnnouncements();
+        const currentRead = getReadAnnouncementIds(currentUser.id);
+
+        const annNotifs: LiveNotification[] = anns.map((a) => ({
+          id: a.id,
+          title: 'تعميم إداري رسمي',
+          message: a.title,
+          content: a.content,
+          authorName: a.author?.fullName || 'المدير العام للموانئ',
+          authorTitle: a.author?.title || 'المدير العام',
+          priority: a.priority,
+          createdAt: a.createdAt,
+          type: 'announcement',
+          time: a.createdAt
+            ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
+                month: 'short',
+                day: 'numeric',
+              })
+            : 'اليوم',
+          fullPayload: a,
+        }));
+
+        const unreadAnns = anns.filter((a) => !currentRead.includes(a.id));
+        setUnreadCount(unreadAnns.length);
+
+        setNotifications((prev) => {
+          const prevMap = new Map(prev.map((p) => [p.id, p]));
+          annNotifs.forEach((an) => prevMap.set(an.id, an));
+          return Array.from(prevMap.values());
+        });
+      } catch (err) {
+        console.error('Failed to load initial announcements in header', err);
+      }
+    };
+
+    fetchInitialAnnouncements();
+
+    return () => {
+      window.removeEventListener('announcements:read_updated', handleReadUpdate);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -72,13 +164,13 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
 
-    const addNotif = (notif: Omit<LiveNotification, 'id' | 'time'>) => {
+    const addNotif = (notif: Omit<LiveNotification, 'id' | 'time'> & { id?: string }) => {
       const newN: LiveNotification = {
         ...notif,
-        id: Math.random().toString(),
+        id: notif.id || Math.random().toString(),
         time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
       };
-      setNotifications((prev) => [newN, ...prev.slice(0, 20)]);
+      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 25)]);
       setUnreadCount((c) => c + 1);
     };
 
@@ -124,7 +216,8 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
     socket.on('announcement:created', (data: any) => {
       addNotif({
-        title: 'تعميم إداري عام',
+        id: data.id,
+        title: 'تعميم إداري رسمي',
         message: data.title,
         content: data.content,
         authorName: data.authorName || 'المدير العام للموانئ',
@@ -157,7 +250,11 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
   const handleNotificationClick = (n: LiveNotification) => {
     if (n.type === 'announcement') {
+      if (currentUser && n.id) {
+        markAnnouncementAsRead(currentUser.id, n.id);
+      }
       setSelectedAnnouncement({
+        id: n.id,
         title: n.fullPayload?.title || n.message,
         content: n.fullPayload?.content || n.content || n.message,
         authorName: n.fullPayload?.authorName || n.authorName || 'المدير العام للموانئ',
@@ -168,6 +265,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       setShowNotifications(false);
     } else if (n.type === 'feedback') {
       setSelectedAnnouncement({
+        id: n.id,
         title: 'توجيه وملاحظات من المدير العام',
         content: n.content || n.message,
         authorName: n.authorName || 'المدير العام للموانئ',
@@ -216,7 +314,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
               {currentUser && (
                 <>
                   {/* Notifications Bell */}
-                  <div className="relative">
+                  <div ref={notifRef} className="relative">
                     <button
                       onClick={handleOpenNotifications}
                       className="relative p-2.5 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] transition cursor-pointer"
@@ -254,15 +352,20 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                           ) : (
                             notifications.map((n) => {
                               const isClickable = n.type === 'announcement' || n.type === 'feedback';
+                              const isAnnRead = n.type === 'announcement' && readAnnouncementIds.includes(n.id);
 
                               return (
                                 <div
                                   key={n.id}
                                   onClick={() => isClickable && handleNotificationClick(n)}
-                                  className={`p-3 rounded-2xl bg-white border border-[#d2d1c9] shadow-xs text-xs space-y-1.5 transition ${
-                                    isClickable
-                                      ? 'hover:border-[#0c3e35] hover:bg-[#f4f3ed] cursor-pointer'
-                                      : ''
+                                  className={`p-3 rounded-2xl border text-xs space-y-1.5 transition ${
+                                    n.type === 'announcement'
+                                      ? isAnnRead
+                                        ? 'bg-white/80 border-[#d2d1c9] hover:bg-[#edece4] cursor-pointer'
+                                        : 'bg-amber-50/80 border-amber-300 shadow-xs hover:bg-amber-100/70 cursor-pointer'
+                                      : isClickable
+                                      ? 'bg-white border-[#d2d1c9] hover:border-[#0c3e35] hover:bg-[#f4f3ed] cursor-pointer'
+                                      : 'bg-white border-[#d2d1c9]'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
@@ -271,10 +374,24 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                       {n.type === 'task' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
                                       {n.type === 'summary' && <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />}
                                       {n.type === 'feedback' && <Shield className="w-3.5 h-3.5 text-[#d4af37]" />}
-                                      {n.type === 'announcement' && <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />}
+                                      {n.type === 'announcement' && <Megaphone className="w-3.5 h-3.5 text-[#d4af37]" />}
                                       {n.title}
                                     </span>
-                                    <span className="text-[10px] text-[#8daaa2] font-medium">{n.time}</span>
+                                    
+                                    <div className="flex items-center gap-1.5">
+                                      {n.type === 'announcement' && (
+                                        isAnnRead ? (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#edece4] text-[#5e736e]">
+                                            تمت القراءة
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">
+                                            جديد
+                                          </span>
+                                        )
+                                      )}
+                                      <span className="text-[10px] text-[#8daaa2] font-medium">{n.time}</span>
+                                    </div>
                                   </div>
                                   
                                   <p className="text-xs text-[#0c3e35] leading-relaxed font-medium">
@@ -283,7 +400,13 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
                                   {isClickable && (
                                     <div className="pt-1 flex items-center justify-between text-[10px] text-[#0c3e35] font-bold border-t border-[#e5e4dc]">
-                                      <span>انقر لعرض كامل نص وتفاصيل التعميم</span>
+                                      <span>
+                                        {n.type === 'announcement'
+                                          ? isAnnRead
+                                            ? 'انقر لإعادة قراءة نص وتفاصيل التعميم 📖'
+                                            : 'انقر لقراءة نص وتفاصيل التعميم 📖'
+                                          : 'انقر لعرض كامل التفاصيل'}
+                                      </span>
                                       <ChevronLeft className="w-3 h-3 text-[#0c3e35]" />
                                     </div>
                                   )}
@@ -297,7 +420,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   </div>
 
                   {/* User Profile Menu */}
-                  <div className="relative">
+                  <div ref={userMenuRef} className="relative">
                     <button
                       onClick={() => {
                         setShowUserMenu(!showUserMenu);

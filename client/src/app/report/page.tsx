@@ -190,11 +190,11 @@ function ReportContent() {
         <div className="pt-12 grid grid-cols-2 text-center text-xs font-bold text-[#0c3e35] print:text-black">
           <div className="space-y-12">
             <p>معاون المدير العام للموانئ</p>
-            <p>د. عمار الخليل</p>
+            <p className="font-mono text-[#5e736e] print:text-gray-600">..................................................</p>
           </div>
           <div className="space-y-12">
             <p>المدير العام للمديرية العامة للموانئ</p>
-            <p>م. سامر الأحمد</p>
+            <p className="font-mono text-[#5e736e] print:text-gray-600">..................................................</p>
           </div>
         </div>
 

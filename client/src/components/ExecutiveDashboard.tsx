@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User, ExecutiveOverviewResponse, DirectorateOverviewItem, Announcement } from '../types';
 import { api } from '../services/api';
 import { DirectorateCard } from './DirectorateCard';
@@ -27,6 +28,7 @@ import {
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { getSocket } from '../lib/socket';
+import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
 
 interface ExecutiveDashboardProps {
   currentUser: User;
@@ -49,11 +51,45 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '', priority: 'NORMAL' });
   const [submittingAnnouncement, setSubmittingAnnouncement] = useState(false);
   const [liveToast, setLiveToast] = useState<{ title: string; desc: string } | null>(null);
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
+
+    const handleReadUpdate = (e: any) => {
+      if (e.detail?.userId === currentUser.id) {
+        setReadAnnouncementIds(e.detail.readIds || getReadAnnouncementIds(currentUser.id));
+      }
+    };
+
+    window.addEventListener('announcements:read_updated', handleReadUpdate);
+    return () => window.removeEventListener('announcements:read_updated', handleReadUpdate);
+  }, [currentUser.id]);
 
   useEffect(() => {
     loadOverview();
     loadAnnouncements();
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (!showAnnouncementModal) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowAnnouncementModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAnnouncementModal]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -318,35 +354,64 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         </div>
       )}
 
-      {/* Announcements Bar */}
-      {announcements.length > 0 && (
-        <div
-          onClick={() =>
-            setSelectedAnnouncement({
-              title: announcements[0].title,
-              content: announcements[0].content,
-              authorName: announcements[0].author?.fullName || 'المدير العام للموانئ',
-              authorTitle: announcements[0].author?.title || 'المدير العام',
-              priority: announcements[0].priority,
-              createdAt: announcements[0].createdAt,
-            })
-          }
-          className="p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9] hover:border-[#0c3e35] transition flex items-start justify-between gap-4 cursor-pointer shadow-xs"
-        >
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 mt-0.5">
-              <Megaphone className="w-4 h-4" />
+      {/* Announcements Bar (Only displayed if unread) */}
+      {(() => {
+        const unreadAnnouncements = announcements.filter(
+          (a) => !readAnnouncementIds.includes(a.id)
+        );
+
+        if (unreadAnnouncements.length === 0) return null;
+
+        const currentAnn = unreadAnnouncements[0];
+
+        return (
+          <div
+            onClick={() => {
+              markAnnouncementAsRead(currentUser.id, currentAnn.id);
+              setSelectedAnnouncement({
+                id: currentAnn.id,
+                title: currentAnn.title,
+                content: currentAnn.content,
+                authorName: currentAnn.author?.fullName || 'المدير العام للموانئ',
+                authorTitle: currentAnn.author?.title || 'المدير العام',
+                priority: currentAnn.priority,
+                createdAt: currentAnn.createdAt,
+              });
+            }}
+            className="p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9] hover:border-[#0c3e35] transition flex items-start justify-between gap-4 cursor-pointer shadow-xs animate-fadeIn"
+          >
+            <div className="flex items-start gap-3 flex-1">
+              <div className="w-8 h-8 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                <Megaphone className="w-4 h-4" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-[#0c3e35]">{currentAnn.title}</h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
+                    تعميم إداري جديد
+                  </span>
+                </div>
+                <p className="text-xs text-[#5e736e] mt-0.5 line-clamp-1">{currentAnn.content}</p>
+              </div>
             </div>
-            <div>
-              <h4 className="text-xs font-bold text-[#0c3e35]">{announcements[0].title}</h4>
-              <p className="text-xs text-[#5e736e] mt-0.5 line-clamp-1">{announcements[0].content}</p>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] text-[#0c3e35] font-bold bg-white px-3 py-1 rounded-lg border border-[#d2d1c9]">
+                انقر لقراءة التفاصيل
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markAnnouncementAsRead(currentUser.id, currentAnn.id);
+                }}
+                className="p-1 text-[#8daaa2] hover:text-[#0c3e35] hover:bg-white rounded-lg transition cursor-pointer"
+                title="إخفاء من اللوحة (تمت القراءة)"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
-          <span className="text-[11px] text-[#0c3e35] shrink-0 font-bold bg-white px-2.5 py-1 rounded-lg border border-[#d2d1c9]">
-            انقر لقراءة التفاصيل
-          </span>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Controls & View Mode Toggle Bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9]">
@@ -518,9 +583,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       />
 
       {/* General Announcement Modal */}
-      {showAnnouncementModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn">
-          <div className="w-full max-w-lg bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right">
+      {showAnnouncementModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn font-sans"
+          onClick={() => setShowAnnouncementModal(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6 border-b border-[#d2d1c9] bg-[#05261e] text-white flex items-center justify-between">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Megaphone className="w-5 h-5 text-[#d4af37]" />
@@ -578,7 +649,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Announcement Details Dialog */}

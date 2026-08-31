@@ -1,10 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { X, Megaphone, Printer, Calendar, User, AlertTriangle } from 'lucide-react';
+import { X, Megaphone, Printer, Calendar, User, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export interface AnnouncementModalData {
+  id?: string;
   title: string;
   content: string;
   authorName?: string;
@@ -22,7 +24,33 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
   data,
   onClose,
 }) => {
-  if (!data) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!data) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [data, onClose]);
+
+  if (!mounted || !data) return null;
 
   const formattedDate = data.createdAt
     ? new Date(data.createdAt).toLocaleDateString('ar-SY', {
@@ -64,9 +92,15 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-[#031814]/70 backdrop-blur-xs animate-fadeIn font-sans">
-      <div className="relative w-full max-w-2xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-[#031814]/70 backdrop-blur-xs animate-fadeIn font-sans"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-2xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="p-6 bg-[#05261e] text-white flex items-center justify-between border-b border-[#0c3e35]">
@@ -151,14 +185,20 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-[#d2d1c9] bg-white flex items-center justify-between">
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#edece4] hover:bg-[#d2d1c9] text-[#0c3e35] text-xs font-bold transition cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>طباعة التعميم</span>
-          </button>
+        <div className="p-4 border-t border-[#d2d1c9] bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#edece4] hover:bg-[#d2d1c9] text-[#0c3e35] text-xs font-bold transition cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>طباعة التعميم</span>
+            </button>
+            <span className="text-[11px] text-[#5e736e] flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>متاح دائماً للمراجعة عبر أيقونة الإشعارات بالأعلى</span>
+            </span>
+          </div>
 
           <button
             onClick={onClose}
@@ -169,6 +209,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

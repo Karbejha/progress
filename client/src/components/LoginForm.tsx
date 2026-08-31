@@ -162,7 +162,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                   className="p-2.5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] border border-[#d2d1c9] cursor-pointer flex items-center justify-between transition"
                 >
                   <div>
-                    <span className="font-bold text-[#0c3e35] block">المدير العام للموانئ (م. سامر الأحمد)</span>
+                    <span className="font-bold text-[#0c3e35] block">المدير العام للموانئ</span>
                     <span className="text-[11px] text-[#5e736e]">اسم المستخدم: <code>director_general</code></span>
                   </div>
                   <span className="text-[11px] font-bold text-[#d4af37] bg-[#05261e] px-2.5 py-1 rounded-lg">
@@ -175,7 +175,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                   className="p-2.5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] border border-[#d2d1c9] cursor-pointer flex items-center justify-between transition"
                 >
                   <div>
-                    <span className="font-bold text-[#0c3e35] block">مديرية التفتيش البحري (ربان. كمال نجار)</span>
+                    <span className="font-bold text-[#0c3e35] block">مديرية التفتيش البحري</span>
                     <span className="text-[11px] text-[#5e736e]">اسم المستخدم: <code>dir_inspection</code></span>
                   </div>
                   <span className="text-[11px] font-bold text-[#0c3e35] bg-[#edece4] border border-[#d2d1c9] px-2.5 py-1 rounded-lg">
@@ -188,7 +188,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                   className="p-2.5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] border border-[#d2d1c9] cursor-pointer flex items-center justify-between transition"
                 >
                   <div>
-                    <span className="font-bold text-[#0c3e35] block">مديرية شؤون الموانئ (م. غسان يوسف)</span>
+                    <span className="font-bold text-[#0c3e35] block">مديرية شؤون الموانئ</span>
                     <span className="text-[11px] text-[#5e736e]">اسم المستخدم: <code>dir_ports</code></span>
                   </div>
                   <span className="text-[11px] font-bold text-[#0c3e35] bg-[#edece4] border border-[#d2d1c9] px-2.5 py-1 rounded-lg">

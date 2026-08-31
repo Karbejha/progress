@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User } from '../types';
 import { api } from '../services/api';
 import { Shield, Search, X, Check, UserCircle2, ArrowRight } from 'lucide-react';
@@ -23,12 +24,37 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'ALL' | 'EXECUTIVE' | 'OPERATIONAL' | 'ADMIN'>('ALL');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
       loadUsers();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   const loadUsers = async () => {
     try {
@@ -42,7 +68,7 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!mounted || !isOpen) return null;
 
   const handleSelect = async (u: User) => {
     try {
@@ -85,9 +111,15 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
     return true;
   });
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn">
-      <div className="relative w-full max-w-3xl max-h-[85vh] flex flex-col bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn font-sans"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[85vh] flex flex-col bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="p-6 border-b border-[#d2d1c9] bg-[#05261e] text-white flex items-center justify-between">
@@ -266,6 +298,7 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

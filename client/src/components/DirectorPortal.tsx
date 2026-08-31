@@ -20,11 +20,13 @@ import {
   Shield,
   Check,
   Megaphone,
+  X,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { Announcement } from '../types';
 import { getSocket } from '../lib/socket';
+import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -39,6 +41,20 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
+
+    const handleReadUpdate = (e: any) => {
+      if (e.detail?.userId === currentUser.id) {
+        setReadAnnouncementIds(e.detail.readIds || getReadAnnouncementIds(currentUser.id));
+      }
+    };
+
+    window.addEventListener('announcements:read_updated', handleReadUpdate);
+    return () => window.removeEventListener('announcements:read_updated', handleReadUpdate);
+  }, [currentUser.id]);
 
   // Form states
   const [generalFocus, setGeneralFocus] = useState('');
@@ -298,40 +314,64 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       </div>
 
-      {/* Official General Announcements Bar */}
-      {announcements.length > 0 && (
-        <div
-          onClick={() =>
-            setSelectedAnnouncement({
-              title: announcements[0].title,
-              content: announcements[0].content,
-              authorName: announcements[0].author?.fullName || 'المدير العام للموانئ',
-              authorTitle: announcements[0].author?.title || 'المدير العام',
-              priority: announcements[0].priority,
-              createdAt: announcements[0].createdAt,
-            })
-          }
-          className="p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9] hover:border-[#0c3e35] transition flex items-start justify-between gap-4 cursor-pointer shadow-xs"
-        >
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-              <Megaphone className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold text-[#0c3e35]">{announcements[0].title}</h4>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
-                  تعميم إداري رسمي
-                </span>
+      {/* Official General Announcements Bar (Only if unread) */}
+      {(() => {
+        const unreadAnnouncements = announcements.filter(
+          (a) => !readAnnouncementIds.includes(a.id)
+        );
+
+        if (unreadAnnouncements.length === 0) return null;
+
+        const currentAnn = unreadAnnouncements[0];
+
+        return (
+          <div
+            onClick={() => {
+              markAnnouncementAsRead(currentUser.id, currentAnn.id);
+              setSelectedAnnouncement({
+                id: currentAnn.id,
+                title: currentAnn.title,
+                content: currentAnn.content,
+                authorName: currentAnn.author?.fullName || 'المدير العام للموانئ',
+                authorTitle: currentAnn.author?.title || 'المدير العام',
+                priority: currentAnn.priority,
+                createdAt: currentAnn.createdAt,
+              });
+            }}
+            className="p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9] hover:border-[#0c3e35] transition flex items-start justify-between gap-4 cursor-pointer shadow-xs animate-fadeIn"
+          >
+            <div className="flex items-start gap-3 flex-1">
+              <div className="w-9 h-9 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                <Megaphone className="w-4 h-4" />
               </div>
-              <p className="text-xs text-[#5e736e] mt-0.5 line-clamp-1">{announcements[0].content}</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold text-[#0c3e35]">{currentAnn.title}</h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
+                    تعميم إداري جديد
+                  </span>
+                </div>
+                <p className="text-xs text-[#5e736e] mt-0.5 line-clamp-1">{currentAnn.content}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] text-[#0c3e35] font-bold bg-white px-3 py-1 rounded-lg border border-[#d2d1c9]">
+                انقر لقراءة نص التعميم
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markAnnouncementAsRead(currentUser.id, currentAnn.id);
+                }}
+                className="p-1 text-[#8daaa2] hover:text-[#0c3e35] hover:bg-white rounded-lg transition cursor-pointer"
+                title="إخفاء من اللوحة (تمت القراءة)"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
-          <span className="text-[11px] text-[#0c3e35] shrink-0 font-bold bg-white px-3 py-1 rounded-lg border border-[#d2d1c9]">
-            انقر لقراءة نص التعميم
-          </span>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Directives from General Director */}
       {plan?.feedbacks && plan.feedbacks.length > 0 && (

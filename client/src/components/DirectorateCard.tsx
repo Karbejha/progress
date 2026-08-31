@@ -74,11 +74,13 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             <h3 className="text-sm font-bold text-[#0c3e35] group-hover:text-[#072923] transition line-clamp-2 leading-snug">
               {item.directorateName}
             </h3>
-            {item.director && (
-              <p className="text-xs text-[#5e736e] mt-1 font-medium">
-                المدير المسؤول: <strong className="text-[#0c3e35]">{item.director.fullName}</strong>
-              </p>
-            )}
+            <p className="text-xs text-[#5e736e] mt-1 font-medium">
+              المدير المسؤول: {item.director?.fullName?.trim() ? (
+                <strong className="text-[#0c3e35]">{item.director.fullName}</strong>
+              ) : (
+                <span className="text-[#8daaa2] font-normal">غير محدد</span>
+              )}
+            </p>
           </div>
         </div>
 

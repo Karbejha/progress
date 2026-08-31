@@ -122,9 +122,9 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
             <Shield className="w-6 h-6" />
           </div>
           <h3 className="text-base font-extrabold text-white">المدير العام للمديرية العامة للموانئ</h3>
-          <p className="text-xs text-[#d4af37] mt-0.5 font-bold">م. سامر الأحمد • الإشراف والقيادة المركزية</p>
+          <p className="text-xs text-[#d4af37] mt-0.5 font-bold">الإشراف والقيادة المركزية</p>
           <div className="mt-2.5 text-[11px] text-[#edece4] bg-[#0c3e35] py-1 px-3.5 rounded-full inline-block border border-[#d4af37]/30 font-medium">
-            معاون المدير العام: د. عمار الخليل
+            معاون المدير العام
           </div>
         </div>
 
