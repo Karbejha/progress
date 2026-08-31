@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { User, Announcement } from '../types';
 import { api } from '../services/api';
 import { getSocket } from '../lib/socket';
-import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
+import { getReadAnnouncementIds, markAnnouncementAsRead, markAllAnnouncementsAsRead } from '../lib/announcements';
 import {
   Shield,
   Ship,
@@ -22,6 +22,7 @@ import {
   Clock,
   ChevronLeft,
   Megaphone,
+  CheckCheck,
 } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
@@ -93,8 +94,15 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
   // Load read status & announcements
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
 
+    // Reset notifications when switching user
+    setNotifications([]);
+    setUnreadCount(0);
     setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
 
     const handleReadUpdate = (e: any) => {
@@ -105,13 +113,20 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
     window.addEventListener('announcements:read_updated', handleReadUpdate);
 
-    // Fetch existing announcements from server
+    // Fetch existing announcements from server (for non-author/non-executive users who should receive alerts)
     const fetchInitialAnnouncements = async () => {
       try {
+        // Executive leadership (General Director / Assistant) issues circulars and should not receive alerts for their own circulars
+        if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR') {
+          return;
+        }
+
         const anns = await api.getAnnouncements();
+        // Filter out announcements authored by the current user
+        const targetAnns = anns.filter((a) => a.authorId !== currentUser.id);
         const currentRead = getReadAnnouncementIds(currentUser.id);
 
-        const annNotifs: LiveNotification[] = anns.map((a) => ({
+        const annNotifs: LiveNotification[] = targetAnns.map((a) => ({
           id: a.id,
           title: 'تعميم إداري رسمي',
           message: a.title,
@@ -130,8 +145,8 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           fullPayload: a,
         }));
 
-        const unreadAnns = anns.filter((a) => !currentRead.includes(a.id));
-        setUnreadCount(unreadAnns.length);
+        const unreadAnns = targetAnns.filter((a) => !currentRead.includes(a.id));
+        setUnreadCount((prev) => prev + unreadAnns.length);
 
         setNotifications((prev) => {
           const prevMap = new Map(prev.map((p) => [p.id, p]));
@@ -175,6 +190,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     };
 
     socket.on('plan:submitted', (data: any) => {
+      // Only notify executive leadership (General Director / Assistant Director)
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      if (!isExec) return;
+
       addNotif({
         title: 'رفع خطة صباحية',
         message: `قامت ${data.directorateName} باعتماد خطة اليوم (${data.tasksCount} مهام).`,
@@ -184,6 +203,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     });
 
     socket.on('task:updated', (data: any) => {
+      // Only notify executive leadership (General Director / Assistant Director)
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      if (!isExec) return;
+
       addNotif({
         title: 'تحديث حالة مهمة',
         message: `قامت ${data.directorateName} بتحديث: "${data.taskTitle}" (${data.completionPercentage}%).`,
@@ -193,6 +216,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     });
 
     socket.on('summary:submitted', (data: any) => {
+      // Only notify executive leadership (General Director / Assistant Director)
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      if (!isExec) return;
+
       addNotif({
         title: 'تسليم ملخص الإنجاز',
         message: `سلّمت ${data.directorateName} ملخص نهاية الدوام بنسبة ${data.overallCompletionRate}%.`,
@@ -202,7 +229,8 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     });
 
     socket.on('feedback:sent', (data: any) => {
-      if (!currentUser?.directorateId || currentUser.directorateId === data.directorateId) {
+      // Only notify the targeted directorate's director (never notify the executive leadership who sent it)
+      if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
         addNotif({
           title: 'توجيه من المدير العام',
           message: data.feedbackText,
@@ -215,6 +243,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     });
 
     socket.on('announcement:created', (data: any) => {
+      // Do not notify the executive leadership or the author of the circular
+      if (currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR') return;
+      if (data.authorId && data.authorId === currentUser?.id) return;
+
       addNotif({
         id: data.id,
         title: 'تعميم إداري رسمي',
@@ -223,7 +255,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         authorName: data.authorName || 'المدير العام للموانئ',
         authorTitle: 'المدير العام',
         priority: data.priority || 'NORMAL',
-        createdAt: new Date().toISOString(),
+        createdAt: data.createdAt || new Date().toISOString(),
         type: 'announcement',
         fullPayload: data,
       });
@@ -246,6 +278,22 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     if (!showNotifications) {
       setUnreadCount(0);
     }
+  };
+
+  const handleMarkAllAsRead = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) return;
+
+    const annIds = notifications
+      .filter((n) => n.type === 'announcement' && n.id)
+      .map((n) => n.id);
+
+    if (annIds.length > 0) {
+      markAllAnnouncementsAsRead(currentUser.id, annIds);
+      setReadAnnouncementIds((prev) => Array.from(new Set([...prev, ...annIds])));
+    }
+
+    setUnreadCount(0);
   };
 
   const handleNotificationClick = (n: LiveNotification) => {
@@ -331,17 +379,30 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     {/* Notifications Dropdown */}
                     {showNotifications && (
                       <div className="absolute left-0 mt-3 w-80 sm:w-96 bg-[#edece4] border border-[#d2d1c9] rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right">
-                        <div className="p-4 bg-[#05261e] text-white flex items-center justify-between border-b border-[#d2d1c9]">
-                          <h4 className="text-xs font-bold flex items-center gap-1.5 text-[#d4af37]">
+                        <div className="p-3.5 sm:p-4 bg-[#05261e] text-white flex items-center justify-between border-b border-[#0c3e35] gap-2">
+                          <h4 className="text-xs font-bold flex items-center gap-1.5 text-[#d4af37] shrink-0">
                             <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
                             التنبيهات اللحظية المباشرة
                           </h4>
-                          <button
-                            onClick={() => setShowNotifications(false)}
-                            className="p-1 text-[#8daaa2] hover:text-white"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {notifications.length > 0 && (
+                              <button
+                                onClick={handleMarkAllAsRead}
+                                className="text-[11px] font-bold text-[#d4af37] hover:text-white px-2.5 py-1 rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/30 hover:border-[#d4af37] transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 whitespace-nowrap"
+                                title="تحديد كافة التنبيهات والتعاميم كمقروءة"
+                              >
+                                <CheckCheck className="w-3.5 h-3.5 text-[#d4af37]" />
+                                <span>تحديد الكل كمقروء</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setShowNotifications(false)}
+                              className="p-1.5 rounded-lg text-[#8daaa2] hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              title="إغلاق"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
 
                         <div className="max-h-80 overflow-y-auto p-3 space-y-2">

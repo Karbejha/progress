@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { X, Megaphone, Printer, Calendar, User, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, User, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export interface AnnouncementModalData {
   id?: string;
@@ -94,7 +94,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
 
   return createPortal(
     <div
-      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-[#031814]/70 backdrop-blur-xs animate-fadeIn font-sans"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
       onClick={onClose}
     >
       <div
@@ -158,7 +158,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
             {/* Corner Decorative Watermark */}
             <div className="absolute top-4 left-4 opacity-10 pointer-events-none">
               <Image
-                src="/assets/Syrian_logo_icon_dark_green.svg"
+                src="/assets/Syrian_logo_icon_gold.svg"
                 alt="شعار"
                 width={80}
                 height={80}
@@ -187,13 +187,6 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
         {/* Footer */}
         <div className="p-4 border-t border-[#d2d1c9] bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#edece4] hover:bg-[#d2d1c9] text-[#0c3e35] text-xs font-bold transition cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              <span>طباعة التعميم</span>
-            </button>
             <span className="text-[11px] text-[#5e736e] flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               <span>متاح دائماً للمراجعة عبر أيقونة الإشعارات بالأعلى</span>

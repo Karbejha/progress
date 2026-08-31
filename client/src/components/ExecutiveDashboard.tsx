@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User, ExecutiveOverviewResponse, DirectorateOverviewItem, Announcement } from '../types';
 import { api } from '../services/api';
@@ -40,6 +40,17 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenDatePicker = () => {
+    if (dateInputRef.current) {
+      try {
+        dateInputRef.current.showPicker();
+      } catch {
+        dateInputRef.current.focus();
+      }
+    }
+  };
   const [viewMode, setViewMode] = useState<'GRID' | 'CHART' | 'URGENT'>('GRID');
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -152,10 +163,16 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
 
     try {
       setSubmittingAnnouncement(true);
+      const title = announcementForm.title;
       await api.createAnnouncement(announcementForm);
       setAnnouncementForm({ title: '', content: '', priority: 'NORMAL' });
       setShowAnnouncementModal(false);
       loadAnnouncements();
+      setLiveToast({
+        title: 'تم نشر التعميم بنجاح',
+        desc: `تم تعميم "${title}" وإرسال إشعار فوري لكافة مديريات الموانئ.`,
+      });
+      setTimeout(() => setLiveToast(null), 4000);
     } catch (err) {
       console.error('Failed to create announcement', err);
     } finally {
@@ -185,11 +202,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const kpis = data?.kpis;
 
   return (
-    <div className="space-y-7 animate-fadeIn pb-16 relative">
-      
+    <>
       {/* Real-time Live Toast Alert */}
       {liveToast && (
-        <div className="fixed top-24 left-6 z-50 flex items-start gap-3 bg-[#05261e] border-2 border-[#d4af37] text-white p-4 rounded-2xl shadow-2xl animate-bounce max-w-sm">
+        <div className="fixed top-24 left-6 z-50 flex items-start gap-3 bg-[#05261e] border-2 border-[#d4af37] text-white p-4 rounded-2xl shadow-2xl animate-fadeIn max-w-sm pointer-events-auto">
           <div className="w-8 h-8 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 mt-0.5">
             <CheckCircle2 className="w-5 h-5 text-[#d4af37]" />
           </div>
@@ -200,7 +216,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         </div>
       )}
 
-      {/* Top Banner / Welcome & Actions */}
+      <div className="space-y-7 animate-fadeIn pb-16 relative">
+        {/* Top Banner / Welcome & Actions */}
       <div className="p-7 rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-white">
         <div className="relative z-10 space-y-1.5">
           <div className="flex items-center gap-2">
@@ -222,13 +239,24 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
 
         {/* Date Selector & Print Report Button */}
         <div className="relative z-10 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 bg-[#0c3e35] border border-[#d4af37]/30 px-3.5 py-2 rounded-xl text-xs text-white">
-            <Calendar className="w-4 h-4 text-[#d4af37]" />
-            <span className="font-bold">التاريخ:</span>
+          <div
+            onClick={handleOpenDatePicker}
+            className="flex items-center gap-2 bg-[#0c3e35] hover:bg-[#0e483e] border border-[#d4af37]/30 hover:border-[#d4af37]/60 px-3.5 py-2 rounded-xl text-xs text-white cursor-pointer select-none transition-all shadow-xs group active:scale-[0.98]"
+            title="انقر لتحديد أو تغيير التاريخ"
+          >
+            <Calendar className="w-4 h-4 text-[#d4af37] group-hover:scale-110 transition-transform shrink-0" />
+            <span className="font-bold shrink-0">التاريخ:</span>
             <input
+              ref={dateInputRef}
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
+              onClick={(e) => {
+                try {
+                  (e.target as HTMLInputElement).showPicker?.();
+                } catch {}
+              }}
+              style={{ colorScheme: 'dark' }}
               className="bg-transparent text-[#d4af37] focus:outline-none cursor-pointer font-bold"
             />
           </div>
@@ -354,10 +382,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         </div>
       )}
 
-      {/* Announcements Bar (Only displayed if unread) */}
+      {/* Announcements Bar (Only displayed if unread and not authored by the user) */}
       {(() => {
+        if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR') return null;
+
         const unreadAnnouncements = announcements.filter(
-          (a) => !readAnnouncementIds.includes(a.id)
+          (a) => !readAnnouncementIds.includes(a.id) && a.authorId !== currentUser.id
         );
 
         if (unreadAnnouncements.length === 0) return null;
@@ -585,7 +615,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       {/* General Announcement Modal */}
       {showAnnouncementModal && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn font-sans"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
           onClick={() => setShowAnnouncementModal(false)}
         >
           <div
@@ -660,5 +690,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       />
 
     </div>
+    </>
   );
 };

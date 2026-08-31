@@ -33,3 +33,21 @@ export const markAnnouncementAsRead = (userId: string, announcementId: string): 
     console.error('Failed to mark announcement as read', e);
   }
 };
+
+export const markAllAnnouncementsAsRead = (userId: string, announcementIds: string[]): void => {
+  if (typeof window === 'undefined' || !userId || !announcementIds.length) return;
+  try {
+    const current = getReadAnnouncementIds(userId);
+    const set = new Set([...current, ...announcementIds]);
+    const updated = Array.from(set);
+    localStorage.setItem(`ports_read_announcements_${userId}`, JSON.stringify(updated));
+    window.dispatchEvent(
+      new CustomEvent('announcements:read_updated', {
+        detail: { userId, readIds: updated },
+      })
+    );
+  } catch (e) {
+    console.error('Failed to mark all announcements as read', e);
+  }
+};
+

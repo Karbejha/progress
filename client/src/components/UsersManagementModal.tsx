@@ -250,7 +250,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn font-sans"
+      className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
       onClick={onClose}
     >
       <div
@@ -452,7 +452,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
       {/* Add User Modal */}
       {showAddModal && (
         <div
-          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-[#031814]/70 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn"
           onClick={() => setShowAddModal(false)}
         >
           <div
@@ -604,7 +604,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
       {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div
-          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-[#031814]/70 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn"
           onClick={() => setShowEditModal(false)}
         >
           <div
@@ -714,7 +714,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
       {/* Reset Password Modal */}
       {showResetModal && selectedUser && (
         <div
-          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-[#031814]/70 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn"
           onClick={() => setShowResetModal(false)}
         >
           <div

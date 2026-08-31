@@ -51,8 +51,8 @@ module.exports = {
         }
       },
       fontFamily: {
-        sans: ['var(--font-qomra)', 'Tajawal', 'Cairo', 'sans-serif'],
-        qomra: ['var(--font-qomra)', 'sans-serif'],
+        sans: ['var(--font-qomra)', 'itfQomraArabic', 'Qomra', 'sans-serif'],
+        qomra: ['var(--font-qomra)', 'itfQomraArabic', 'Qomra', 'sans-serif'],
       },
       boxShadow: {
         'brand-card': '0 20px 50px -12px rgba(3, 24, 20, 0.15)',

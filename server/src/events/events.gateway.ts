@@ -79,12 +79,16 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   emitAnnouncementCreated(payload: {
+    id?: string;
     title: string;
     content: string;
     priority: string;
+    authorId?: string;
     authorName: string;
+    createdAt?: string;
   }) {
-    this.logger.log(`Broadcasting announcement:created: ${payload.title}`);
+    this.logger.log(`Broadcasting announcement:created: ${payload.title} by ${payload.authorName}`);
     this.server.emit('announcement:created', payload);
   }
 }
+

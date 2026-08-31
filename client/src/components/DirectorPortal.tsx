@@ -21,6 +21,8 @@ import {
   Check,
   Megaphone,
   X,
+  Save,
+  Loader2,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -198,47 +200,251 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     }
   };
 
-  // Live task update
-  const handleUpdateTaskStatus = async (
-    taskId: string,
-    status: TaskStatus,
-    completionPercentage: number,
-    completionNote?: string
-  ) => {
-    try {
-      await api.updateTaskStatus(taskId, {
-        status,
-        completionPercentage,
-        completionNote,
+  // Live tracking local state
+  const [trackedTasks, setTrackedTasks] = useState<{
+    [taskId: string]: {
+      status: TaskStatus;
+      completionPercentage: number;
+      completionNote?: string;
+      isModified: boolean;
+      isSaving: boolean;
+    };
+  }>({});
+  const [savingAllTasks, setSavingAllTasks] = useState(false);
+
+  // Sync trackedTasks with plan.tasks whenever plan is loaded
+  useEffect(() => {
+    if (plan?.tasks) {
+      setTrackedTasks((prev) => {
+        const nextState: typeof prev = {};
+        plan.tasks.forEach((t) => {
+          nextState[t.id] = {
+            status: t.status,
+            completionPercentage: t.completionPercentage,
+            completionNote: t.completionNote || '',
+            isModified: prev[t.id]?.isModified ?? false,
+            isSaving: false,
+          };
+        });
+        return nextState;
       });
-      loadTodayData();
-      showToast('تم تحديث حالة المهمة فوراً');
+    }
+  }, [plan]);
+
+  // Handle local status change without immediate network request
+  const handleLocalStatusChange = (taskId: string, newStatus: TaskStatus, defaultPercentage?: number) => {
+    setTrackedTasks((prev) => {
+      const current = prev[taskId];
+      const initialTask = plan?.tasks?.find((t) => t.id === taskId);
+      let nextPercentage = current ? current.completionPercentage : initialTask?.completionPercentage || 0;
+
+      if (defaultPercentage !== undefined) {
+        nextPercentage = defaultPercentage;
+      } else if (newStatus === 'COMPLETED') {
+        nextPercentage = 100;
+      } else if (newStatus === 'PENDING') {
+        nextPercentage = 0;
+      }
+
+      const isDifferent =
+        initialTask &&
+        (initialTask.status !== newStatus || initialTask.completionPercentage !== nextPercentage);
+
+      return {
+        ...prev,
+        [taskId]: {
+          status: newStatus,
+          completionPercentage: nextPercentage,
+          completionNote: current?.completionNote || initialTask?.completionNote || '',
+          isModified: !!isDifferent,
+          isSaving: false,
+        },
+      };
+    });
+  };
+
+  // Handle local slider percentage change smoothly
+  const handleLocalPercentageChange = (taskId: string, percentage: number) => {
+    setTrackedTasks((prev) => {
+      const current = prev[taskId];
+      const initialTask = plan?.tasks?.find((t) => t.id === taskId);
+      let newStatus = current ? current.status : initialTask?.status || 'PENDING';
+
+      if (percentage === 100) {
+        newStatus = 'COMPLETED';
+      } else if (percentage === 0) {
+        newStatus = 'PENDING';
+      } else if (newStatus === 'PENDING' || newStatus === 'COMPLETED') {
+        newStatus = 'IN_PROGRESS';
+      }
+
+      const isDifferent =
+        initialTask &&
+        (initialTask.status !== newStatus || initialTask.completionPercentage !== percentage);
+
+      return {
+        ...prev,
+        [taskId]: {
+          status: newStatus,
+          completionPercentage: percentage,
+          completionNote: current?.completionNote || initialTask?.completionNote || '',
+          isModified: !!isDifferent,
+          isSaving: false,
+        },
+      };
+    });
+  };
+
+  // Save single task status and notify General Director once
+  const handleSaveTaskStatus = async (taskId: string) => {
+    const taskState = trackedTasks[taskId];
+    if (!taskState) return;
+
+    try {
+      setTrackedTasks((prev) => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], isSaving: true },
+      }));
+
+      await api.updateTaskStatus(taskId, {
+        status: taskState.status,
+        completionPercentage: taskState.completionPercentage,
+        completionNote: taskState.completionNote,
+      });
+
+      // Update in-memory plan
+      if (plan) {
+        setPlan({
+          ...plan,
+          tasks: plan.tasks.map((t) =>
+            t.id === taskId
+              ? {
+                  ...t,
+                  status: taskState.status,
+                  completionPercentage: taskState.completionPercentage,
+                  completionNote: taskState.completionNote,
+                }
+              : t
+          ),
+        });
+      }
+
+      setTrackedTasks((prev) => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], isModified: false, isSaving: false },
+      }));
+
+      showToast('تم حفظ حالة المهمة بنجاح وإشعار المدير العام');
     } catch (err) {
       console.error('Failed to update task', err);
+      alert('حدث خطأ أثناء حفظ حالة المهمة');
+      setTrackedTasks((prev) => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], isSaving: false },
+      }));
     }
   };
 
-  // Summary submission
+  const modifiedTaskIds = Object.keys(trackedTasks).filter((id) => trackedTasks[id]?.isModified);
+
+  // Save all modified tasks in one action
+  const handleSaveAllModifiedTasks = async () => {
+    if (modifiedTaskIds.length === 0) return;
+
+    try {
+      setSavingAllTasks(true);
+      await Promise.all(
+        modifiedTaskIds.map((taskId) =>
+          api.updateTaskStatus(taskId, {
+            status: trackedTasks[taskId].status,
+            completionPercentage: trackedTasks[taskId].completionPercentage,
+            completionNote: trackedTasks[taskId].completionNote,
+          })
+        )
+      );
+
+      if (plan) {
+        setPlan({
+          ...plan,
+          tasks: plan.tasks.map((t) => {
+            const mod = trackedTasks[t.id];
+            return mod && mod.isModified
+              ? {
+                  ...t,
+                  status: mod.status,
+                  completionPercentage: mod.completionPercentage,
+                  completionNote: mod.completionNote,
+                }
+              : t;
+          }),
+        });
+      }
+
+      setTrackedTasks((prev) => {
+        const updated = { ...prev };
+        modifiedTaskIds.forEach((id) => {
+          if (updated[id]) {
+            updated[id] = { ...updated[id], isModified: false, isSaving: false };
+          }
+        });
+        return updated;
+      });
+
+      showToast(`تم حفظ تحديثات ${modifiedTaskIds.length} مهام بنجاح!`);
+    } catch (err) {
+      console.error('Failed to save all tasks', err);
+      alert('حدث خطأ أثناء حفظ تعديلات المهام');
+    } finally {
+      setSavingAllTasks(false);
+    }
+  };
+
+  // Summary submission with auto-generation fallback & duplicate prevention
+  const hasSummary = Boolean(plan?.dailySummary);
+  const isSummaryModified = !hasSummary || (
+    summaryText.trim() !== (plan?.dailySummary?.summaryText || '').trim() ||
+    challenges.trim() !== (plan?.dailySummary?.challenges || '').trim() ||
+    urgentFlag !== (plan?.dailySummary?.urgentFlag || false)
+  );
+
   const handleSubmitSummary = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!summaryText.trim()) {
-      alert('يرجى تدوين ملخص ما تم إنجازه اليوم');
+
+    if (hasSummary && !isSummaryModified) {
+      showToast('الملخص مرسل مسبقاً ولا توجد أي تعديلات جديدة.');
       return;
     }
 
     try {
       setSaving(true);
+      const tasksList = plan?.tasks || [];
+      const completedTasks = tasksList.filter((t) => t.completionPercentage === 100);
+      const totalTasks = tasksList.length;
+      const overallRate = totalTasks > 0
+        ? Math.round((tasksList.reduce((sum, t) => sum + t.completionPercentage, 0) / totalTasks) * 10) / 10
+        : 100;
+
+      // Auto-generate summaryText if left blank
+      const finalSummaryText = summaryText.trim() ||
+        `تم إنجاز مهام الخطة اليومية لمديرية ${currentUser.directorate?.name || ''} بنسبة إنجاز إجمالية بلغت ${overallRate}%. (تم إنجاز ${completedTasks.length} من أصل ${totalTasks} مهام بالكامل).`;
+
+      // Auto-populate achievements from completed tasks if manual list empty
       const cleanAchievements = achievements.filter((a) => a.trim().length > 0);
+      const finalAchievements = cleanAchievements.length > 0
+        ? cleanAchievements
+        : completedTasks.map((t) => t.title);
+
       await api.submitDailySummary({
-        summaryText,
-        achievements: cleanAchievements,
-        challenges,
-        directorNotes,
+        summaryText: finalSummaryText,
+        achievements: finalAchievements,
+        challenges: challenges.trim() || undefined,
+        directorNotes: directorNotes.trim() && directorNotes.trim() !== challenges.trim() ? directorNotes.trim() : undefined,
         urgentFlag,
-        tomorrowPlanPreview,
+        tomorrowPlanPreview: tomorrowPlanPreview.trim() || undefined,
       });
+
       loadTodayData();
-      showToast('تم إرسال ملخص الإنجاز المسائي للمدير العام بنجاح!');
+      showToast(hasSummary ? 'تم حفظ وتحديث ملخص الإنجاز بنجاح!' : 'تم إرسال ملخص الإنجاز المسائي للمدير العام بنجاح!');
     } catch (err) {
       console.error('Failed to submit summary', err);
       alert('حدث خطأ أثناء إرسال ملخص الإنجاز');
@@ -248,17 +454,17 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   };
 
   return (
-    <div className="space-y-7 animate-fadeIn pb-16">
-      
+    <>
       {/* Toast Notification */}
       {successToast && (
-        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-2 bg-[#0c3e35] text-white px-5 py-3 rounded-2xl shadow-2xl animate-bounce border border-[#d4af37]">
+        <div className="fixed bottom-6 left-6 z-50 flex items-center gap-2 bg-[#0c3e35] text-white px-5 py-3 rounded-2xl shadow-2xl border border-[#d4af37] animate-fadeIn pointer-events-auto">
           <CheckCircle2 className="w-5 h-5 text-[#d4af37]" />
           <span className="font-bold text-sm">{successToast}</span>
         </div>
       )}
 
-      {/* Directorate Banner */}
+      <div className="space-y-7 animate-fadeIn pb-16">
+        {/* Directorate Banner */}
       <div className="p-7 rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-white">
         <div className="relative z-10 flex items-start gap-4">
           <div className="w-14 h-14 rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-md shrink-0">
@@ -428,6 +634,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               {plan.tasks.length}
             </span>
           )}
+          {modifiedTaskIds.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold animate-pulse">
+              {modifiedTaskIds.length} غير محفوظة
+            </span>
+          )}
         </button>
 
         <button
@@ -477,20 +688,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 الخطة معتمدة
               </span>
             )}
-          </div>
-
-          {/* General Focus */}
-          <div>
-            <label className="block text-xs font-bold text-[#0c3e35] mb-1.5">
-              التركيز والهدف العام لخطة اليوم (اختياري وموجز):
-            </label>
-            <input
-              type="text"
-              placeholder="مثال: استكمال معاينة سفن الرصيف 4 وإصدار تراخيص الصيد الموسمية..."
-              value={generalFocus}
-              onChange={(e) => setGeneralFocus(e.target.value)}
-              className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
-            />
           </div>
 
           {/* Dynamic Tasks List */}
@@ -597,114 +794,174 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       {/* Tab 2: Live Tracking During the Day */}
       {activeTab === 'TRACK' && (
         <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
-          <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4">
+          <div className="flex items-center justify-between flex-wrap gap-4 border-b border-[#d2d1c9] pb-4">
             <div>
               <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
                 <Layers className="w-5 h-5 text-[#0c3e35]" />
                 تحديث ومتابعة المهام خلال ساعات الدوام
               </h3>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
-                انقر على حالة أي مهمة أو حدد نسبة إنجازها لتنعكس مباشرة في لوحة المدير العام.
+                قم بتحديد حالة أو نسبة إنجاز المهمة، ثم اضغط على زر "حفظ التعديل" لإرسال إشعار موحّد للإدارة لمرة واحدة.
               </p>
             </div>
+
+            {modifiedTaskIds.length > 1 && (
+              <button
+                type="button"
+                onClick={handleSaveAllModifiedTasks}
+                disabled={savingAllTasks}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition cursor-pointer border border-[#d4af37] animate-fadeIn"
+              >
+                {savingAllTasks ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
+                ) : (
+                  <Save className="w-4 h-4 text-[#d4af37]" />
+                )}
+                <span>حفظ كافة التعديلات ({modifiedTaskIds.length})</span>
+              </button>
+            )}
           </div>
 
           {plan?.tasks && plan.tasks.length > 0 ? (
             <div className="space-y-4">
-              {plan.tasks.map((task, idx) => (
-                <div
-                  key={task.id}
-                  className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <span className="w-6 h-6 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <h4 className="text-sm font-bold text-[#0c3e35] leading-tight">{task.title}</h4>
-                        {task.description && (
-                          <p className="text-xs text-[#5e736e] mt-1">{task.description}</p>
+              {plan.tasks.map((task, idx) => {
+                const taskState = trackedTasks[task.id] || {
+                  status: task.status,
+                  completionPercentage: task.completionPercentage,
+                  completionNote: task.completionNote || '',
+                  isModified: false,
+                  isSaving: false,
+                };
+
+                return (
+                  <div
+                    key={task.id}
+                    className={`p-5 rounded-2xl bg-white border transition-all shadow-xs space-y-3 ${
+                      taskState.isModified
+                        ? 'border-[#d4af37] ring-1 ring-[#d4af37]/50 bg-amber-50/20'
+                        : 'border-[#d2d1c9]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <span className="w-6 h-6 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <h4 className="text-sm font-bold text-[#0c3e35] leading-tight">{task.title}</h4>
+                          {task.description && (
+                            <p className="text-xs text-[#5e736e] mt-1">{task.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {taskState.isModified && (
+                          <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            تعديل غير محفوظ
+                          </span>
+                        )}
+                        <span className="text-xs text-[#0c3e35] font-bold bg-[#edece4] px-2.5 py-1 rounded-lg border border-[#d2d1c9]">
+                          {task.estimatedHours} س
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Status Toggle Buttons & Progress Slider & Save Action */}
+                    <div className="flex items-center justify-between flex-wrap gap-4 pt-3 border-t border-[#e5e4dc]">
+                      {/* Status buttons */}
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                        <span className="font-bold text-[#0c3e35]">الحالة:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleLocalStatusChange(task.id, 'PENDING', 0)}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                            taskState.status === 'PENDING'
+                              ? 'bg-[#0c3e35] text-white shadow-xs'
+                              : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
+                          }`}
+                        >
+                          قيد الانتظار
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLocalStatusChange(task.id, 'IN_PROGRESS', 50)}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                            taskState.status === 'IN_PROGRESS'
+                              ? 'bg-[#0c3e35] text-white shadow-xs'
+                              : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
+                          }`}
+                        >
+                          قيد التنفيذ (50%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLocalStatusChange(task.id, 'COMPLETED', 100)}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                            taskState.status === 'COMPLETED'
+                              ? 'bg-emerald-700 text-white shadow-xs'
+                              : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
+                          }`}
+                        >
+                          تم الإنجاز (100%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLocalStatusChange(task.id, 'DELAYED')}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                            taskState.status === 'DELAYED'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
+                          }`}
+                        >
+                          مؤجلة
+                        </button>
+                      </div>
+
+                      {/* Slider and Save Button */}
+                      <div className="flex items-center gap-3">
+                        {/* Progress Slider */}
+                        <div className="flex items-center gap-2.5 text-xs bg-[#edece4] px-3 py-1.5 rounded-xl border border-[#d2d1c9]">
+                          <span className="text-[#0c3e35] font-extrabold w-8 text-left">
+                            {taskState.completionPercentage}%
+                          </span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={taskState.completionPercentage}
+                            onChange={(e) => handleLocalPercentageChange(task.id, parseInt(e.target.value))}
+                            className="w-28 accent-[#0c3e35] cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Save Action */}
+                        {taskState.isModified ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSaveTaskStatus(task.id)}
+                            disabled={taskState.isSaving}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition cursor-pointer border border-[#d4af37]"
+                            title="حفظ التعديل وإرسال الإشعار لمرة واحدة"
+                          >
+                            {taskState.isSaving ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
+                            ) : (
+                              <Save className="w-3.5 h-3.5 text-[#d4af37]" />
+                            )}
+                            <span>حفظ التعديل</span>
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-1 text-[11px] text-[#5e736e] font-medium px-2.5 py-1.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9]">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>محفوظ</span>
+                          </span>
                         )}
                       </div>
                     </div>
-                    <span className="text-xs text-[#0c3e35] font-bold bg-[#edece4] px-2.5 py-1 rounded-lg border border-[#d2d1c9]">
-                      {task.estimatedHours} س
-                    </span>
                   </div>
-
-                  {/* Status Toggle Buttons */}
-                  <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-[#e5e4dc]">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-bold text-[#0c3e35]">الحالة:</span>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTaskStatus(task.id, 'PENDING', 0)}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                          task.status === 'PENDING'
-                            ? 'bg-[#0c3e35] text-white shadow-xs'
-                            : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
-                        }`}
-                      >
-                        قيد الانتظار
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTaskStatus(task.id, 'IN_PROGRESS', 50)}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                          task.status === 'IN_PROGRESS'
-                            ? 'bg-[#0c3e35] text-white shadow-xs'
-                            : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
-                        }`}
-                      >
-                        قيد التنفيذ (50%)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTaskStatus(task.id, 'COMPLETED', 100)}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                          task.status === 'COMPLETED'
-                            ? 'bg-emerald-700 text-white shadow-xs'
-                            : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
-                        }`}
-                      >
-                        تم الإنجاز (100%)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTaskStatus(task.id, 'DELAYED', task.completionPercentage)}
-                        className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
-                          task.status === 'DELAYED'
-                            ? 'bg-amber-600 text-white shadow-xs'
-                            : 'bg-[#edece4] text-[#5e736e] hover:bg-[#d2d1c9]'
-                        }`}
-                      >
-                        مؤجلة
-                      </button>
-                    </div>
-
-                    {/* Progress Slider */}
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-[#0c3e35] font-extrabold">{task.completionPercentage}%</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="5"
-                        value={task.completionPercentage}
-                        onChange={(e) =>
-                          handleUpdateTaskStatus(
-                            task.id,
-                            parseInt(e.target.value) === 100 ? 'COMPLETED' : parseInt(e.target.value) > 0 ? 'IN_PROGRESS' : 'PENDING',
-                            parseInt(e.target.value)
-                          )
-                        }
-                        className="w-28 accent-[#0c3e35] cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               <div className="flex items-center justify-between p-4 rounded-2xl bg-white border border-[#d2d1c9]">
                 <span className="text-xs text-[#0c3e35] font-bold">
@@ -728,134 +985,163 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       )}
 
-      {/* Tab 3: End-of-Day Summary Wizard */}
+      {/* Tab 3: End-of-Day Summary Wizard (Streamlined & Simplified) */}
       {activeTab === 'SUMMARY' && (
         <form onSubmit={handleSubmitSummary} className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
-          <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4">
+          <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[#d2d1c9] pb-4">
             <div>
               <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-[#d4af37]" />
                 ملخص إنجاز نهاية الدوام الرسمي
               </h3>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
-                وثّق ما تم تحقيقه اليوم، واذكر المعوقات وأي طلبات تدخل عاجلة من الإدارة العليا.
+                يقوم النظام باحتساب إنجازاتك تلقائياً من واقع مهام اليوم دون الحاجة لإعادة كتابتها.
               </p>
             </div>
+            {plan?.dailySummary && (
+              <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" />
+                تم إرسال الملخص المسائي اليوم
+              </span>
+            )}
           </div>
 
-          {/* Main Summary Field */}
+          {/* 1. Automated Performance & Achievements Overview */}
+          {(() => {
+            const tasksList = plan?.tasks || [];
+            const completedList = tasksList.filter((t) => t.completionPercentage === 100);
+            const inProgressList = tasksList.filter((t) => t.completionPercentage > 0 && t.completionPercentage < 100);
+            const pendingList = tasksList.filter((t) => t.completionPercentage === 0);
+            const total = tasksList.length;
+            const avgRate = total > 0
+              ? Math.round((tasksList.reduce((sum, t) => sum + t.completionPercentage, 0) / total) * 10) / 10
+              : 100;
+
+            return (
+              <div className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-4 shadow-xs">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>الحصيلة الإحصائية لأعمال اليوم (محسوبة تلقائياً):</span>
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-[#0c3e35] text-white">
+                      نسبة الإنجاز العامة: {avgRate}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick stats pills */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                    <span className="text-xs text-emerald-900 font-bold">مهام مكتملة 100%:</span>
+                    <span className="text-sm font-extrabold text-emerald-800">{completedList.length} من {total}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between">
+                    <span className="text-xs text-amber-900 font-bold">مهام قيد المتابعة:</span>
+                    <span className="text-sm font-extrabold text-amber-800">{inProgressList.length}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <span className="text-xs text-slate-700 font-bold">مهام قيد الانتظار:</span>
+                    <span className="text-sm font-extrabold text-slate-800">{pendingList.length}</span>
+                  </div>
+                </div>
+
+                {/* Completed tasks list */}
+                {completedList.length > 0 && (
+                  <div className="pt-2 border-t border-[#f0efe9]">
+                    <span className="text-[11px] font-bold text-[#5e736e] block mb-2">قائمة الإنجازات المكتملة التي سيتم توثيقها:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {completedList.map((t, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-emerald-100/70 text-emerald-900 font-medium border border-emerald-200">
+                          <Check className="w-3 h-3 text-emerald-700" />
+                          {t.title}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* 2. Optional Notes / Remarks Field */}
           <div>
             <label className="block text-xs font-bold text-[#0c3e35] mb-1.5">
-              ملخص شامل للأعمال المنفذة اليوم (مطلوب):
+              ملاحظات أو تعليق ختامي على إنجاز اليوم (اختياري):
             </label>
             <textarea
-              required
-              rows={3}
-              placeholder="اكتب ملخصاً موجزاً عما حققته المديرية اليوم (مثال: تم إنجاز معاينات الميناء بكفاءة وإصدار 10 دفاتر بحارة)..."
+              rows={2}
+              placeholder="اكتب أي ملاحظات أو توضيحات إضافية للمدير العام (في حال تركه فارغاً، سيعتمد النظام التقرير الإحصائي المحسوب أعلاه تلقائياً)..."
               value={summaryText}
               onChange={(e) => setSummaryText(e.target.value)}
               className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
             />
           </div>
 
-          {/* Key Achievements Bullet points */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-[#0c3e35]">
-                أبرز الإنجازات المحققة (نقاط سريعة):
-              </label>
-              <button
-                type="button"
-                onClick={() => setAchievements([...achievements, ''])}
-                className="text-xs text-[#0c3e35] hover:text-[#072923] font-bold cursor-pointer"
-              >
-                + إضافة نقطة إنجاز
-              </button>
-            </div>
+          {/* 3. Combined Challenges & Urgent Flag */}
+          <div className={`p-4 rounded-2xl border transition-all ${urgentFlag || challenges ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-[#d2d1c9]'}`}>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={urgentFlag}
+                onChange={(e) => setUrgentFlag(e.target.checked)}
+                className="w-4 h-4 accent-[#0c3e35] rounded cursor-pointer"
+              />
+              <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                هل واجهت المديرية معوقات أو توجد احتياجات تتطلب تدخل وقرار المدير العام؟
+              </span>
+            </label>
 
-            {achievements.map((ach, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <span className="text-[#0c3e35] font-bold text-xs">•</span>
-                <input
-                  type="text"
-                  placeholder="مثال: إنهاء التدقيق الفني للسفينة أوغاريت 2..."
-                  value={ach}
-                  onChange={(e) => {
-                    const upd = [...achievements];
-                    upd[idx] = e.target.value;
-                    setAchievements(upd);
-                  }}
-                  className="flex-1 p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
+            {urgentFlag && (
+              <div className="mt-3 animate-fadeIn space-y-2">
+                <textarea
+                  rows={2}
+                  placeholder="اكتب المعوقات أو التوجيهات والقرارات المطلوبة من الإدارة العليا..."
+                  value={challenges}
+                  onChange={(e) => setChallenges(e.target.value)}
+                  className="w-full p-3 rounded-xl bg-white border border-amber-300 text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] font-medium"
                 />
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Challenges & Bottlenecks */}
-          <div>
-            <label className="block text-xs font-bold text-[#0c3e35] mb-1.5 flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-              المعوقات أو التحديات التي واجهت عمل المديرية اليوم (إن وجدت):
-            </label>
-            <textarea
-              rows={2}
-              placeholder="مثال: عطل كهربائي في إحدى الرافعات، أو نقص في نماذج المعاملات..."
-              value={challenges}
-              onChange={(e) => setChallenges(e.target.value)}
-              className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
-            />
-          </div>
+          {/* Submit Action */}
+          <div className="flex items-center justify-between pt-4 border-t border-[#d2d1c9] flex-wrap gap-3">
+            <span className="text-xs text-[#5e736e]">
+              {hasSummary && !isSummaryModified
+                ? 'تم تسليم تقرير نهاية الدوام للمدير العام بنجاح.'
+                : 'سيتم إرسال تقرير إنجاز متكامل مباشرة إلى لوحة متابعة المدير العام.'}
+            </span>
 
-          {/* Urgent Flag & Requests for General Director */}
-          <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={urgentFlag}
-                  onChange={(e) => setUrgentFlag(e.target.checked)}
-                  className="w-4 h-4 accent-red-600 rounded cursor-pointer"
-                />
-                <span className="text-xs font-bold text-red-800">
-                  تحديد كتنبيه عاجل يتطلب تدخل وتوجيه المدير العام
+            {hasSummary && !isSummaryModified ? (
+              <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>تم إرسال الملخص (لا توجد تعديلات)</span>
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer border border-[#d4af37]"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
+                ) : (
+                  <Send className="w-4 h-4 text-[#d4af37]" />
+                )}
+                <span>
+                  {saving
+                    ? 'جاري الحفظ والإرسال...'
+                    : hasSummary
+                    ? 'حفظ وتحديث ملخص نهاية الدوام'
+                    : 'اعتماد وإرسال ملخص نهاية الدوام للمدير العام'}
                 </span>
-              </label>
-            </div>
-
-            <div>
-              <input
-                type="text"
-                placeholder="ملاحظات أو احتياجات عاجلة تتطلب قرار المدير العام مباشرة..."
-                value={directorNotes}
-                onChange={(e) => setDirectorNotes(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-white border border-red-200 text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-red-400 font-medium"
-              />
-            </div>
-          </div>
-
-          {/* Tomorrow's Plan Preview */}
-          <div>
-            <label className="block text-xs font-bold text-[#0c3e35] mb-1.5">
-              نظرة أولية لأبرز مهام الغد:
-            </label>
-            <input
-              type="text"
-              placeholder="مثال: الانتقال للمعاينة الميدانية في حوض طرطوس واستكمال التقرير..."
-              value={tomorrowPlanPreview}
-              onChange={(e) => setTomorrowPlanPreview(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] font-medium"
-            />
-          </div>
-
-          <div className="flex items-center justify-end pt-4 border-t border-[#d2d1c9]">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-              <span>{saving ? 'جاري الإرسال...' : 'إرسال ملخص الإنجاز المسائي للمدير العام'}</span>
-            </button>
+              </button>
+            )}
           </div>
         </form>
       )}
@@ -930,5 +1216,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       />
 
     </div>
+    </>
   );
 };

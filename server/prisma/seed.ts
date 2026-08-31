@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Priority, TaskStatus, PlanStatus, SummaryStatus } from '@prisma/client';
+import { PrismaClient, Role, Priority, PlanStatus, TaskStatus, SummaryStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -6,12 +6,12 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Seeding General Directorate of Ports data...');
 
-  // Clear existing
-  await prisma.announcement.deleteMany();
+  // Clean existing data in reverse dependency order
   await prisma.executiveFeedback.deleteMany();
   await prisma.dailySummary.deleteMany();
   await prisma.planTask.deleteMany();
   await prisma.dailyPlan.deleteMany();
+  await prisma.announcement.deleteMany();
   await prisma.user.deleteMany();
   await prisma.directorate.deleteMany();
 
@@ -19,20 +19,21 @@ async function main() {
   const adminHashedPassword = await bcrypt.hash('admin123', 10);
 
   // 1. Seed Directorates
-  const directoratesData = [
+  const directoratesConfig = [
+    // Top-Level / Executive
     {
       code: 'DG_OFFICE',
       name: 'مكتب المدير العام',
-      category: 'EXECUTIVE_OFFICE',
-      description: 'متابعة الديوان والسكرتاريا وتنسيق المعاملات اليومية للإدارة العليا',
+      category: 'EXECUTIVE',
+      description: 'المتابعة المباشرة لقرارات وتوجيهات المدير العام والتنسيق مع كافة الجهات الرسمية والوزارية.',
       icon: 'Briefcase',
       displayOrder: 1,
     },
     {
       code: 'IMSAS',
       name: 'مكتب التدقيق الإلزامي للدول الأعضاء في المنظمة البحرية الدولية (IMSAS)',
-      category: 'EXECUTIVE_OFFICE',
-      description: 'متابعة الاتفاقيات الدولية والعلاقات والتمثيل الدولي البحري',
+      category: 'EXECUTIVE',
+      description: 'متابعة الامتثال للاتفاقيات الدولية والمعايير الصادرة عن المنظمة البحرية الدولية IMO.',
       icon: 'Globe',
       displayOrder: 2,
     },
@@ -40,71 +41,71 @@ async function main() {
       code: 'PSC',
       name: 'مديرية رقابة دولة الميناء Port State Control',
       category: 'OPERATIONAL',
-      description: 'التنفيذ الفني والرقابة القانونية والتنسيق الدولي وقواعد البيانات',
-      icon: 'ShieldCheck',
+      description: 'التفتيش على السفن الأجنبية التي تؤم الموانئ السورية والتحقق من التزامها بمعايير السلامة الدولية.',
+      icon: 'ShieldAlert',
       displayOrder: 3,
     },
     {
       code: 'PLANNING',
       name: 'مديرية التخطيط والإحصاء',
-      category: 'ADMINISTRATIVE',
-      description: 'إعداد الخطط الاستراتيجية والإحصاءات والدراسات التنموية للموانئ',
-      icon: 'BarChart3',
+      category: 'MANAGEMENT',
+      description: 'إعداد الخطط الاستراتيجية وجمع وتحليل المؤشرات الإحصائية المرفئية والبحرية.',
+      icon: 'LineChart',
       displayOrder: 4,
     },
     {
       code: 'PR',
       name: 'مديرية العلاقات العامة',
-      category: 'ADMINISTRATIVE',
-      description: 'التواصل المؤسسي والإعلامي والفعاليات والبروتوكول',
-      icon: 'Megaphone',
+      category: 'MANAGEMENT',
+      description: 'تنظيم الفعاليات والتواصل الإعلامي والتنسيق مع الوفود والمنظمات البحرية.',
+      icon: 'Users',
       displayOrder: 5,
     },
     {
       code: 'TARTOUS_BRANCH',
-      name: 'فرع المديرية العامة للموانئ في طرطوس',
+      name: 'فرع المديرية العامة للموانئ بطرطوس',
       category: 'OPERATIONAL',
-      description: 'الإشراف على العمليات والخدمات البحرية في محافظة طرطوس',
+      description: 'الإشراف على العمليات المرفئية والموانئ والمخافر البحرية في قطاع محافظة طرطوس.',
       icon: 'Building2',
       displayOrder: 6,
     },
     {
       code: 'INTERNAL_AUDIT',
       name: 'مديرية الرقابة الداخلية',
-      category: 'AUDIT_LEGAL',
-      description: 'التدقيق المالي والإداري وضمان الامتثال للأنظمة والقوانين',
-      icon: 'CheckSquare',
+      category: 'MANAGEMENT',
+      description: 'التدقيق الإداري والمالي وضمان النزاهة وحسن تطبيق القوانين والأنظمة.',
+      icon: 'ShieldCheck',
       displayOrder: 7,
     },
     {
       code: 'SUPPLY',
-      name: 'مديرية الدعم والتوريد',
-      category: 'LOGISTICS',
-      description: 'إدارة المشتريات والمستودعات وتأمين اللوازم الفنية والتشغيلية',
-      icon: 'Truck',
+      name: 'مديرية الدعم والتوريد والمستودعات',
+      category: 'SUPPORT',
+      description: 'إدارة المستودعات المركزية وتأمين المشتريات والتجهيزات البحرية والفنية.',
+      icon: 'Boxes',
       displayOrder: 8,
     },
     {
       code: 'MORAL_GUIDANCE',
       name: 'مكتب التوجيه المعنوي',
-      category: 'ADMINISTRATIVE',
-      description: 'الأنشطة المعنوية والتوعوية ومتابعة شؤون الكادر البشري',
+      category: 'EXECUTIVE',
+      description: 'تعزيز الانضباط ورفع الروح المعنوية للكوادر البحرية والتنظيم الداخلي.',
       icon: 'HeartHandshake',
       displayOrder: 9,
     },
     {
       code: 'MARITIME_EDU',
-      name: 'مديرية التعليم والتأهيل البحري',
-      category: 'OPERATIONAL',
-      description: 'المؤسسات والمناهج والامتحانات وإصدار الشهادات والأهلية البحرية',
+      name: 'مديرية التعليم والتأهيل والتدريب البحري',
+      category: 'TECHNICAL',
+      description: 'إدارة المؤسسات التعليمية البحرية وتطبيق معايير STCW وتأهيل البحارة.',
       icon: 'GraduationCap',
       displayOrder: 10,
     },
     {
       code: 'FINANCE',
-      name: 'مديرية المالية',
-      category: 'AUDIT_LEGAL',
-      description: 'إدارة الموازنة والحسابات والإيرادات والمصروفات المالية',
+      name: 'مديرية الشؤون المالية',
+      category: 'MANAGEMENT',
+      description: 'إعداد الموازنة وتحصيل الرسوم المرفئية والرواتب والصرف المالي.',
       icon: 'Coins',
       displayOrder: 11,
     },
@@ -112,23 +113,23 @@ async function main() {
       code: 'INSPECTION',
       name: 'مديرية التفتيش البحري',
       category: 'OPERATIONAL',
-      description: 'معاينة السفن الوطنية وتسجيلها ومتابعة العمل والمهن البحرية',
-      icon: 'Search',
+      description: 'معاينة السفن الوطنية وإصدار شهادات الصلاحية والسلامة ودفاتر البحارة.',
+      icon: 'FileCheck',
       displayOrder: 12,
     },
     {
       code: 'MAINTENANCE',
-      name: 'مديرية المنشآت والصيانة',
+      name: 'مديرية المنشآت والصيانة الفنية',
       category: 'TECHNICAL',
-      description: 'صيانة الأرصفة والمنشآت المرفئية والمعدات والشبكات التحتية',
+      description: 'صيانة الأرصفة والمباني والفنارات والعوامات والمنشآت المرفئية والآليات الثقيلة.',
       icon: 'Wrench',
       displayOrder: 13,
     },
     {
       code: 'FISHERIES_LICENSES',
-      name: 'مديرية المصائد والرخص (الصيد والأملاك البحرية)',
+      name: 'مديرية المصائد والرخص',
       category: 'OPERATIONAL',
-      description: 'تنظيم قوارب الصيد ورخص الصيد وإشغالات الأملاك العامة البحرية',
+      description: 'تنظيم شؤون الصيد البحري وإصدار رخص المراكب والصيادين وحماية البيئة البحرية.',
       icon: 'Fish',
       displayOrder: 14,
     },
@@ -136,56 +137,65 @@ async function main() {
       code: 'INFORMATICS',
       name: 'مديرية المعلوماتية',
       category: 'TECHNICAL',
-      description: 'إدارة الأنظمة والبرمجيات وقواعد البيانات والتحول الرقمي',
-      icon: 'Binary',
+      description: 'تطوير البرمجيات وإدارة قواعد البيانات والتحول الرقمي للأنظمة البحرية.',
+      icon: 'Cpu',
       displayOrder: 15,
     },
     {
       code: 'IT_INFRA',
-      name: 'مديرية تقانة المعلومات',
+      name: 'مديرية تقانة المعلومات والبنية التحتية',
       category: 'TECHNICAL',
-      description: 'البنية التحتية للشبكات والخوادم والاتصالات وأمن المعلومات',
-      icon: 'Server',
+      description: 'إدارة الشبكات والسيرفرات والاتصالات البحرية والأمن السيبراني.',
+      icon: 'Network',
       displayOrder: 16,
     },
     {
       code: 'VEHICLES',
-      name: 'مديرية الآليات',
-      category: 'LOGISTICS',
-      description: 'إدارة أسطول الآليات والسيارات والرافعات وصيانتها وجاهزيتها',
-      icon: 'Car',
+      name: 'مديرية الآليات والمركبات',
+      category: 'SUPPORT',
+      description: 'إدارة أسطول الآليات والسيارات الحقلية وصيانتها وتوزيع المهام اللوجستية.',
+      icon: 'Truck',
       displayOrder: 17,
     },
     {
       code: 'ADMIN_DEV',
       name: 'مديرية التنمية الإدارية',
-      category: 'ADMINISTRATIVE',
-      description: 'تطوير الهياكل التنظيمية والتوصيف الوظيفي وتدريب الكوادر',
+      category: 'MANAGEMENT',
+      description: 'هيكلة الوظائف والتدريب والتوصيف الإداري ومتابعة الأداء المؤسسي.',
       icon: 'TrendingUp',
       displayOrder: 18,
     },
     {
       code: 'LEGAL',
       name: 'مديرية الشؤون القانونية',
-      category: 'AUDIT_LEGAL',
-      description: 'الدراسات والاستشارات القانونية والعقود ومتابعة القضايا',
+      category: 'MANAGEMENT',
+      description: 'صياغة العقود والاتفاقيات البحرية ومتابعة القضايا والتحقيقات في الحوادث البحرية.',
       icon: 'Scale',
       displayOrder: 19,
     },
     {
       code: 'PORT_AFFAIRS',
-      name: 'مديرية شؤون الموانئ',
+      name: 'مديرية شؤون الموانئ والمراسي',
       category: 'OPERATIONAL',
-      description: 'غرفة العمليات والمساحة البحرية ومكافحة التلوث ودوائر الموانئ',
+      description: 'الإشراف على حركة الموانئ التجارية وموانئ الصيد والنزهة وإدارة المراسي والمخافر.',
       icon: 'Anchor',
       displayOrder: 20,
     },
   ];
 
   const createdDirectorates: Record<string, any> = {};
-  for (const d of directoratesData) {
-    const dir = await prisma.directorate.create({ data: d });
-    createdDirectorates[d.code] = dir;
+  for (const cfg of directoratesConfig) {
+    const d = await prisma.directorate.create({
+      data: {
+        code: cfg.code,
+        name: cfg.name,
+        category: cfg.category,
+        description: cfg.description,
+        icon: cfg.icon,
+        displayOrder: cfg.displayOrder,
+      },
+    });
+    createdDirectorates[cfg.code] = d;
   }
 
   // 2. Seed Users
@@ -254,285 +264,6 @@ async function main() {
     });
     createdUsers[cfg.code] = user;
   }
-
-  // 3. Create Daily Plans & Summaries for Today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Sample data: Inspection Directorate (Completed daily workflow)
-  const planInspection = await prisma.dailyPlan.create({
-    data: {
-      directorateId: createdDirectorates['INSPECTION'].id,
-      userId: createdUsers['INSPECTION'].id,
-      planDate: today,
-      status: PlanStatus.REVIEWED,
-      generalFocus: 'معاينة السفن التجارية في الرصيف 4 ومطابقة معايير السلامة البحرية',
-      tasks: {
-        create: [
-          {
-            title: 'معاينة السفينة الوطنية (أوغاريت 2) وتدقيق شهادات السلامة',
-            description: 'فحص معدات النجاة وأجهزة اللاسلكي وتمديد صلاحية شهادة المعاينة السنوية',
-            priority: Priority.URGENT,
-            estimatedHours: 3.5,
-            status: TaskStatus.COMPLETED,
-            completionPercentage: 100,
-            completionNote: 'تمت المعاينة بنجاح وإصدار المحضر الفني دون ملاحظات حرجة',
-            displayOrder: 1,
-          },
-          {
-            title: 'إصدار وتجديد 8 دفاتر بحارة وشهادات أهلية للضباط',
-            description: 'تدقيق المستندات الجنائية والطبية وإصدار الوثائق الرسمية',
-            priority: Priority.HIGH,
-            estimatedHours: 2.0,
-            status: TaskStatus.COMPLETED,
-            completionPercentage: 100,
-            completionNote: 'تم تسليم كافة الدفاتر لأصحاب العلاقة بعد التدقيق',
-            displayOrder: 2,
-          },
-          {
-            title: 'إعداد التقرير الشهري لمخالفات سفن الصيد المسجلة',
-            description: 'حصر الإنذارات الموجهة خلال الشهر ومطابقتها مع غرفة العمليات',
-            priority: Priority.NORMAL,
-            estimatedHours: 1.5,
-            status: TaskStatus.IN_PROGRESS,
-            completionPercentage: 75,
-            completionNote: 'تم إنجاز 75% وسيتم إنهاؤه صباح الغد بالتنسيق مع الشؤون القانونية',
-            displayOrder: 3,
-          },
-        ],
-      },
-    },
-  });
-
-  const summaryInspection = await prisma.dailySummary.create({
-    data: {
-      dailyPlanId: planInspection.id,
-      directorateId: createdDirectorates['INSPECTION'].id,
-      userId: createdUsers['INSPECTION'].id,
-      summaryDate: today,
-      summaryText: 'تم إنجاز غالبية خطة اليوم بنجاح ممتاز، حيث أنهينا معاينة السفينة أوغاريت 2 وتجديد كافة دفاتر البحارة المطلوبة.',
-      achievements: [
-        'معاينة كاملة للسفينة الوطنية وتمديد شهادتها',
-        'إصدار 8 دفاتر بحارة جديدة وتدقيق بياناتهم',
-        'تدقيق سجلات السلامة لـ 4 زوارق خدمة',
-      ],
-      challenges: 'نقص في بعض نماذج الكروت الأمنية الخاصة بالدفاتر البحرية ونحتاج تزويدنا بها من المستودع.',
-      directorNotes: 'نرجو التوجيه للمستودعات بتسريع تسليم النماذج لتجنب تأخير معاملات البحارة.',
-      urgentFlag: false,
-      tomorrowPlanPreview: 'استكمال التقرير الشهري والانتقال لمعاينة قاطرتين تابعتين لفرع طرطوس.',
-      overallCompletionRate: 92.0,
-      status: SummaryStatus.FEEDBACK_GIVEN,
-    },
-  });
-
-  // General Director Feedback on Inspection
-  await prisma.executiveFeedback.create({
-    data: {
-      dailyPlanId: planInspection.id,
-      dailySummaryId: summaryInspection.id,
-      directorateId: createdDirectorates['INSPECTION'].id,
-      fromUserId: generalDirector.id,
-      feedbackText: 'جهد متميز ومتابعة دقيقة لسلامة السفن. تم الإيعاز لمديرية التوريد لتأمين النماذج فوراً.',
-      rating: 5,
-    },
-  });
-
-  // Sample data: Port Affairs (Has an urgent challenge / request)
-  const planPorts = await prisma.dailyPlan.create({
-    data: {
-      directorateId: createdDirectorates['PORT_AFFAIRS'].id,
-      userId: createdUsers['PORT_AFFAIRS'].id,
-      planDate: today,
-      status: PlanStatus.SUBMITTED,
-      generalFocus: 'جاهزية غرفة العمليات ومتابعة حركات الدخول والمغادرة في الموانئ الرئيسية ومكافحة التلوث',
-      tasks: {
-        create: [
-          {
-            title: 'مناوبة غرفة العمليات وتنسيق دخول 6 بواخر تجارية',
-            description: 'التنسيق مع برج المراقبة والإرشاد والقطر',
-            priority: Priority.URGENT,
-            estimatedHours: 4.0,
-            status: TaskStatus.COMPLETED,
-            completionPercentage: 100,
-            completionNote: 'تم دخول 6 بواخر ورسوها بسلام دون أي تأخير',
-            displayOrder: 1,
-          },
-          {
-            title: 'جولة تفتيشية بيئية في حوض الميناء القديم ومكافحة تسرب زيوت محدود',
-            description: 'استخدام الحواجز العائمة والمواد الماصة لمعالجة بقعة زيتية صغيرة',
-            priority: Priority.URGENT,
-            estimatedHours: 3.0,
-            status: TaskStatus.COMPLETED,
-            completionPercentage: 100,
-            completionNote: 'تمت السيطرة الكاملة على التسرب وتطويقه بنجاح',
-            displayOrder: 2,
-          },
-          {
-            title: 'فحص رادار المراقبة الساحلية في محطة الرأس',
-            description: 'معالجة بطء استجابة إشارة التتبع وتحديث البرمجية',
-            priority: Priority.HIGH,
-            estimatedHours: 2.0,
-            status: TaskStatus.DELAYED,
-            completionPercentage: 30,
-            completionNote: 'توقف العمل بسبب عطل كهربائي مفاجئ في المولد الاحتياطي',
-            displayOrder: 3,
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.dailySummary.create({
-    data: {
-      dailyPlanId: planPorts.id,
-      directorateId: createdDirectorates['PORT_AFFAIRS'].id,
-      userId: createdUsers['PORT_AFFAIRS'].id,
-      summaryDate: today,
-      summaryText: 'تمت إدارة دخول السفن بكفاءة عالية واحتواء حادثة التسرب النفطي البسيطة بالكامل. نواجه عطلاً في مولد محطة الرادار.',
-      achievements: [
-        'دخول ومغادرة 6 سفن تجارية وتفريغ الحمولات بانتظام',
-        'احتواء بقعة زيتية بحرية وتنظيف الحوض',
-      ],
-      challenges: 'عطل مفاجئ في المولد الكهربائي الاحتياطي لمحطة رادار الرأس، مما يعيق صيانة جهاز التتبع.',
-      directorNotes: 'نرجو توجيه مديرية الصيانة بإرسال فريق طوارئ كهربائي لمعالجة المولد في محطة الرأس.',
-      urgentFlag: true, // Urgent flag for General Director!
-      tomorrowPlanPreview: 'متابعة إصلاح رادار الرأس واستكمال مسح الأعماق للممر الملاحي رقم 2.',
-      overallCompletionRate: 78.0,
-      status: SummaryStatus.SUBMITTED,
-    },
-  });
-
-  // Sample data: IT Directorate (In Progress)
-  const planIT = await prisma.dailyPlan.create({
-    data: {
-      directorateId: createdDirectorates['IT_INFRA'].id,
-      userId: createdUsers['IT_INFRA'].id,
-      planDate: today,
-      status: PlanStatus.SUBMITTED,
-      generalFocus: 'تطوير البنية التحتية للشبكات والربط الضوئي بين المكاتب وتأمين السيرفرات',
-      tasks: {
-        create: [
-          {
-            title: 'ترقية نظام النسخ الاحتياطي التلقائي لخوادم قاعدة بيانات الموانئ',
-            description: 'تنصيب التحديثات وجدولة النسخ كل 6 ساعات',
-            priority: Priority.HIGH,
-            estimatedHours: 3.0,
-            status: TaskStatus.COMPLETED,
-            completionPercentage: 100,
-            completionNote: 'تمت الترقية بنجاح واختبار استعادة نسخة تجريبية',
-            displayOrder: 1,
-          },
-          {
-            title: 'تمديد كابلات الألياف الضوئية لمبنى مديرية التفتيش',
-            description: 'ربط 12 نقطة شبكية جديدة وتركيب محولات السرعة العالية',
-            priority: Priority.NORMAL,
-            estimatedHours: 4.0,
-            status: TaskStatus.IN_PROGRESS,
-            completionPercentage: 60,
-            completionNote: 'تم سحب الكابلات وجاري اللحام الضوئي والتركيب',
-            displayOrder: 2,
-          },
-        ],
-      },
-    },
-  });
-
-  await prisma.dailySummary.create({
-    data: {
-      dailyPlanId: planIT.id,
-      directorateId: createdDirectorates['IT_INFRA'].id,
-      userId: createdUsers['IT_INFRA'].id,
-      summaryDate: today,
-      summaryText: 'تم إنجاز خطة السيرفرات بنجاح، ومتابعة مد شبكة الألياف تسير وفق المخطط الزمني.',
-      achievements: [
-        'اكتمال نظام النسخ الاحتياطي السحابي والمحلي',
-        'تجهيز 60% من شبكة الألياف لمبنى التفتيش',
-      ],
-      challenges: 'لا توجد معوقات، المواد متوفرة وفريق العمل ملتزم.',
-      directorNotes: 'النظام جاهز لاستقبال المنظومة البرمجية الجديدة للمديرية العامة.',
-      urgentFlag: false,
-      tomorrowPlanPreview: 'إنهاء اللحام الضوئي وتفعيل نقاط الإنترنت لمديرية التفتيش.',
-      overallCompletionRate: 85.0,
-      status: SummaryStatus.SUBMITTED,
-    },
-  });
-
-  // Sample data: Legal Affairs (Plan Submitted, working on tasks)
-  await prisma.dailyPlan.create({
-    data: {
-      directorateId: createdDirectorates['LEGAL'].id,
-      userId: createdUsers['LEGAL'].id,
-      planDate: today,
-      status: PlanStatus.SUBMITTED,
-      generalFocus: 'دراسة عقود التوريدات وصياغة مذكرات الدعاوى القضائية المتعلقة بحوادث الاصطدام البحري',
-      tasks: {
-        create: [
-          {
-            title: 'إعداد المذكرة القانونية في دعوى تعويض التلوث ضد الناقلة (مارين ستار)',
-            description: 'حصر الأضرار البيئية والرجوع لقانون حماية البيئة البحرية',
-            priority: Priority.URGENT,
-            estimatedHours: 3.5,
-            status: TaskStatus.IN_PROGRESS,
-            completionPercentage: 80,
-            displayOrder: 1,
-          },
-          {
-            title: 'تدقيق بنود عقد صيانة الرافعة المرفئية رقم 3 المحال من مديرية الصيانة',
-            description: 'مطابقة شروط الضمان الجزائي وفترات التوريد',
-            priority: Priority.HIGH,
-            estimatedHours: 2.0,
-            status: TaskStatus.COMPLETED,
-            completionPercentage: 100,
-            completionNote: 'تم تدقيق العقد وإعادته لمديرية الصيانة مع التعديلات القانونية اللازمة',
-            displayOrder: 2,
-          },
-        ],
-      },
-    },
-  });
-
-  // Sample data: Planning & Statistics (Plan Submitted)
-  await prisma.dailyPlan.create({
-    data: {
-      directorateId: createdDirectorates['PLANNING'].id,
-      userId: createdUsers['PLANNING'].id,
-      planDate: today,
-      status: PlanStatus.SUBMITTED,
-      generalFocus: 'تجميع إحصائيات حركة الموانئ والبضائع لشهر آب وإعداد مؤشرات الأداء السنوية',
-      tasks: {
-        create: [
-          {
-            title: 'تدقيق جداول الحمولات الواردة والصادرة عبر الموانئ السورية لشهر آب',
-            description: 'مطابقة الأرقام مع فروع الموانئ والمصالح الجمركية',
-            priority: Priority.HIGH,
-            estimatedHours: 4.0,
-            status: TaskStatus.IN_PROGRESS,
-            completionPercentage: 50,
-            displayOrder: 1,
-          },
-        ],
-      },
-    },
-  });
-
-  // Sample announcements from General Director
-  await prisma.announcement.create({
-    data: {
-      title: 'تعميم إداري: الالتزام الصارم برفع الخطط الصباحية قبل الساعة 9:00 صباحاً',
-      content: 'السادة مدراء المديريات والمكاتب والفروع، يرجى الالتزام اليومي بتسجيل خطة العمل الصباحية قبل التاسعة صباحاً وتحديث ملخص الإنجاز اليومي قبل نهاية الدوام، لضمان تقييم الأداء المرفئي بدقة.',
-      priority: Priority.URGENT,
-      authorId: generalDirector.id,
-    },
-  });
-
-  await prisma.announcement.create({
-    data: {
-      title: 'جاهزية موسم الأمطار والتدقيق على منشآت ومصارف الموانئ',
-      content: 'يطلب من مديرية المنشآت والصيانة ومديرية شؤون الموانئ تكثيف الجولات التفقدية للتأكد من جاهزية كواسر الأمواج ومصارف المياه والمولدات الاحتياطية.',
-      priority: Priority.HIGH,
-      authorId: generalDirector.id,
-    },
-  });
 
   console.log('Seeding completed successfully!');
   console.log('Directorates seeded: 20');

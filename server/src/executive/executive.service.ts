@@ -279,10 +279,13 @@ export class ExecutiveService {
     });
 
     this.eventsGateway.emitAnnouncementCreated({
+      id: ann.id,
       title: ann.title,
       content: ann.content,
       priority: ann.priority,
+      authorId: user.id,
       authorName: user.fullName,
+      createdAt: ann.createdAt.toISOString(),
     });
 
     return ann;

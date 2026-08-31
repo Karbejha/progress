@@ -110,7 +110,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#031814]/60 backdrop-blur-xs animate-fadeIn font-sans"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
       onClick={onClose}
     >
       <div
@@ -270,20 +270,20 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                   </div>
                 )}
 
-                {item.challenges && (
-                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900">
-                    <strong className="text-amber-800 block mb-1 font-bold flex items-center gap-1">
+                {(item.challenges || item.directorNotes) && (
+                  <div className={`p-4 rounded-2xl border text-xs leading-relaxed ${item.urgentFlag ? 'bg-red-50/80 border-red-200 text-red-950' : 'bg-amber-50/80 border-amber-200 text-amber-900'}`}>
+                    <strong className={`block mb-1 font-bold flex items-center gap-1.5 ${item.urgentFlag ? 'text-red-800' : 'text-amber-800'}`}>
                       <AlertTriangle className="w-3.5 h-3.5" />
-                      المعوقات والتحديات التي واجهت المديرية:
+                      {item.urgentFlag ? 'المعوقات والاحتياجات العاجلة الموجهة للمدير العام:' : 'المعوقات والتحديات التي واجهت المديرية:'}
                     </strong>
-                    {item.challenges}
-                  </div>
-                )}
-
-                {item.directorNotes && (
-                  <div className="p-4 rounded-2xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35]">
-                    <strong className="text-[#0c3e35] block mb-1 font-bold">ملاحظات واحتياجات موجهة للمدير العام:</strong>
-                    {item.directorNotes}
+                    <p className="font-medium whitespace-pre-wrap">
+                      {item.challenges || item.directorNotes}
+                    </p>
+                    {item.challenges && item.directorNotes && item.challenges.trim() !== item.directorNotes.trim() && (
+                      <p className="mt-2 pt-2 border-t border-amber-200/60 font-medium whitespace-pre-wrap">
+                        {item.directorNotes}
+                      </p>
+                    )}
                   </div>
                 )}
 

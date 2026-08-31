@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { api } from '../services/api';
 import { User } from '../types';
-import { Lock, User as UserIcon, Eye, EyeOff, LogIn, AlertCircle, Sparkles, Shield, ChevronDown, ChevronUp } from 'lucide-react';
+import { Lock, User as UserIcon, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 
 interface LoginFormProps {
   onLoginSuccess: (user: User) => void;
@@ -16,7 +16,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showDemoDrawer, setShowDemoDrawer] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,12 +37,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickFill = (user: string, pass: string) => {
-    setUsernameOrEmail(user);
-    setPassword(pass);
-    setError(null);
   };
 
   return (
@@ -94,7 +87,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                 <input
                   type="text"
                   required
-                  placeholder="مثال: director_general أو inspection"
+                  placeholder="أدخل اسم المستخدم أو البريد الإلكتروني"
                   value={usernameOrEmail}
                   onChange={(e) => setUsernameOrEmail(e.target.value)}
                   className="w-full pl-4 pr-11 py-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] transition font-medium"
@@ -140,64 +133,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
             </button>
 
           </form>
-
-          {/* Quick Demo Helper Drawer */}
-          <div className="border-t border-[#d2d1c9] bg-white p-4">
-            <button
-              type="button"
-              onClick={() => setShowDemoDrawer(!showDemoDrawer)}
-              className="w-full flex items-center justify-between text-xs font-bold text-[#5e736e] hover:text-[#0c3e35] transition cursor-pointer"
-            >
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
-                بيانات الحسابات التجريبية السريعة
-              </span>
-              {showDemoDrawer ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-
-            {showDemoDrawer && (
-              <div className="mt-3 pt-3 border-t border-[#e5e4dc] space-y-2 text-xs animate-fadeIn">
-                <div
-                  onClick={() => handleQuickFill('director_general', 'admin123')}
-                  className="p-2.5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] border border-[#d2d1c9] cursor-pointer flex items-center justify-between transition"
-                >
-                  <div>
-                    <span className="font-bold text-[#0c3e35] block">المدير العام للموانئ</span>
-                    <span className="text-[11px] text-[#5e736e]">اسم المستخدم: <code>director_general</code></span>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#d4af37] bg-[#05261e] px-2.5 py-1 rounded-lg">
-                    تعبئة
-                  </span>
-                </div>
-
-                <div
-                  onClick={() => handleQuickFill('dir_inspection', 'password123')}
-                  className="p-2.5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] border border-[#d2d1c9] cursor-pointer flex items-center justify-between transition"
-                >
-                  <div>
-                    <span className="font-bold text-[#0c3e35] block">مديرية التفتيش البحري</span>
-                    <span className="text-[11px] text-[#5e736e]">اسم المستخدم: <code>dir_inspection</code></span>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#0c3e35] bg-[#edece4] border border-[#d2d1c9] px-2.5 py-1 rounded-lg">
-                    تعبئة
-                  </span>
-                </div>
-
-                <div
-                  onClick={() => handleQuickFill('dir_ports', 'password123')}
-                  className="p-2.5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] border border-[#d2d1c9] cursor-pointer flex items-center justify-between transition"
-                >
-                  <div>
-                    <span className="font-bold text-[#0c3e35] block">مديرية شؤون الموانئ</span>
-                    <span className="text-[11px] text-[#5e736e]">اسم المستخدم: <code>dir_ports</code></span>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#0c3e35] bg-[#edece4] border border-[#d2d1c9] px-2.5 py-1 rounded-lg">
-                    تعبئة
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
 
         </div>
 
