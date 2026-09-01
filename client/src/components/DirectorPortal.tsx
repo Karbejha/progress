@@ -479,8 +479,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 • {todayFormatted}
               </span>
             </div>
-            <h2 className="text-2xl font-extrabold text-white mt-1">
-              بوابة إعداد الخطة وتوثيق الإنجاز اليومي
+            <h2 className="text-xl sm:text-2xl font-extrabold text-white mt-1">
+              إعداد الخطة وتوثيق الإنجاز
             </h2>
             <p className="text-xs text-[#8daaa2] mt-0.5">
               المدير المسؤول: <strong className="text-white">{currentUser.fullName}</strong> ({currentUser.title})

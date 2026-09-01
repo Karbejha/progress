@@ -365,12 +365,12 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   <div ref={notifRef} className="relative">
                     <button
                       onClick={handleOpenNotifications}
-                      className="relative p-2.5 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] transition cursor-pointer"
+                      className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] hover:border-[#d4af37]/40 transition cursor-pointer shadow-sm"
                       title="التنبيهات اللحظية"
                     >
                       <Bell className="w-4 h-4" />
                       {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 text-white font-extrabold text-[10px] flex items-center justify-center animate-bounce shadow-md">
+                        <span className="absolute -top-1 -right-1 w-4.5 h-4.5 rounded-full bg-red-600 text-white font-extrabold text-[9px] flex items-center justify-center animate-bounce shadow-md">
                           {unreadCount}
                         </span>
                       )}
@@ -487,20 +487,20 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                         setShowUserMenu(!showUserMenu);
                         setShowNotifications(false);
                       }}
-                      className="flex items-center gap-3 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 rounded-2xl px-3.5 py-2 transition cursor-pointer"
+                      className="flex items-center gap-2.5 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 hover:border-[#d4af37]/40 rounded-xl px-2.5 h-10 transition cursor-pointer shadow-sm"
                     >
-                      <div className="w-9 h-9 rounded-xl bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold">
-                        {isGeneralDirector ? <Shield className="w-5 h-5 text-[#d4af37]" /> : <Ship className="w-5 h-5 text-[#8daaa2]" />}
+                      <div className="w-7 h-7 rounded-lg bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold shrink-0">
+                        {isGeneralDirector ? <Shield className="w-3.5 h-3.5 text-[#d4af37]" /> : <Ship className="w-3.5 h-3.5 text-[#8daaa2]" />}
                       </div>
                       <div className="hidden sm:block text-right">
                         <p className="text-xs font-bold text-white leading-tight">
                           {currentUser.fullName}
                         </p>
-                        <p className="text-[11px] text-[#d4af37] font-medium mt-0.5">
+                        <p className="text-[10px] text-[#d4af37] font-medium leading-tight">
                           {currentUser.title}
                         </p>
                       </div>
-                      <ChevronDown className="w-4 h-4 text-[#8daaa2]" />
+                      <ChevronDown className="w-3.5 h-3.5 text-[#8daaa2] shrink-0" />
                     </button>
 
                     {/* User Dropdown */}

@@ -171,9 +171,18 @@ body {
 
 /* Print specific styles */
 @media print {
-  body {
+  @page {
+    size: A4 portrait;
+    margin: 6mm 8mm 6mm 8mm;
+  }
+  
+  html, body {
     background-color: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   
   .no-print {
@@ -184,6 +193,15 @@ body {
     display: block !important;
   }
 
+  tr, .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
   .brand-card {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
@@ -191,3 +209,4 @@ body {
     color: #000000 !important;
   }
 }
+

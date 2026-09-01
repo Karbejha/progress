@@ -27,6 +27,7 @@ import {
 
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
+import { CustomDatePicker } from './CustomDatePicker';
 import { getSocket } from '../lib/socket';
 import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
 
@@ -40,17 +41,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
-  const dateInputRef = useRef<HTMLInputElement>(null);
-
-  const handleOpenDatePicker = () => {
-    if (dateInputRef.current) {
-      try {
-        dateInputRef.current.showPicker();
-      } catch {
-        dateInputRef.current.focus();
-      }
-    }
-  };
   const [viewMode, setViewMode] = useState<'GRID' | 'CHART' | 'URGENT'>('GRID');
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -219,47 +209,27 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       <div className="space-y-7 animate-fadeIn pb-16 relative">
         {/* Top Banner / Welcome & Actions */}
       <div className="p-7 rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-white">
-        <div className="relative z-10 space-y-1.5">
+        <div className="relative z-10 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5">
               <Shield className="w-3.5 h-3.5" />
-              لوحة الإشراف والمتابعة المركزية للمدير العام
-            </span>
-            <span className="text-xs text-[#8daaa2]">
-              • المديرية العامة للموانئ
+              لوحة الإشراف المركزي
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            متابعة الخطط اليومية وإنجازات المديريات
+          <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            متابعة إنجاز المديريات
           </h2>
-          <p className="text-xs sm:text-sm text-[#8daaa2] max-w-2xl font-medium">
-            متابعة لحظية ومباشرة لخطط العمل الصباحية، نسب الإنجاز المسائية، المعوقات الميدانية، وتوجيهات الإدارة العليا.
+          <p className="text-xs sm:text-sm text-[#8daaa2] font-medium">
+            متابعة لحظية ومباشرة للخطط اليومية ونسب التنفيذ
           </p>
         </div>
 
         {/* Date Selector & Print Report Button */}
         <div className="relative z-10 flex items-center gap-3 flex-wrap">
-          <div
-            onClick={handleOpenDatePicker}
-            className="flex items-center gap-2 bg-[#0c3e35] hover:bg-[#0e483e] border border-[#d4af37]/30 hover:border-[#d4af37]/60 px-3.5 py-2 rounded-xl text-xs text-white cursor-pointer select-none transition-all shadow-xs group active:scale-[0.98]"
-            title="انقر لتحديد أو تغيير التاريخ"
-          >
-            <Calendar className="w-4 h-4 text-[#d4af37] group-hover:scale-110 transition-transform shrink-0" />
-            <span className="font-bold shrink-0">التاريخ:</span>
-            <input
-              ref={dateInputRef}
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              onClick={(e) => {
-                try {
-                  (e.target as HTMLInputElement).showPicker?.();
-                } catch {}
-              }}
-              style={{ colorScheme: 'dark' }}
-              className="bg-transparent text-[#d4af37] focus:outline-none cursor-pointer font-bold"
-            />
-          </div>
+          <CustomDatePicker
+            value={selectedDate}
+            onChange={(newDate) => setSelectedDate(newDate)}
+          />
 
           <button
             onClick={() => setShowUsersModal(true)}
