@@ -56,6 +56,7 @@ model Directorate {
   dailyPlans   DailyPlan[]
   dailySummaries DailySummary[]
   feedbacks    ExecutiveFeedback[]
+  executiveTasks ExecutiveTask[]
 }
 
 model User {
@@ -77,6 +78,8 @@ model User {
   dailySummaries DailySummary[]
   feedbacksSent ExecutiveFeedback[] @relation("SentFeedbacks")
   announcements Announcement[]
+  assignedExecutiveTasks ExecutiveTask[] @relation("ExecutiveAssignedTasks")
+  receivedExecutiveTasks ExecutiveTask[] @relation("AssignedToUserTasks")
 }
 
 model DailyPlan {
@@ -163,4 +166,30 @@ model Announcement {
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+model ExecutiveTask {
+  id                   String        @id @default(uuid())
+  title                String
+  description          String?
+  priority             Priority      @default(NORMAL)
+  dueDate              DateTime?
+  status               TaskStatus    @default(PENDING)
+  completionPercentage Int           @default(0)
+  completionNote       String?
+
+  // Assigned by (Executive)
+  assignedById         String
+  assignedBy           User          @relation("ExecutiveAssignedTasks", fields: [assignedById], references: [id], onDelete: Cascade)
+
+  // Target Directorate
+  directorateId        String
+  directorate          Directorate   @relation(fields: [directorateId], references: [id], onDelete: Cascade)
+
+  // Optional direct assignee user
+  assignedToUserId     String?
+  assignedToUser       User?         @relation("AssignedToUserTasks", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 }

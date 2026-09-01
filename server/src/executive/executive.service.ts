@@ -48,6 +48,13 @@ export class ExecutiveService {
             role: true,
           },
         },
+        executiveTasks: {
+          include: {
+            assignedBy: { select: { id: true, fullName: true, title: true, role: true } },
+            assignedToUser: { select: { id: true, fullName: true, title: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
         dailyPlans: {
           where: { planDate: targetDate },
           include: {
@@ -76,7 +83,8 @@ export class ExecutiveService {
     const items = directorates.map((dir) => {
       const plan = dir.dailyPlans[0] || null;
       const summary = plan?.dailySummary || null;
-      const tasks = plan?.tasks || [];
+      const planTasks = plan?.tasks || [];
+      const execTasks = dir.executiveTasks || [];
       const feedbacks = plan?.feedbacks || [];
 
       const hasPlan = !!plan;
@@ -87,18 +95,24 @@ export class ExecutiveService {
       if (hasSummary) summariesSubmittedCount++;
       if (isUrgent) urgentIssuesCount++;
 
-      const completedTasks = tasks.filter((t) => t.status === 'COMPLETED').length;
-      totalTasksCount += tasks.length;
-      totalCompletedTasksCount += completedTasks;
+      // Combined tasks count and completed count
+      const allTasksCount = planTasks.length + execTasks.length;
+      const completedPlanTasks = planTasks.filter((t) => t.status === 'COMPLETED' || t.completionPercentage === 100).length;
+      const completedExecTasks = execTasks.filter((t) => t.status === 'COMPLETED' || t.completionPercentage === 100).length;
+      const totalCompleted = completedPlanTasks + completedExecTasks;
+
+      totalTasksCount += allTasksCount;
+      totalCompletedTasksCount += totalCompleted;
 
       let completionRate = 0;
       if (summary) {
         completionRate = summary.overallCompletionRate;
         sumCompletionRates += completionRate;
         activeReportingDirectorates++;
-      } else if (tasks.length > 0) {
-        const sumTaskPct = tasks.reduce((sum, t) => sum + t.completionPercentage, 0);
-        completionRate = Math.round((sumTaskPct / tasks.length) * 10) / 10;
+      } else if (allTasksCount > 0) {
+        const sumPlanPct = planTasks.reduce((sum, t) => sum + t.completionPercentage, 0);
+        const sumExecPct = execTasks.reduce((sum, t) => sum + t.completionPercentage, 0);
+        completionRate = Math.round(((sumPlanPct + sumExecPct) / allTasksCount) * 10) / 10;
         sumCompletionRates += completionRate;
         activeReportingDirectorates++;
       }
@@ -113,6 +127,15 @@ export class ExecutiveService {
       } else if (hasPlan) {
         statusTag = 'قيد العمل والمتابعة';
         statusColor = 'blue';
+      } else if (execTasks.length > 0) {
+        const allDone = execTasks.every((t) => t.status === 'COMPLETED' || t.completionPercentage === 100);
+        if (allDone) {
+          statusTag = 'تم إنجاز التكليفات الرئاسية';
+          statusColor = 'emerald';
+        } else {
+          statusTag = 'متابعة التكليفات الرئاسية';
+          statusColor = 'blue';
+        }
       }
 
       return {
@@ -126,8 +149,8 @@ export class ExecutiveService {
         hasPlan,
         planSubmittedAt: plan?.submittedAt || null,
         generalFocus: plan?.generalFocus || null,
-        tasksCount: tasks.length,
-        completedTasksCount: completedTasks,
+        tasksCount: allTasksCount,
+        completedTasksCount: totalCompleted,
         completionRate,
         hasSummary,
         summarySubmittedAt: summary?.submittedAt || null,
@@ -139,7 +162,8 @@ export class ExecutiveService {
         tomorrowPlanPreview: summary?.tomorrowPlanPreview || null,
         statusTag,
         statusColor,
-        tasks,
+        tasks: planTasks,
+        executiveTasks: execTasks,
         feedbacks,
       };
     });
@@ -173,6 +197,13 @@ export class ExecutiveService {
       where: { id: directorateId },
       include: {
         users: true,
+        executiveTasks: {
+          include: {
+            assignedBy: { select: { fullName: true, title: true, role: true } },
+            assignedToUser: { select: { fullName: true, title: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 

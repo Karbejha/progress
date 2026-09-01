@@ -42,9 +42,9 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
         className={`absolute top-0 right-0 left-0 h-1.5 transition-all ${
           item.urgentFlag
             ? 'bg-red-500'
-            : item.hasSummary
+            : item.hasSummary || (item.completionRate === 100 && item.tasksCount > 0)
             ? 'bg-emerald-600'
-            : item.hasPlan
+            : item.hasPlan || (item.executiveTasks && item.executiveTasks.length > 0 && item.completionRate > 0)
             ? 'bg-[#0c3e35]'
             : 'bg-[#d2d1c9]'
         }`}
@@ -84,11 +84,16 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
           </div>
         </div>
 
-        {/* Daily Focus Preview */}
+        {/* Daily Focus / Executive Tasks Preview */}
         {item.generalFocus ? (
           <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
             <span className="text-[#0c3e35] font-bold ml-1">التركيز:</span>
             {item.generalFocus}
+          </div>
+        ) : item.executiveTasks && item.executiveTasks.length > 0 ? (
+          <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
+            <span className="text-[#0c3e35] font-bold ml-1">التكليفات:</span>
+            {item.executiveTasks.map((t) => t.title).join(' • ')}
           </div>
         ) : (
           <div className="p-2.5 rounded-xl bg-[#edece4]/30 border border-[#e5e4dc] mb-4 text-xs text-[#8daaa2] italic">
@@ -118,7 +123,7 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
                   ? 'bg-emerald-600'
                   : item.completionRate >= 40
                   ? 'bg-[#0c3e35]'
-                  : item.hasPlan
+                  : item.hasPlan || (item.executiveTasks && item.executiveTasks.length > 0)
                   ? 'bg-[#d4af37]'
                   : 'bg-slate-300'
               }`}
@@ -140,6 +145,18 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
                 <Clock className="w-3.5 h-3.5" />
                 قيد المتابعة
               </span>
+            ) : item.executiveTasks && item.executiveTasks.length > 0 ? (
+              item.completionRate === 100 ? (
+                <span className="flex items-center gap-1 text-emerald-700 font-bold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  تكليفات منجزة
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-[#0c3e35] font-bold">
+                  <Clock className="w-3.5 h-3.5" />
+                  متابعة التكليفات
+                </span>
+              )
             ) : (
               <span className="text-[#8daaa2]">
                 بانتظار الخطة

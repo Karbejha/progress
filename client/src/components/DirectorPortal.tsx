@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, DailyPlan, PlanTask, Priority, TaskStatus } from '../types';
+import { User, DailyPlan, PlanTask, Priority, TaskStatus, ExecutiveTask } from '../types';
 import { api } from '../services/api';
 import { DynamicIcon } from './Icons';
 import {
@@ -23,6 +23,8 @@ import {
   X,
   Save,
   Loader2,
+  CheckCheck,
+  MessageSquare,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -35,7 +37,7 @@ interface DirectorPortalProps {
 }
 
 export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'PLAN' | 'TRACK' | 'SUMMARY' | 'HISTORY'>('PLAN');
+  const [activeTab, setActiveTab] = useState<'PLAN' | 'TRACK' | 'EXECUTIVE_TASKS' | 'SUMMARY' | 'HISTORY'>('PLAN');
   const [plan, setPlan] = useState<DailyPlan | null>(null);
   const [history, setHistory] = useState<DailyPlan[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -44,6 +46,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [saving, setSaving] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+
+  // Executive Tasks state
+  const [executiveTasks, setExecutiveTasks] = useState<ExecutiveTask[]>([]);
+  const [loadingExecTasks, setLoadingExecTasks] = useState(false);
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [taskLocalState, setTaskLocalState] = useState<{
+    [id: string]: {
+      status: TaskStatus;
+      completionPercentage: number;
+      completionNote: string;
+      isModified?: boolean;
+    };
+  }>({});
 
   useEffect(() => {
     setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
@@ -83,6 +98,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   useEffect(() => {
     loadTodayData();
+    loadExecutiveTasks();
   }, []);
 
   useEffect(() => {
@@ -101,11 +117,117 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       api.getAnnouncements().then((res) => setAnnouncements(res)).catch(() => {});
     });
 
+    socket.on('executive-task:created', (payload: any) => {
+      if (payload.directorateId === currentUser.directorateId) {
+        showToast(`⚡ وصلك تكليف رئاسي جديد من المدير العام: "${payload.task?.title || ''}"`);
+        loadExecutiveTasks();
+      }
+    });
+
+    socket.on('executive-task:updated', (payload: any) => {
+      if (payload.directorateId === currentUser.directorateId) {
+        loadExecutiveTasks();
+      }
+    });
+
     return () => {
       socket.off('feedback:sent');
       socket.off('announcement:created');
+      socket.off('executive-task:created');
+      socket.off('executive-task:updated');
     };
   }, [currentUser]);
+
+  const loadExecutiveTasks = async () => {
+    if (!currentUser.directorateId) return;
+    try {
+      setLoadingExecTasks(true);
+      const res = await api.getExecutiveTasks({ directorateId: currentUser.directorateId });
+      setExecutiveTasks(res);
+      const stateMap: any = {};
+      res.forEach((t) => {
+        stateMap[t.id] = {
+          status: t.status,
+          completionPercentage: t.completionPercentage,
+          completionNote: t.completionNote || '',
+          isModified: false,
+        };
+      });
+      setTaskLocalState(stateMap);
+    } catch (err) {
+      console.error('Failed to load director executive tasks', err);
+    } finally {
+      setLoadingExecTasks(false);
+    }
+  };
+
+  const handleLocalExecTaskChange = (taskId: string, field: string, value: any) => {
+    setTaskLocalState((prev) => {
+      const current = prev[taskId] || {
+        status: 'PENDING' as TaskStatus,
+        completionPercentage: 0,
+        completionNote: '',
+        isModified: false,
+      };
+
+      const updated = {
+        ...current,
+        [field]: value,
+      };
+
+      // Auto set completed if progress 100
+      if (field === 'completionPercentage' && value === 100) {
+        updated.status = 'COMPLETED';
+      } else if (field === 'status' && value === 'COMPLETED' && current.completionPercentage < 100) {
+        updated.completionPercentage = 100;
+      }
+
+      // Check if actually modified compared to original saved task
+      const original = executiveTasks.find((t) => t.id === taskId);
+      const isDifferent = original
+        ? (original.status !== updated.status ||
+           original.completionPercentage !== updated.completionPercentage ||
+           (original.completionNote || '').trim() !== (updated.completionNote || '').trim())
+        : true;
+
+      updated.isModified = isDifferent;
+
+      return {
+        ...prev,
+        [taskId]: updated,
+      };
+    });
+  };
+
+  const handleSaveExecutiveTask = async (taskId: string) => {
+    const local = taskLocalState[taskId];
+    if (!local) return;
+
+    if (!local.isModified) {
+      showToast('لا توجد أي تعديلات جديدة على هذا التكليف لإرسالها.');
+      return;
+    }
+
+    try {
+      setUpdatingTaskId(taskId);
+      await api.updateExecutiveTask(taskId, {
+        status: local.status,
+        completionPercentage: local.completionPercentage,
+        completionNote: local.completionNote,
+      });
+      showToast('تم إرسال تقرير إنجاز التكليف للمدير العام بنجاح!');
+      setTaskLocalState((prev) => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], isModified: false },
+      }));
+      loadExecutiveTasks();
+    } catch (err) {
+      console.error('Failed to update executive task', err);
+      alert('حدث خطأ أثناء حفظ التعديل');
+    } finally {
+      setUpdatingTaskId(null);
+    }
+  };
 
   const loadTodayData = async () => {
     try {
@@ -417,16 +539,32 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     try {
       setSaving(true);
-      const tasksList = plan?.tasks || [];
-      const completedTasks = tasksList.filter((t) => t.completionPercentage === 100);
-      const totalTasks = tasksList.length;
+      const planTasksList = plan?.tasks || [];
+      const combinedTasksList = [
+        ...planTasksList.map((t) => ({
+          title: t.title,
+          completionPercentage: trackedTasks[t.id]?.completionPercentage ?? t.completionPercentage,
+          status: trackedTasks[t.id]?.status ?? t.status,
+        })),
+        ...executiveTasks.map((et) => {
+          const local = taskLocalState[et.id];
+          return {
+            title: `[تكليف رئاسي] ${et.title}`,
+            completionPercentage: local ? local.completionPercentage : et.completionPercentage,
+            status: local ? local.status : et.status,
+          };
+        }),
+      ];
+
+      const completedTasks = combinedTasksList.filter((t) => t.completionPercentage === 100 || t.status === 'COMPLETED');
+      const totalTasks = combinedTasksList.length;
       const overallRate = totalTasks > 0
-        ? Math.round((tasksList.reduce((sum, t) => sum + t.completionPercentage, 0) / totalTasks) * 10) / 10
+        ? Math.round((combinedTasksList.reduce((sum, t) => sum + t.completionPercentage, 0) / totalTasks) * 10) / 10
         : 100;
 
       // Auto-generate summaryText if left blank
       const finalSummaryText = summaryText.trim() ||
-        `تم إنجاز مهام الخطة اليومية لمديرية ${currentUser.directorate?.name || ''} بنسبة إنجاز إجمالية بلغت ${overallRate}%. (تم إنجاز ${completedTasks.length} من أصل ${totalTasks} مهام بالكامل).`;
+        `تم إنجاز مهام وتكليفات مديرية ${currentUser.directorate?.name || ''} بنسبة إنجاز إجمالية بلغت ${overallRate}%. (تم إنجاز ${completedTasks.length} من أصل ${totalTasks} مهام وتكليفات بالكامل).`;
 
       // Auto-populate achievements from completed tasks if manual list empty
       const cleanAchievements = achievements.filter((a) => a.trim().length > 0);
@@ -627,7 +765,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
-          <Layers className="w-4 h-4" />
+          <Clock className="w-4 h-4" />
           <span>2. متابعة المهام (خلال الدوام)</span>
           {plan?.tasks && (
             <span className="px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
@@ -642,6 +780,26 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </button>
 
         <button
+          onClick={() => {
+            setActiveTab('EXECUTIVE_TASKS');
+            loadExecutiveTasks();
+          }}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeTab === 'EXECUTIVE_TASKS'
+              ? 'bg-[#0c3e35] text-white shadow-md'
+              : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-[#d4af37]" />
+          <span>3. التكليفات الرئاسية المباشرة</span>
+          {executiveTasks.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+              {executiveTasks.filter((t) => t.status !== 'COMPLETED').length || executiveTasks.length}
+            </span>
+          )}
+        </button>
+
+        <button
           onClick={() => setActiveTab('SUMMARY')}
           className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
             activeTab === 'SUMMARY'
@@ -650,7 +808,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>3. ملخص الإنجاز (نهاية الدوام)</span>
+          <span>4. ملخص الإنجاز (نهاية الدوام)</span>
         </button>
 
         <button
@@ -1008,13 +1166,33 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
           {/* 1. Automated Performance & Achievements Overview */}
           {(() => {
-            const tasksList = plan?.tasks || [];
-            const completedList = tasksList.filter((t) => t.completionPercentage === 100);
-            const inProgressList = tasksList.filter((t) => t.completionPercentage > 0 && t.completionPercentage < 100);
-            const pendingList = tasksList.filter((t) => t.completionPercentage === 0);
-            const total = tasksList.length;
+            const planTasksList = plan?.tasks || [];
+            const combinedList = [
+              ...planTasksList.map((t) => ({
+                id: t.id,
+                title: t.title,
+                completionPercentage: trackedTasks[t.id]?.completionPercentage ?? t.completionPercentage,
+                status: trackedTasks[t.id]?.status ?? t.status,
+                isExecutive: false,
+              })),
+              ...executiveTasks.map((et) => {
+                const local = taskLocalState[et.id];
+                return {
+                  id: et.id,
+                  title: `[تكليف رئاسي] ${et.title}`,
+                  completionPercentage: local ? local.completionPercentage : et.completionPercentage,
+                  status: local ? local.status : et.status,
+                  isExecutive: true,
+                };
+              }),
+            ];
+
+            const completedList = combinedList.filter((t) => t.completionPercentage === 100 || t.status === 'COMPLETED');
+            const inProgressList = combinedList.filter((t) => (t.completionPercentage > 0 && t.completionPercentage < 100) || (t.status === 'IN_PROGRESS' && t.completionPercentage < 100));
+            const pendingList = combinedList.filter((t) => t.completionPercentage === 0 && t.status !== 'COMPLETED' && t.status !== 'IN_PROGRESS');
+            const total = combinedList.length;
             const avgRate = total > 0
-              ? Math.round((tasksList.reduce((sum, t) => sum + t.completionPercentage, 0) / total) * 10) / 10
+              ? Math.round((combinedList.reduce((sum, t) => sum + t.completionPercentage, 0) / total) * 10) / 10
               : 100;
 
             return (
@@ -1146,7 +1324,237 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </form>
       )}
 
-      {/* Tab 4: History */}
+      {/* Tab 3: Executive Tasks (التكليفات الرئاسية المباشرة) */}
+      {activeTab === 'EXECUTIVE_TASKS' && (
+        <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#d2d1c9] pb-4">
+            <div>
+              <h3 className="text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
+                <Layers className="w-5 h-5 text-[#d4af37]" />
+                التكليفات والتوجيهات الرئاسية المباشرة لمديرية {currentUser.directorate?.name}
+              </h3>
+              <p className="text-xs text-[#5e736e] mt-1 font-medium">
+                المهام الموجهة لمديريتكم حصراً من المدير العام ومعاونيه لمتابعة تنفيذها ورفع تقرير الإنجاز.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5">
+                <CheckCheck className="w-4 h-4 text-[#d4af37]" />
+                إجمالي التكليفات: {executiveTasks.length}
+              </span>
+            </div>
+          </div>
+
+          {loadingExecTasks ? (
+            <div className="py-12 text-center text-[#5e736e]">
+              <Loader2 className="w-7 h-7 animate-spin mx-auto text-[#0c3e35] mb-2" />
+              <span className="text-xs font-bold">جارٍ تحميل التكليفات الرئاسية...</span>
+            </div>
+          ) : executiveTasks.length === 0 ? (
+            <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-[#d2d1c9] p-6 space-y-2">
+              <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto stroke-[1.5]" />
+              <h4 className="text-sm font-extrabold text-[#0c3e35]">لا توجد تكليفات رئاسية معلقة</h4>
+              <p className="text-xs text-[#5e736e]">
+                كافة المهام والتكليفات منجزة أو لم يتم إسناد تكليفات جديدة لمديريتكم حالياً.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {executiveTasks.map((task) => {
+                const local = taskLocalState[task.id] || {
+                  status: task.status,
+                  completionPercentage: task.completionPercentage,
+                  completionNote: task.completionNote || '',
+                  isModified: false,
+                };
+                const isCompleted = local.status === 'COMPLETED' || local.completionPercentage === 100;
+                const isSaving = updatingTaskId === task.id;
+
+                const dueDateStr = task.dueDate
+                  ? new Date(task.dueDate).toLocaleDateString('ar-SY', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })
+                  : null;
+
+                const getBadge = (p: Priority) => {
+                  switch (p) {
+                    case 'URGENT':
+                      return <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-300">🚨 عاجل جداً</span>;
+                    case 'HIGH':
+                      return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">⚠️ أولوية مرتفعة</span>;
+                    default:
+                      return <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#0c3e35]/10 text-[#0c3e35] border border-[#0c3e35]/20">📌 عادي</span>;
+                  }
+                };
+
+                return (
+                  <div
+                    key={task.id}
+                    className={`p-6 rounded-2xl border transition shadow-xs ${
+                      isCompleted ? 'bg-white/90 border-emerald-300' : 'bg-white border-[#d2d1c9]'
+                    }`}
+                  >
+                    {/* Task Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#f0eee6] pb-3">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="text-sm font-extrabold text-[#05261e]">{task.title}</span>
+                        {getBadge(task.priority)}
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                            isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          {local.status === 'COMPLETED'
+                            ? 'مكتملة ومُنجزة'
+                            : local.status === 'IN_PROGRESS'
+                            ? 'قيد التنفيذ'
+                            : 'قيد الانتظار'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-[#5e736e]">
+                        <span>
+                          المُسنِد:{' '}
+                          <strong className="text-[#0c3e35]">{task.assignedBy?.fullName}</strong>
+                        </span>
+                        {dueDateStr && (
+                          <span className="font-bold text-[#0c3e35] bg-[#f4f3ed] px-2.5 py-0.5 rounded-lg border border-[#d2d1c9] flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-[#d4af37]" />
+                            موعد الاستحقاق: {dueDateStr}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    {task.description && (
+                      <div className="my-3 p-3.5 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9]/70 text-xs text-[#05261e] leading-relaxed whitespace-pre-line">
+                        <strong className="text-[#0c3e35] block mb-1">
+                          التوجيهات والتفاصيل المطلوبة:
+                        </strong>
+                        {task.description}
+                      </div>
+                    )}
+
+                    {/* Interactive Execution & Response Controls */}
+                    <div className="mt-4 p-4 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Status Dropdown */}
+                        <div>
+                          <label className="block text-xs font-bold text-[#0c3e35] mb-1">
+                            حالة التنفيذ الحالية:
+                          </label>
+                          <select
+                            value={local.status}
+                            onChange={(e) =>
+                              handleLocalExecTaskChange(
+                                task.id,
+                                'status',
+                                e.target.value as TaskStatus
+                              )
+                            }
+                            className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35]"
+                          >
+                            <option value="PENDING">قيد الانتظار والترتيب</option>
+                            <option value="IN_PROGRESS">قيد التنفيذ والعمل الميداني</option>
+                            <option value="COMPLETED">تم الإنجاز بالكامل</option>
+                            <option value="DELAYED">متأخرة / بانتظار متطلبات</option>
+                          </select>
+                        </div>
+
+                        {/* Completion % Slider */}
+                        <div>
+                          <div className="flex items-center justify-between text-xs font-bold text-[#0c3e35] mb-1">
+                            <span>نسبة الإنجاز المحققة:</span>
+                            <span className="text-emerald-700 font-extrabold">
+                              {local.completionPercentage}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={local.completionPercentage}
+                            onChange={(e) =>
+                              handleLocalExecTaskChange(
+                                task.id,
+                                'completionPercentage',
+                                Number(e.target.value)
+                              )
+                            }
+                            className="w-full accent-[#0c3e35] cursor-pointer mt-1"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Director Response & Report Notes */}
+                      <div>
+                        <label className="block text-xs font-bold text-[#0c3e35] mb-1">
+                          تقرير الإنجاز ورد مدير المديرية للمدير العام:
+                        </label>
+                        <textarea
+                          rows={2}
+                          placeholder="اكتب الإجراءات المنفذة، المخرجات المتحققة، أو أي ملاحظات توضيحية للإدارة العليا..."
+                          value={local.completionNote}
+                          onChange={(e) =>
+                            handleLocalExecTaskChange(task.id, 'completionNote', e.target.value)
+                          }
+                          className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
+                        />
+                      </div>
+
+                      {/* Save Button & Status */}
+                      <div className="flex items-center justify-between pt-2 border-t border-[#d2d1c9]/70 flex-wrap gap-2">
+                        {local.isModified ? (
+                          <span className="text-xs font-bold text-amber-600 animate-pulse flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
+                            توجد تعديلات غير محفوظة
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[#5e736e] flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            البيانات محفوظة ومطابقة للإدارة العامة
+                          </span>
+                        )}
+
+                        {local.isModified ? (
+                          <button
+                            type="button"
+                            disabled={isSaving}
+                            onClick={() => handleSaveExecutiveTask(task.id)}
+                            className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition shadow-md border border-[#d4af37] disabled:opacity-50 cursor-pointer animate-fadeIn active:scale-95"
+                          >
+                            {isSaving ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5 text-[#d4af37]" />
+                            )}
+                            <span>حفظ وإرسال تقرير الإنجاز</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#edece4] text-[#5e736e] text-xs font-bold border border-[#d2d1c9] cursor-not-allowed opacity-80"
+                          >
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>تم الحفظ (لا توجد تعديلات)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 5: History */}
       {activeTab === 'HISTORY' && (
         <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
           <div className="border-b border-[#d2d1c9] pb-4">

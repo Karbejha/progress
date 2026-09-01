@@ -6,6 +6,7 @@ import { DirectoratesModule } from './directorates/directorates.module';
 import { DailyPlansModule } from './daily-plans/daily-plans.module';
 import { DailySummariesModule } from './daily-summaries/daily-summaries.module';
 import { ExecutiveModule } from './executive/executive.module';
+import { ExecutiveTasksModule } from './executive-tasks/executive-tasks.module';
 import { EventsModule } from './events/events.module';
 import { UsersModule } from './users/users.module';
 
@@ -20,6 +21,8 @@ import { UsersModule } from './users/users.module';
     DailyPlansModule,
     DailySummariesModule,
     ExecutiveModule,
+    ExecutiveTasksModule,
   ],
 })
 export class AppModule {}
+

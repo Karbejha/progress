@@ -26,8 +26,8 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
     const dir = getDir(code);
     if (!dir) return null;
 
-    const isDone = dir.hasSummary;
-    const inProgress = dir.hasPlan;
+    const isDone = dir.hasSummary || (dir.completionRate === 100 && dir.tasksCount > 0);
+    const inProgress = dir.hasPlan || (dir.executiveTasks && dir.executiveTasks.length > 0 && dir.completionRate > 0);
     const isUrgent = dir.urgentFlag;
 
     return (

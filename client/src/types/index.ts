@@ -116,6 +116,40 @@ export interface ExecutiveOverviewKPIs {
   urgentIssuesCount: number;
 }
 
+export interface ExecutiveTask {
+  id: string;
+  title: string;
+  description?: string;
+  priority: Priority;
+  dueDate?: string;
+  status: TaskStatus;
+  completionPercentage: number;
+  completionNote?: string;
+  assignedById: string;
+  assignedBy?: {
+    id: string;
+    fullName: string;
+    title: string;
+    role?: Role;
+  };
+  directorateId: string;
+  directorate?: {
+    id: string;
+    code: string;
+    name: string;
+    category: string;
+    icon?: string;
+  };
+  assignedToUserId?: string;
+  assignedToUser?: {
+    id: string;
+    fullName: string;
+    title: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DirectorateOverviewItem {
   directorateId: string;
   directorateName: string;
@@ -148,6 +182,7 @@ export interface DirectorateOverviewItem {
   statusColor: string;
   tasks: PlanTask[];
   feedbacks: ExecutiveFeedback[];
+  executiveTasks?: ExecutiveTask[];
 }
 
 export interface ExecutiveOverviewResponse {
@@ -155,3 +190,4 @@ export interface ExecutiveOverviewResponse {
   kpis: ExecutiveOverviewKPIs;
   directorates: DirectorateOverviewItem[];
 }
+

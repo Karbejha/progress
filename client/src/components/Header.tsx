@@ -146,7 +146,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         }));
 
         const unreadAnns = targetAnns.filter((a) => !currentRead.includes(a.id));
-        setUnreadCount((prev) => prev + unreadAnns.length);
+        setUnreadCount(unreadAnns.length);
 
         setNotifications((prev) => {
           const prevMap = new Map(prev.map((p) => [p.id, p]));
@@ -261,6 +261,34 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       });
     });
 
+    socket.on('executive-task:created', (data: any) => {
+      if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId === data.directorateId) {
+        addNotif({
+          id: data.task?.id,
+          title: 'تكليف رئاسي جديد',
+          message: `وردك تكليف من المدير العام: "${data.task?.title}"`,
+          content: data.task?.description || data.task?.title,
+          authorName: data.assignedByName || 'المدير العام',
+          priority: data.task?.priority || 'NORMAL',
+          type: 'feedback',
+          fullPayload: data,
+        });
+      }
+    });
+
+    socket.on('executive-task:updated', (data: any) => {
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      if (isExec && data.updatedByRole === 'DIRECTOR') {
+        addNotif({
+          id: data.task?.id,
+          title: 'تحديث إنجاز تكليف رئاسي',
+          message: `قامت (${data.directorateName}) بتحديث التكليف "${data.task?.title}" إلى (${data.task?.completionPercentage}%).`,
+          type: 'task',
+          fullPayload: data,
+        });
+      }
+    });
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -269,6 +297,8 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       socket.off('summary:submitted');
       socket.off('feedback:sent');
       socket.off('announcement:created');
+      socket.off('executive-task:created');
+      socket.off('executive-task:updated');
     };
   }, [currentUser]);
 
@@ -365,13 +395,14 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   <div ref={notifRef} className="relative">
                     <button
                       onClick={handleOpenNotifications}
-                      className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] hover:border-[#d4af37]/40 transition cursor-pointer shadow-sm"
+                      className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] hover:border-[#d4af37]/40 transition cursor-pointer shadow-sm active:scale-95"
                       title="التنبيهات اللحظية"
+                      aria-label="التنبيهات اللحظية"
                     >
                       <Bell className="w-4 h-4" />
                       {unreadCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-4.5 h-4.5 rounded-full bg-red-600 text-white font-extrabold text-[9px] flex items-center justify-center animate-bounce shadow-md">
-                          {unreadCount}
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white font-black text-[10px] leading-none flex items-center justify-center border-2 border-[#05261e] shadow-md z-10 pointer-events-none select-none">
+                          {unreadCount > 99 ? '99+' : unreadCount}
                         </span>
                       )}
                     </button>

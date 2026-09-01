@@ -15,7 +15,6 @@ import {
   AlertTriangle,
   Printer,
   Search,
-  RefreshCw,
   LayoutGrid,
   GitFork,
   Megaphone,
@@ -23,10 +22,12 @@ import {
   X,
   Send,
   Users,
+  Layers,
 } from 'lucide-react';
 
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
+import { ExecutiveTasksModal } from './ExecutiveTasksModal';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getSocket } from '../lib/socket';
 import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
@@ -48,6 +49,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
+  const [showTasksModal, setShowTasksModal] = useState(false);
+  const [activeTasksCount, setActiveTasksCount] = useState(0);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementModalData | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '', priority: 'NORMAL' });
   const [submittingAnnouncement, setSubmittingAnnouncement] = useState(false);
@@ -70,7 +73,18 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   useEffect(() => {
     loadOverview();
     loadAnnouncements();
+    loadTasksCount();
   }, [selectedDate]);
+
+  const loadTasksCount = async () => {
+    try {
+      const allTasks = await api.getExecutiveTasks();
+      const active = allTasks.filter((t) => t.status !== 'COMPLETED').length;
+      setActiveTasksCount(active);
+    } catch (err) {
+      console.error('Failed to load tasks count', err);
+    }
+  };
 
   useEffect(() => {
     if (!showAnnouncementModal) return;
@@ -99,6 +113,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
     const triggerLiveAlert = (title: string, desc: string) => {
       setLiveToast({ title, desc });
       loadOverview();
+      loadTasksCount();
       setTimeout(() => setLiveToast(null), 4000);
     };
 
@@ -118,11 +133,29 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       loadAnnouncements();
     });
 
+    socket.on('executive-task:created', (payload: any) => {
+      triggerLiveAlert('تكليف رئاسي جديد', `تم إسناد تكليف لـ (${payload.directorateName}): "${payload.task?.title || ''}"`);
+      loadTasksCount();
+    });
+
+    socket.on('executive-task:updated', (payload: any) => {
+      triggerLiveAlert('تحديث إنجاز تكليف رئاسي', `قامت (${payload.directorateName}) بتحديث إنجاز التكليف "${payload.task?.title}" إلى (${payload.task?.completionPercentage}%).`);
+      loadTasksCount();
+    });
+
+    socket.on('executive-task:deleted', () => {
+      loadOverview();
+      loadTasksCount();
+    });
+
     return () => {
       socket.off('plan:submitted');
       socket.off('task:updated');
       socket.off('summary:submitted');
       socket.off('announcement:created');
+      socket.off('executive-task:created');
+      socket.off('executive-task:updated');
+      socket.off('executive-task:deleted');
     };
   }, []);
 
@@ -232,6 +265,19 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
           />
 
           <button
+            onClick={() => setShowTasksModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer relative"
+          >
+            <Layers className="w-4 h-4 text-[#d4af37]" />
+            <span>التكليفات والمهام المباشرة</span>
+            {activeTasksCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+                {activeTasksCount}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setShowUsersModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
           >
@@ -253,14 +299,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
           >
             <Megaphone className="w-4 h-4" />
             <span>إصدار تعميم</span>
-          </button>
-
-          <button
-            onClick={loadOverview}
-            className="p-2.5 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#8daaa2] hover:text-white transition cursor-pointer"
-            title="تحديث البيانات"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -657,6 +695,17 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       <AnnouncementDetailsModal
         data={selectedAnnouncement}
         onClose={() => setSelectedAnnouncement(null)}
+      />
+
+      {/* Executive Tasks Management Modal */}
+      <ExecutiveTasksModal
+        isOpen={showTasksModal}
+        onClose={() => {
+          setShowTasksModal(false);
+          loadTasksCount();
+          loadOverview();
+        }}
+        currentUser={currentUser}
       />
 
     </div>

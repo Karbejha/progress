@@ -6,6 +6,7 @@ import {
   Announcement,
   ExecutiveFeedback,
   Directorate,
+  ExecutiveTask,
 } from '../types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -235,6 +236,65 @@ class ApiService {
   async getDirectorHistory(limit = 30): Promise<DailyPlan[]> {
     return this.request<DailyPlan[]>(`/daily-plans/my-history?limit=${limit}`);
   }
+
+  // Executive Tasks (التكليفات والمهام المباشرة)
+  async getExecutiveTasks(query?: {
+    directorateId?: string;
+    status?: string;
+    priority?: string;
+  }): Promise<ExecutiveTask[]> {
+    const params = new URLSearchParams();
+    if (query?.directorateId) params.append('directorateId', query.directorateId);
+    if (query?.status) params.append('status', query.status);
+    if (query?.priority) params.append('priority', query.priority);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return this.request<ExecutiveTask[]>(`/executive-tasks${qs}`);
+  }
+
+  async getExecutiveTask(id: string): Promise<ExecutiveTask> {
+    return this.request<ExecutiveTask>(`/executive-tasks/${id}`);
+  }
+
+  async createExecutiveTasks(payload: {
+    title: string;
+    description?: string;
+    priority?: string;
+    dueDate?: string;
+    directorateIds: string[];
+    assignedToUserId?: string;
+  }): Promise<ExecutiveTask[]> {
+    return this.request<ExecutiveTask[]>('/executive-tasks', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateExecutiveTask(
+    id: string,
+    payload: {
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueDate?: string;
+      status?: string;
+      completionPercentage?: number;
+      completionNote?: string;
+      directorateId?: string;
+      assignedToUserId?: string;
+    },
+  ): Promise<ExecutiveTask> {
+    return this.request<ExecutiveTask>(`/executive-tasks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteExecutiveTask(id: string): Promise<{ message: string; taskId: string }> {
+    return this.request<{ message: string; taskId: string }>(`/executive-tasks/${id}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const api = new ApiService();
+

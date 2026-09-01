@@ -90,5 +90,34 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.logger.log(`Broadcasting announcement:created: ${payload.title} by ${payload.authorName}`);
     this.server.emit('announcement:created', payload);
   }
+
+  emitExecutiveTaskCreated(payload: {
+    task: any;
+    directorateId: string;
+    directorateName: string;
+    assignedByName: string;
+  }) {
+    this.logger.log(`Broadcasting executive-task:created to directorate ${payload.directorateName}`);
+    this.server.emit('executive-task:created', payload);
+  }
+
+  emitExecutiveTaskUpdated(payload: {
+    task: any;
+    directorateId: string;
+    directorateName: string;
+    updatedByRole: string;
+  }) {
+    this.logger.log(`Broadcasting executive-task:updated for task ${payload.task.id}`);
+    this.server.emit('executive-task:updated', payload);
+  }
+
+  emitExecutiveTaskDeleted(payload: {
+    taskId: string;
+    directorateId: string;
+  }) {
+    this.logger.log(`Broadcasting executive-task:deleted for task ${payload.taskId}`);
+    this.server.emit('executive-task:deleted', payload);
+  }
 }
+
 

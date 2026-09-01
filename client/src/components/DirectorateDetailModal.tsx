@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { DirectorateOverviewItem } from '../types';
+import { DirectorateOverviewItem, ExecutiveTask, Priority, TaskStatus } from '../types';
 import { api } from '../services/api';
 import {
   X,
@@ -14,6 +14,12 @@ import {
   MessageSquare,
   Sparkles,
   FileText,
+  Layers,
+  Plus,
+  Calendar,
+  AlertCircle,
+  Loader2,
+  Check,
 } from 'lucide-react';
 import { DynamicIcon } from './Icons';
 
@@ -34,12 +40,31 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
   const [successMessage, setSuccessMessage] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // Executive tasks state
+  const [executiveTasks, setExecutiveTasks] = useState<ExecutiveTask[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [showAssignTaskForm, setShowAssignTaskForm] = useState(false);
+  const [taskForm, setTaskForm] = useState<{
+    title: string;
+    description: string;
+    priority: Priority;
+    dueDate: string;
+  }>({
+    title: '',
+    description: '',
+    priority: 'NORMAL',
+    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  });
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
     if (!item) return;
+
+    loadDirectorateTasks();
 
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -57,6 +82,48 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [item, onClose]);
+
+  const loadDirectorateTasks = async () => {
+    if (!item) return;
+    try {
+      setLoadingTasks(true);
+      const res = await api.getExecutiveTasks({ directorateId: item.directorateId });
+      setExecutiveTasks(res);
+    } catch (err) {
+      console.error('Failed to load directorate executive tasks', err);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  const handleCreateDirectTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!item || !taskForm.title.trim()) return;
+
+    try {
+      setTaskSubmitting(true);
+      await api.createExecutiveTasks({
+        title: taskForm.title,
+        description: taskForm.description,
+        priority: taskForm.priority,
+        dueDate: taskForm.dueDate,
+        directorateIds: [item.directorateId],
+      });
+      setTaskForm({
+        title: '',
+        description: '',
+        priority: 'NORMAL',
+        dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      });
+      setShowAssignTaskForm(false);
+      loadDirectorateTasks();
+      onFeedbackSent();
+    } catch (err) {
+      console.error('Failed to assign task', err);
+    } finally {
+      setTaskSubmitting(false);
+    }
+  };
 
   if (!mounted || !item) return null;
 
@@ -148,121 +215,220 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          
-          {/* Top KPI Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-2xl bg-white border border-[#d2d1c9] flex items-center justify-between shadow-xs">
-              <span className="text-xs font-bold text-[#5e736e]">نسبة الإنجاز اليومي:</span>
-              <span className="text-xl font-extrabold text-emerald-700">{item.completionRate}%</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white border border-[#d2d1c9] flex items-center justify-between shadow-xs">
-              <span className="text-xs font-bold text-[#5e736e]">عدد المهام المخططة:</span>
-              <span className="text-xl font-extrabold text-[#0c3e35]">{item.completedTasksCount} / {item.tasksCount}</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white border border-[#d2d1c9] flex items-center justify-between shadow-xs">
-              <span className="text-xs font-bold text-[#5e736e]">حالة التقرير:</span>
-              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[#edece4] text-[#0c3e35] border border-[#d2d1c9]">
-                {item.statusTag}
-              </span>
-            </div>
-          </div>
 
-          {/* Section 1: Morning Plan & Tasks */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-2">
-              <h3 className="text-sm font-bold text-[#0c3e35] flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[#0c3e35]" />
-                الخطة الصباحية والمهام المقررة
-              </h3>
-              {item.planSubmittedAt && (
-                <span className="text-[11px] text-[#5e736e] font-medium">
-                  وقت الإرسال: {new Date(item.planSubmittedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-            </div>
-
-            {item.generalFocus && (
-              <div className="p-3.5 rounded-2xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35]">
-                <strong className="font-bold ml-1">التركيز العام للخطة:</strong>
-                {item.generalFocus}
+          {/* Section 0: Executive Tasks Assigned to this Directorate */}
+          <div className="p-5 rounded-[22px] bg-white border border-[#d2d1c9] space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#f0eee6] pb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#d4af37]" />
+                <h3 className="text-sm font-bold text-[#0c3e35]">
+                  التكليفات والمهام الرئاسية الموجهة للمديرية ({executiveTasks.length})
+                </h3>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowAssignTaskForm(!showAssignTaskForm)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#0c4237] transition cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#d4af37]" />
+                <span>{showAssignTaskForm ? 'إخفاء النموذج' : 'إسناد تكليف فوري'}</span>
+              </button>
+            </div>
+
+            {/* Quick Task Creation Form */}
+            {showAssignTaskForm && (
+              <form onSubmit={handleCreateDirectTask} className="p-4 rounded-2xl bg-[#f4f3ed] border border-[#d2d1c9] space-y-3 animate-fadeIn">
+                <div className="text-xs font-extrabold text-[#0c3e35] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>إسناد تكليف مباشر لـ {item.directorateName}</span>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    required
+                    placeholder="عنوان التكليف أو المهمة المطلوبة..."
+                    value={taskForm.title}
+                    onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                    className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] font-semibold focus:outline-none focus:border-[#0c3e35]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <select
+                      value={taskForm.priority}
+                      onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value as Priority })}
+                      className="w-full p-2 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35]"
+                    >
+                      <option value="URGENT">🚨 عاجل جداً</option>
+                      <option value="HIGH">⚠️ أولوية مرتفعة</option>
+                      <option value="NORMAL">📌 أولوية عادية</option>
+                      <option value="LOW">⏳ منخفض</option>
+                    </select>
+                  </div>
+                  <div>
+                    <input
+                      type="date"
+                      value={taskForm.dueDate}
+                      onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                      className="w-full p-2 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <textarea
+                    rows={2}
+                    placeholder="التفاصيل والتوجيهات المحددة..."
+                    value={taskForm.description}
+                    onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                    className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAssignTaskForm(false)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-[#5e736e] hover:bg-white transition cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={taskSubmitting}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#0c4237] shadow-sm transition cursor-pointer"
+                  >
+                    {taskSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 text-[#d4af37]" />}
+                    <span>إرسال التكليف</span>
+                  </button>
+                </div>
+              </form>
             )}
 
-            {item.tasks && item.tasks.length > 0 ? (
-              <div className="space-y-2.5">
-                {item.tasks.map((task, idx) => (
-                  <div
-                    key={task.id || idx}
-                    className="p-4 rounded-2xl bg-white border border-[#d2d1c9] space-y-2.5 shadow-xs"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                          {idx + 1}
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-bold text-[#0c3e35] leading-tight">{task.title}</h4>
-                          {task.description && (
-                            <p className="text-xs text-[#5e736e] mt-1">{task.description}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {getPriorityBadge(task.priority)}
-                        <span className="text-xs text-[#0c3e35] font-bold bg-[#edece4] px-2 py-0.5 rounded-lg border border-[#d2d1c9]">
-                          {task.estimatedHours} س
-                        </span>
+            {/* Existing Tasks List */}
+            {loadingTasks ? (
+              <div className="py-4 text-center text-xs text-[#5e736e]">جارٍ تحميل التكليفات...</div>
+            ) : executiveTasks.length === 0 ? (
+              <div className="py-3 text-center text-xs text-[#5e736e] bg-[#fcfbf7] rounded-xl border border-dashed border-[#d2d1c9]">
+                لا توجد تكليفات رئاسية مسندة لهذه المديرية حالياً.
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-56 overflow-y-auto">
+                {executiveTasks.map((t) => (
+                  <div key={t.id} className="p-3.5 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9] space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-extrabold text-[#05261e]">{t.title}</span>
+                      <div className="flex items-center gap-1.5">
+                        {getPriorityBadge(t.priority)}
+                        {getStatusBadge(t.status)}
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-[#e5e4dc] text-xs">
-                      <div className="flex items-center gap-3">
-                        {getStatusBadge(task.status)}
-                        <span className="text-[#5e736e]">إنجاز: <strong className="text-[#0c3e35] font-bold">{task.completionPercentage}%</strong></span>
+                    {t.description && <p className="text-[#5e736e] leading-relaxed">{t.description}</p>}
+                    
+                    {/* Progress */}
+                    <div className="space-y-1 bg-[#f4f3ed] p-2 rounded-lg">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-[#0c3e35]">
+                        <span>نسبة الإنجاز:</span>
+                        <span>{t.completionPercentage}%</span>
                       </div>
-                      {task.completionNote && (
-                        <span className="text-[#0c3e35] text-[11px] bg-[#f4f3ed] px-2.5 py-0.5 rounded-md border border-[#d2d1c9] font-medium">
-                          ملاحظة: {task.completionNote}
-                        </span>
+                      <div className="w-full h-1.5 bg-[#d2d1c9]/60 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${t.completionPercentage === 100 ? 'bg-emerald-600' : 'bg-[#d4af37]'}`}
+                          style={{ width: `${t.completionPercentage}%` }}
+                        />
+                      </div>
+                      {t.completionNote && (
+                        <div className="text-[11px] text-[#05261e] mt-1 pt-1 border-t border-[#d2d1c9]/50">
+                          <strong>رد مدير المديرية: </strong>
+                          <span>{t.completionNote}</span>
+                        </div>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="p-6 text-center text-[#5e736e] text-xs bg-white rounded-2xl border border-dashed border-[#d2d1c9]">
-                لم يتم تسجيل مهام في الخطة الصباحية لهذا اليوم
-              </div>
             )}
           </div>
 
-          {/* Section 2: End-of-Day Summary */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-2">
+          {/* Section 1: Morning Plan Overview */}
+          <div className="p-5 rounded-[22px] bg-white border border-[#d2d1c9] space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#f0eee6] pb-3">
+              <h3 className="text-sm font-bold text-[#0c3e35] flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#0c3e35]" />
+                الخطة الصباحية المعتمدة
+              </h3>
+              <span className="text-xs font-bold text-[#5e736e]">
+                {item.tasks?.length || 0} مهام مجدولة
+              </span>
+            </div>
+
+            {item.generalFocus && (
+              <div className="p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-xs text-[#0c3e35]">
+                <strong className="font-bold">التركيز العام لليوم: </strong>
+                <span>{item.generalFocus}</span>
+              </div>
+            )}
+
+            {item.tasks && item.tasks.length > 0 ? (
+              <div className="space-y-2 mt-2">
+                {item.tasks.map((task, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9] flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="w-5 h-5 rounded-full bg-[#0c3e35] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <p className="font-bold text-[#05261e]">{task.title}</p>
+                        {task.description && (
+                          <p className="text-[11px] text-[#5e736e]">{task.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-[11px] font-bold text-[#0c3e35]">{task.completionPercentage}%</span>
+                      {getPriorityBadge(task.priority)}
+                      {getStatusBadge(task.status)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[#5e736e] py-3 text-center">لم يتم رفع خطة صباحية لهذا اليوم</p>
+            )}
+          </div>
+
+          {/* Section 2: Evening Summary Overview */}
+          <div className="p-5 rounded-[22px] bg-white border border-[#d2d1c9] space-y-3 shadow-xs">
+            <div className="flex items-center justify-between border-b border-[#f0eee6] pb-3">
               <h3 className="text-sm font-bold text-[#0c3e35] flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#d4af37]" />
-                ملخص الإنجاز المسائي والتحديات
+                ملخص الإنجاز المسائي
               </h3>
-              {item.summarySubmittedAt && (
-                <span className="text-[11px] text-[#5e736e] font-medium">
-                  وقت الإرسال: {new Date(item.summarySubmittedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+              {item.hasSummary && (
+                <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  نسبة الإنجاز الكلية: {item.completionRate}%
                 </span>
               )}
             </div>
 
             {item.hasSummary ? (
-              <div className="space-y-3">
-                {item.summaryText && (
-                  <div className="p-4 rounded-2xl bg-white border border-[#d2d1c9] text-xs leading-relaxed text-[#0c3e35]">
-                    <strong className="text-emerald-800 block mb-1 font-bold">ملخص الأعمال المنفذة:</strong>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <strong className="text-[#0c3e35] font-bold block mb-1">بيان إنجاز نهاية اليوم:</strong>
+                  <p className="p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#05261e] leading-relaxed">
                     {item.summaryText}
-                  </div>
-                )}
+                  </p>
+                </div>
 
                 {item.achievements && item.achievements.length > 0 && (
-                  <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-xs space-y-1.5">
-                    <strong className="text-emerald-800 block mb-1 font-bold">أهم الإنجازات المحققة:</strong>
-                    <ul className="list-disc list-inside space-y-1 text-emerald-900 font-medium">
+                  <div>
+                    <strong className="text-emerald-800 font-bold block mb-1">أبرز المحطات المنجزة:</strong>
+                    <ul className="list-disc list-inside space-y-1 text-[#05261e] pr-2">
                       {item.achievements.map((ach, i) => (
                         <li key={i}>{ach}</li>
                       ))}
@@ -270,34 +436,22 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                   </div>
                 )}
 
-                {(item.challenges || item.directorNotes) && (
-                  <div className={`p-4 rounded-2xl border text-xs leading-relaxed ${item.urgentFlag ? 'bg-red-50/80 border-red-200 text-red-950' : 'bg-amber-50/80 border-amber-200 text-amber-900'}`}>
-                    <strong className={`block mb-1 font-bold flex items-center gap-1.5 ${item.urgentFlag ? 'text-red-800' : 'text-amber-800'}`}>
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      {item.urgentFlag ? 'المعوقات والاحتياجات العاجلة الموجهة للمدير العام:' : 'المعوقات والتحديات التي واجهت المديرية:'}
-                    </strong>
-                    <p className="font-medium whitespace-pre-wrap">
-                      {item.challenges || item.directorNotes}
-                    </p>
-                    {item.challenges && item.directorNotes && item.challenges.trim() !== item.directorNotes.trim() && (
-                      <p className="mt-2 pt-2 border-t border-amber-200/60 font-medium whitespace-pre-wrap">
-                        {item.directorNotes}
-                      </p>
-                    )}
+                {item.challenges && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                    <strong className="font-bold block mb-0.5">العوائق والتحديات المعترضة:</strong>
+                    <span>{item.challenges}</span>
                   </div>
                 )}
 
-                {item.tomorrowPlanPreview && (
-                  <div className="p-3.5 rounded-2xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35]">
-                    <strong className="text-[#0c3e35] ml-1 font-bold">رؤية أولية لمهام الغد:</strong>
-                    {item.tomorrowPlanPreview}
+                {item.directorNotes && (
+                  <div>
+                    <strong className="text-[#0c3e35] font-bold block mb-1">مقترحات وتوصيات المدير:</strong>
+                    <p className="text-[#5e736e]">{item.directorNotes}</p>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="p-6 text-center text-[#5e736e] text-xs bg-white rounded-2xl border border-dashed border-[#d2d1c9]">
-                بانتظار قيام مدير المديرية بتقديم ملخص إنجاز نهاية الدوام
-              </div>
+              <p className="text-xs text-[#5e736e] py-3 text-center">لم يتم تسليم ملخص الإنجاز المسائي بعد</p>
             )}
           </div>
 

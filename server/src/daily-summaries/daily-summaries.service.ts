@@ -80,15 +80,23 @@ export class DailySummariesService {
       }
     }
 
-    // Calculate completion rate
+    // Calculate completion rate including plan tasks and executive tasks
     const tasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: plan.id },
     });
+    const execTasks = await this.prisma.executiveTask.findMany({
+      where: { directorateId },
+    });
+
+    const allPcts = [
+      ...tasks.map((t) => t.completionPercentage),
+      ...execTasks.map((t) => t.completionPercentage),
+    ];
 
     let overallRate = 100.0;
-    if (tasks.length > 0) {
-      const total = tasks.reduce((sum, t) => sum + t.completionPercentage, 0);
-      overallRate = Math.round((total / tasks.length) * 10) / 10;
+    if (allPcts.length > 0) {
+      const total = allPcts.reduce((sum, pct) => sum + pct, 0);
+      overallRate = Math.round((total / allPcts.length) * 10) / 10;
     }
 
     // Upsert summary

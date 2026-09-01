@@ -194,10 +194,17 @@ export class DailyPlansService {
     const allPlanTasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: task.dailyPlanId },
     });
+    const allExecTasks = await this.prisma.executiveTask.findMany({
+      where: { directorateId: task.dailyPlan.directorateId },
+    });
 
-    if (allPlanTasks.length > 0) {
-      const avg =
-        allPlanTasks.reduce((acc, curr) => acc + curr.completionPercentage, 0) / allPlanTasks.length;
+    const allPcts = [
+      ...allPlanTasks.map((t) => t.completionPercentage),
+      ...allExecTasks.map((t) => t.completionPercentage),
+    ];
+
+    if (allPcts.length > 0) {
+      const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
 
       const summary = await this.prisma.dailySummary.findUnique({
         where: { dailyPlanId: task.dailyPlanId },
@@ -211,15 +218,25 @@ export class DailyPlansService {
       }
     }
 
-    this.eventsGateway.emitTaskUpdated({
-      directorateId: task.dailyPlan.directorateId,
-      directorateName: task.dailyPlan.directorate.name,
-      taskId: updatedTask.id,
-      taskTitle: updatedTask.title,
-      status: updatedTask.status,
-      completionPercentage: updatedTask.completionPercentage,
-      completionNote: updatedTask.completionNote || undefined,
-    });
+    const hasStatusChanged = dto.status !== undefined && dto.status !== task.status;
+    const hasPercentageChanged =
+      dto.completionPercentage !== undefined && dto.completionPercentage !== task.completionPercentage;
+    const hasNoteChanged =
+      dto.completionNote !== undefined && (dto.completionNote || '').trim() !== (task.completionNote || '').trim();
+
+    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged;
+
+    if (hasChanges) {
+      this.eventsGateway.emitTaskUpdated({
+        directorateId: task.dailyPlan.directorateId,
+        directorateName: task.dailyPlan.directorate.name,
+        taskId: updatedTask.id,
+        taskTitle: updatedTask.title,
+        status: updatedTask.status,
+        completionPercentage: updatedTask.completionPercentage,
+        completionNote: updatedTask.completionNote || undefined,
+      });
+    }
 
     return updatedTask;
   }
