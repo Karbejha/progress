@@ -4,6 +4,9 @@ import {
   OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
@@ -20,7 +23,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   private logger: Logger = new Logger('EventsGateway');
 
   afterInit(server: Server) {
-    this.logger.log('WebSocket Gateway initialized');
+    this.logger.log('WebSocket Gateway initialized with secure rooms');
   }
 
   handleConnection(client: Socket) {
@@ -31,7 +34,42 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  // Real-time broadcast helpers
+  @SubscribeMessage('join')
+  handleJoinRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      userId?: string;
+      role?: string;
+      directorateId?: string;
+    },
+  ) {
+    if (!data) return;
+
+    // Join general authenticated room
+    client.join('room:authenticated');
+
+    if (data.userId) {
+      client.join(`room:user_${data.userId}`);
+    }
+
+    // Join executive room if leadership
+    if (data.role === 'GENERAL_DIRECTOR' || data.role === 'ASSISTANT_DIRECTOR') {
+      client.join('room:executive');
+      this.logger.log(`Socket ${client.id} joined room:executive (User: ${data.userId || 'Unknown'})`);
+    }
+
+    // Join directorate room if assigned
+    if (data.directorateId) {
+      const dirRoom = `room:directorate_${data.directorateId}`;
+      client.join(dirRoom);
+      this.logger.log(`Socket ${client.id} joined ${dirRoom}`);
+    }
+
+    return { status: 'joined', socketId: client.id };
+  }
+
+  // Real-time broadcast helpers to targeted rooms
   emitPlanSubmitted(payload: {
     directorateId: string;
     directorateName: string;
@@ -39,8 +77,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     tasksCount: number;
     planDate: string;
   }) {
-    this.logger.log(`Broadcasting plan:submitted for ${payload.directorateName}`);
-    this.server.emit('plan:submitted', payload);
+    this.logger.log(`Broadcasting plan:submitted for ${payload.directorateName} to room:executive and room:directorate_${payload.directorateId}`);
+    this.server.to('room:executive').to(`room:directorate_${payload.directorateId}`).emit('plan:submitted', payload);
   }
 
   emitTaskUpdated(payload: {
@@ -52,8 +90,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     completionPercentage: number;
     completionNote?: string;
   }) {
-    this.logger.log(`Broadcasting task:updated for ${payload.directorateName}`);
-    this.server.emit('task:updated', payload);
+    this.logger.log(`Broadcasting task:updated for ${payload.directorateName} to room:executive and room:directorate_${payload.directorateId}`);
+    this.server.to('room:executive').to(`room:directorate_${payload.directorateId}`).emit('task:updated', payload);
   }
 
   emitSummarySubmitted(payload: {
@@ -64,8 +102,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     urgentFlag: boolean;
     summaryText: string;
   }) {
-    this.logger.log(`Broadcasting summary:submitted for ${payload.directorateName}`);
-    this.server.emit('summary:submitted', payload);
+    this.logger.log(`Broadcasting summary:submitted for ${payload.directorateName} to room:executive and room:directorate_${payload.directorateId}`);
+    this.server.to('room:executive').to(`room:directorate_${payload.directorateId}`).emit('summary:submitted', payload);
   }
 
   emitFeedbackSent(payload: {
@@ -74,8 +112,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     feedbackText: string;
     rating?: number;
   }) {
-    this.logger.log(`Broadcasting feedback:sent to directorate ${payload.directorateId}`);
-    this.server.emit('feedback:sent', payload);
+    this.logger.log(`Broadcasting feedback:sent to room:directorate_${payload.directorateId} and room:executive`);
+    this.server.to(`room:directorate_${payload.directorateId}`).to('room:executive').emit('feedback:sent', payload);
   }
 
   emitAnnouncementCreated(payload: {
@@ -87,8 +125,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     authorName: string;
     createdAt?: string;
   }) {
-    this.logger.log(`Broadcasting announcement:created: ${payload.title} by ${payload.authorName}`);
-    this.server.emit('announcement:created', payload);
+    this.logger.log(`Broadcasting announcement:created: ${payload.title} to room:authenticated`);
+    this.server.to('room:authenticated').emit('announcement:created', payload);
   }
 
   emitExecutiveTaskCreated(payload: {
@@ -97,8 +135,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     directorateName: string;
     assignedByName: string;
   }) {
-    this.logger.log(`Broadcasting executive-task:created to directorate ${payload.directorateName}`);
-    this.server.emit('executive-task:created', payload);
+    this.logger.log(`Broadcasting executive-task:created to room:directorate_${payload.directorateId} and room:executive`);
+    this.server.to(`room:directorate_${payload.directorateId}`).to('room:executive').emit('executive-task:created', payload);
   }
 
   emitExecutiveTaskUpdated(payload: {
@@ -107,16 +145,16 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     directorateName: string;
     updatedByRole: string;
   }) {
-    this.logger.log(`Broadcasting executive-task:updated for task ${payload.task.id}`);
-    this.server.emit('executive-task:updated', payload);
+    this.logger.log(`Broadcasting executive-task:updated for task ${payload.task.id} to targeted rooms`);
+    this.server.to(`room:directorate_${payload.directorateId}`).to('room:executive').emit('executive-task:updated', payload);
   }
 
   emitExecutiveTaskDeleted(payload: {
     taskId: string;
     directorateId: string;
   }) {
-    this.logger.log(`Broadcasting executive-task:deleted for task ${payload.taskId}`);
-    this.server.emit('executive-task:deleted', payload);
+    this.logger.log(`Broadcasting executive-task:deleted for task ${payload.taskId} to targeted rooms`);
+    this.server.to(`room:directorate_${payload.directorateId}`).to('room:executive').emit('executive-task:deleted', payload);
   }
 }
 

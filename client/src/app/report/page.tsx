@@ -187,6 +187,100 @@ function ReportContent() {
           </table>
         </div>
 
+        {/* Joint Executive Directives & Collaborative Tasks (if any exist) */}
+        {(() => {
+          const allExecTasks = directorates.flatMap((d) =>
+            (d.executiveTasks || []).map((et) => ({
+              ...et,
+              directorateName: d.directorateName,
+              directorateId: d.directorateId,
+            }))
+          );
+
+          if (allExecTasks.length === 0) return null;
+
+          const groupMap = new Map<string, any>();
+          allExecTasks.forEach((et) => {
+            const key = et.sharedGroupId || `single_${et.id}`;
+            if (!groupMap.has(key)) {
+              groupMap.set(key, {
+                key,
+                title: et.title,
+                description: et.description,
+                priority: et.priority,
+                isShared: !!et.sharedGroupId,
+                subTasks: [],
+              });
+            }
+            groupMap.get(key).subTasks.push(et);
+          });
+
+          const groups = Array.from(groupMap.values());
+          if (groups.length === 0) return null;
+
+          return (
+            <div className="p-4 print:p-2 rounded-2xl bg-[#edece4] print:bg-gray-50 border border-[#d2d1c9] print:border-gray-300 space-y-2.5 print:break-inside-avoid">
+              <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-1.5">
+                <h3 className="text-xs print:text-[10px] font-extrabold text-[#0c3e35] print:text-black flex items-center gap-1.5">
+                  <span>📌 موقف التكليفات والمهام الرئاسية المشتركة والمنفردة:</span>
+                </h3>
+                <span className="text-[11px] print:text-[8px] text-[#5e736e] print:text-gray-600 font-bold">
+                  إجمالي التكليفات: {groups.length}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {groups.map((g, idx) => {
+                  const count = g.subTasks.length;
+                  const avgPct = Math.round(
+                    (g.subTasks.reduce((s: number, t: any) => s + (t.completionPercentage || 0), 0) / (count || 1)) * 10
+                  ) / 10;
+
+                  return (
+                    <div
+                      key={g.key}
+                      className="p-2.5 print:p-1.5 rounded-xl bg-white print:bg-white border border-[#d2d1c9] text-xs print:text-[8.5px] space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-[#0c3e35] print:text-black">
+                            {idx + 1}. {g.title}
+                          </span>
+                          {count > 1 ? (
+                            <span className="text-[10px] print:text-[7.5px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold">
+                              مهمة مشتركة ({count} مديريات)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] print:text-[7.5px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300 font-bold">
+                              {g.subTasks[0]?.directorateName}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-extrabold text-[#0c3e35] print:text-black shrink-0">
+                          متوسط الإنجاز: {avgPct}%
+                        </span>
+                      </div>
+
+                      {count > 1 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {g.subTasks.map((st: any) => (
+                            <span
+                              key={st.id}
+                              className="text-[10px] print:text-[7.5px] px-2 py-0.5 rounded-md bg-[#f4f3ed] border border-[#d2d1c9] text-[#05261e] font-medium"
+                            >
+                              <strong>{st.directorateName}:</strong> {st.completionPercentage}% ({st.status === 'COMPLETED' ? 'منجز' : st.status === 'IN_PROGRESS' ? 'قيد العمل' : 'انتظار'})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Signatures & Executive Approval Block */}
         <div className="pt-8 print:pt-2 print:mt-1.5 grid grid-cols-2 text-center text-xs print:text-[9.5px] font-bold text-[#0c3e35] print:text-black print:break-inside-avoid">
           <div className="space-y-8 print:space-y-3">

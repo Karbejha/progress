@@ -57,7 +57,11 @@ export class ExecutiveTasksController {
 
   @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)
   @Delete(':id')
-  deleteTask(@Request() req: any, @Param('id') id: string) {
-    return this.tasksService.deleteTask(req.user, id);
+  deleteTask(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('deleteAllInGroup') deleteAllInGroup?: string,
+  ) {
+    return this.tasksService.deleteTask(req.user, id, { deleteAllInGroup });
   }
 }

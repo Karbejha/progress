@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, Priority, TaskStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
+import { randomUUID } from 'crypto';
 
 export interface CreateExecutiveTaskDto {
   title: string;
@@ -31,6 +32,98 @@ export class ExecutiveTasksService {
     private eventsGateway: EventsGateway,
   ) {}
 
+  private async enrichTasksWithCoTasks(tasks: any[]) {
+    if (!tasks || tasks.length === 0) return [];
+
+    const groupIds = Array.from(
+      new Set(tasks.map((t) => t.sharedGroupId).filter(Boolean))
+    ) as string[];
+
+    let siblingMap = new Map<string, any[]>();
+    if (groupIds.length > 0) {
+      const allGroupTasks = await this.prisma.executiveTask.findMany({
+        where: { sharedGroupId: { in: groupIds } },
+        include: {
+          directorate: {
+            select: { id: true, code: true, name: true, category: true, icon: true },
+          },
+        },
+        orderBy: { directorate: { displayOrder: 'asc' } },
+      });
+
+      for (const gt of allGroupTasks) {
+        if (!gt.sharedGroupId) continue;
+        const arr = siblingMap.get(gt.sharedGroupId) || [];
+        arr.push(gt);
+        siblingMap.set(gt.sharedGroupId, arr);
+      }
+    }
+
+    return tasks.map((task) => {
+      if (task.sharedGroupId && siblingMap.has(task.sharedGroupId)) {
+        const siblings = siblingMap.get(task.sharedGroupId) || [];
+        const isShared = siblings.length > 1;
+        const coTasks = siblings.map((s) => ({
+          id: s.id,
+          directorateId: s.directorateId,
+          directorateName: s.directorate?.name || 'مديرية',
+          directorateCode: s.directorate?.code || '',
+          directorateCategory: s.directorate?.category || '',
+          directorateIcon: s.directorate?.icon || '',
+          status: s.status,
+          completionPercentage: s.completionPercentage,
+          completionNote: s.completionNote || null,
+        }));
+
+        return {
+          ...task,
+          isShared,
+          sharedDirectoratesCount: siblings.length,
+          coTasks,
+        };
+      }
+
+      return {
+        ...task,
+        isShared: false,
+        sharedDirectoratesCount: 1,
+        coTasks: [],
+      };
+    });
+  }
+
+  private async recalculateDailySummary(directorateId: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayPlan = await this.prisma.dailyPlan.findUnique({
+      where: {
+        directorateId_planDate: {
+          directorateId,
+          planDate: today,
+        },
+      },
+      include: { tasks: true, dailySummary: true },
+    });
+
+    if (todayPlan?.dailySummary) {
+      const planTasks = todayPlan.tasks;
+      const allExecTasks = await this.prisma.executiveTask.findMany({
+        where: { directorateId },
+      });
+      const allPcts = [
+        ...planTasks.map((t) => t.completionPercentage),
+        ...allExecTasks.map((t) => t.completionPercentage),
+      ];
+      const newRate = allPcts.length > 0
+        ? Math.round((allPcts.reduce((sum, p) => sum + p, 0) / allPcts.length) * 10) / 10
+        : 100;
+      await this.prisma.dailySummary.update({
+        where: { id: todayPlan.dailySummary.id },
+        data: { overallCompletionRate: newRate },
+      });
+    }
+  }
+
   async getTasks(user: any, query?: { directorateId?: string; status?: TaskStatus; priority?: Priority }) {
     const isExecutive = user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR;
     const where: any = {};
@@ -52,7 +145,7 @@ export class ExecutiveTasksService {
       where.priority = query.priority;
     }
 
-    return this.prisma.executiveTask.findMany({
+    const tasks = await this.prisma.executiveTask.findMany({
       where,
       include: {
         assignedBy: {
@@ -70,6 +163,8 @@ export class ExecutiveTasksService {
         { createdAt: 'desc' },
       ],
     });
+
+    return this.enrichTasksWithCoTasks(tasks);
   }
 
   async getTaskById(user: any, id: string) {
@@ -97,7 +192,8 @@ export class ExecutiveTasksService {
       throw new ForbiddenException('غير مصرح لك بالاطلاع على هذا التكليف');
     }
 
-    return task;
+    const [enriched] = await this.enrichTasksWithCoTasks([task]);
+    return enriched;
   }
 
   async createTasks(user: any, dto: CreateExecutiveTaskDto) {
@@ -110,6 +206,8 @@ export class ExecutiveTasksService {
     }
 
     const dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+    const isJoint = dto.directorateIds.length > 1;
+    const sharedGroupId = isJoint ? randomUUID() : null;
     const createdTasks = [];
 
     for (const directorateId of dto.directorateIds) {
@@ -130,6 +228,7 @@ export class ExecutiveTasksService {
           assignedById: user.id,
           directorateId,
           assignedToUserId: dto.assignedToUserId || null,
+          sharedGroupId,
         },
         include: {
           assignedBy: {
@@ -154,7 +253,7 @@ export class ExecutiveTasksService {
       });
     }
 
-    return createdTasks;
+    return this.enrichTasksWithCoTasks(createdTasks);
   }
 
   async updateTask(user: any, id: string, dto: UpdateExecutiveTaskDto) {
@@ -176,7 +275,20 @@ export class ExecutiveTasksService {
     let dataToUpdate: any = {};
 
     if (isExecutive) {
-      // Executive can edit everything
+      // If executive is changing global metadata on a shared task, synchronize across group
+      if (existingTask.sharedGroupId && (dto.title !== undefined || dto.description !== undefined || dto.priority !== undefined || dto.dueDate !== undefined)) {
+        const sharedUpdates: any = {};
+        if (dto.title !== undefined) sharedUpdates.title = dto.title.trim();
+        if (dto.description !== undefined) sharedUpdates.description = dto.description?.trim() || null;
+        if (dto.priority !== undefined) sharedUpdates.priority = dto.priority;
+        if (dto.dueDate !== undefined) sharedUpdates.dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
+
+        await this.prisma.executiveTask.updateMany({
+          where: { sharedGroupId: existingTask.sharedGroupId },
+          data: sharedUpdates,
+        });
+      }
+
       if (dto.title !== undefined) dataToUpdate.title = dto.title.trim();
       if (dto.description !== undefined) dataToUpdate.description = dto.description?.trim() || null;
       if (dto.priority !== undefined) dataToUpdate.priority = dto.priority;
@@ -192,13 +304,11 @@ export class ExecutiveTasksService {
       if (dto.completionPercentage !== undefined) dataToUpdate.completionPercentage = dto.completionPercentage;
       if (dto.completionNote !== undefined) dataToUpdate.completionNote = dto.completionNote;
 
-      // Auto-set status if 100%
       if (dto.completionPercentage === 100 && !dto.status) {
         dataToUpdate.status = TaskStatus.COMPLETED;
       }
     }
 
-    // Check if there are any meaningful changes compared to existingTask
     const hasStatusChanged = dataToUpdate.status !== undefined && dataToUpdate.status !== existingTask.status;
     const hasPercentageChanged = dataToUpdate.completionPercentage !== undefined && dataToUpdate.completionPercentage !== existingTask.completionPercentage;
     const hasNoteChanged = dataToUpdate.completionNote !== undefined && (dataToUpdate.completionNote || '').trim() !== (existingTask.completionNote || '').trim();
@@ -225,36 +335,7 @@ export class ExecutiveTasksService {
       },
     });
 
-    // If daily summary exists for today, recalculate its overallCompletionRate
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayPlan = await this.prisma.dailyPlan.findUnique({
-      where: {
-        directorateId_planDate: {
-          directorateId: updated.directorateId,
-          planDate: today,
-        },
-      },
-      include: { tasks: true, dailySummary: true },
-    });
-
-    if (todayPlan?.dailySummary) {
-      const planTasks = todayPlan.tasks;
-      const allExecTasks = await this.prisma.executiveTask.findMany({
-        where: { directorateId: updated.directorateId },
-      });
-      const allPcts = [
-        ...planTasks.map((t) => t.completionPercentage),
-        ...allExecTasks.map((t) => t.completionPercentage),
-      ];
-      if (allPcts.length > 0) {
-        const newRate = Math.round((allPcts.reduce((sum, p) => sum + p, 0) / allPcts.length) * 10) / 10;
-        await this.prisma.dailySummary.update({
-          where: { id: todayPlan.dailySummary.id },
-          data: { overallCompletionRate: newRate },
-        });
-      }
-    }
+    await this.recalculateDailySummary(updated.directorateId);
 
     if (hasChanges) {
       this.eventsGateway.emitExecutiveTaskUpdated({
@@ -265,10 +346,11 @@ export class ExecutiveTasksService {
       });
     }
 
-    return updated;
+    const [enriched] = await this.enrichTasksWithCoTasks([updated]);
+    return enriched;
   }
 
-  async deleteTask(user: any, id: string) {
+  async deleteTask(user: any, id: string, query?: { deleteAllInGroup?: boolean | string }) {
     const isExecutive = user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR;
     if (!isExecutive) {
       throw new ForbiddenException('فقط الإدارة العليا يمكنها حذف التكليفات');
@@ -282,46 +364,40 @@ export class ExecutiveTasksService {
       throw new NotFoundException('التكليف غير موجود');
     }
 
-    await this.prisma.executiveTask.delete({
-      where: { id },
-    });
+    const shouldDeleteAll = (query?.deleteAllInGroup === true || query?.deleteAllInGroup === 'true') && !!task.sharedGroupId;
 
-    // If daily summary exists for today, recalculate its overallCompletionRate
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayPlan = await this.prisma.dailyPlan.findUnique({
-      where: {
-        directorateId_planDate: {
-          directorateId: task.directorateId,
-          planDate: today,
-        },
-      },
-      include: { tasks: true, dailySummary: true },
-    });
+    if (shouldDeleteAll && task.sharedGroupId) {
+      const allInGroup = await this.prisma.executiveTask.findMany({
+        where: { sharedGroupId: task.sharedGroupId },
+      });
 
-    if (todayPlan?.dailySummary) {
-      const planTasks = todayPlan.tasks;
-      const allExecTasks = await this.prisma.executiveTask.findMany({
-        where: { directorateId: task.directorateId },
+      await this.prisma.executiveTask.deleteMany({
+        where: { sharedGroupId: task.sharedGroupId },
       });
-      const allPcts = [
-        ...planTasks.map((t) => t.completionPercentage),
-        ...allExecTasks.map((t) => t.completionPercentage),
-      ];
-      const newRate = allPcts.length > 0
-        ? Math.round((allPcts.reduce((sum, p) => sum + p, 0) / allPcts.length) * 10) / 10
-        : 100;
-      await this.prisma.dailySummary.update({
-        where: { id: todayPlan.dailySummary.id },
-        data: { overallCompletionRate: newRate },
+
+      for (const t of allInGroup) {
+        await this.recalculateDailySummary(t.directorateId);
+        this.eventsGateway.emitExecutiveTaskDeleted({
+          taskId: t.id,
+          directorateId: t.directorateId,
+        });
+      }
+
+      return { message: 'تم حذف التكليف المشترك لكافة المديريات بنجاح', count: allInGroup.length, taskId: id };
+    } else {
+      await this.prisma.executiveTask.delete({
+        where: { id },
       });
+
+      await this.recalculateDailySummary(task.directorateId);
+
+      this.eventsGateway.emitExecutiveTaskDeleted({
+        taskId: id,
+        directorateId: task.directorateId,
+      });
+
+      return { message: 'تم حذف التكليف بنجاح', taskId: id };
     }
-
-    this.eventsGateway.emitExecutiveTaskDeleted({
-      taskId: id,
-      directorateId: task.directorateId,
-    });
-
-    return { message: 'تم حذف التكليف بنجاح', taskId: id };
   }
 }
+

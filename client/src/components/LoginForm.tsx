@@ -4,7 +4,16 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { api } from '../services/api';
 import { User } from '../types';
-import { Lock, User as UserIcon, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import {
+  Lock,
+  User as UserIcon,
+  Eye,
+  EyeOff,
+  LogIn,
+  AlertCircle,
+  Sparkles,
+  Loader2,
+} from 'lucide-react';
 
 interface LoginFormProps {
   onLoginSuccess: (user: User) => void;
@@ -20,7 +29,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usernameOrEmail.trim() || !password) {
-      setError('يرجى إدخال اسم المستخدم وكلمة المرور');
+      setError('يرجى إدخال اسم المستخدم أو البريد الإلكتروني وكلمة المرور');
       return;
     }
 
@@ -33,113 +42,233 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       });
       onLoginSuccess(res.user);
     } catch (err: any) {
-      setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة');
+      setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة، يرجى المحاولة مجدداً');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#f4f3ed] font-sans">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen w-full flex items-center justify-center p-3 sm:p-6 lg:p-8 relative overflow-hidden bg-[#031814] font-sans selection:bg-[#d4af37]/30 selection:text-[#d4af37]">
 
-        {/* Main Login Card */}
-        <div className="bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-brand-card overflow-hidden">
+      {/* Background Lighting & Nautical Patterns */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Ambient Radial Lights */}
+        <div className="absolute -top-36 -right-36 w-[650px] h-[650px] rounded-full bg-gradient-to-br from-[#0c3e35]/70 via-[#05261e]/40 to-transparent blur-3xl opacity-80" />
+        <div className="absolute -bottom-40 -left-40 w-[750px] h-[750px] rounded-full bg-gradient-to-tr from-[#0c3e35]/80 via-[#d4af37]/15 to-transparent blur-3xl opacity-70" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[950px] h-[950px] rounded-full bg-radial from-[#0c3e35]/20 via-transparent to-transparent blur-2xl" />
 
-          {/* Header Banner */}
-          <div className="bg-[#05261e] p-8 text-center text-white border-b border-[#0c3e35] relative">
-            <div className="w-16 h-16 rounded-2xl bg-[#0c3e35] border border-[#d4af37] mx-auto mb-3 flex items-center justify-center p-2.5 shadow-md">
-              <Image
-                src="/assets/Syrian_logo_icon_gold.svg"
-                alt="شعار المديرية العامة للموانئ"
-                width={44}
-                height={44}
-                className="object-contain"
-              />
-            </div>
-            <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 inline-block mb-1">
+        {/* Decorative Grid Mesh */}
+        <svg
+          className="absolute inset-0 w-full h-full opacity-[0.035] text-[#d4af37]"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            <pattern id="nautical-grid" width="44" height="44" patternUnits="userSpaceOnUse">
+              <path d="M 44 0 L 0 0 0 44" fill="none" stroke="currentColor" strokeWidth="0.8" />
+              <circle cx="22" cy="22" r="1" fill="currentColor" opacity="0.6" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#nautical-grid)" />
+        </svg>
+
+        {/* Ambient bottom golden sheen */}
+        <div className="absolute bottom-0 inset-x-0 h-40 opacity-[0.08] bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-[#d4af37] via-transparent to-transparent" />
+      </div>
+
+      {/* Main Luxury Card Container */}
+      <div className="w-full max-w-5xl rounded-[28px] sm:rounded-[36px] border border-[#d4af37]/35 shadow-[0_30px_90px_-20px_rgba(0,0,0,0.75)] backdrop-blur-2xl bg-[#05261e]/90 overflow-hidden grid grid-cols-1 lg:grid-cols-12 relative z-10 animate-fadeIn my-auto">
+
+        {/* ======================================================== */}
+        {/* RIGHT COLUMN: Institutional Showcase Hero (7 Cols) */}
+        {/* ======================================================== */}
+        <div className="lg:col-span-7 p-6 sm:p-10 lg:p-12 flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-[#05261e] via-[#072f26] to-[#031814] text-white border-b lg:border-b-0 lg:border-l border-[#d4af37]/25">
+
+          {/* Subtle Ambient Light Corner Glow */}
+          <div className="absolute top-0 right-0 w-72 h-72 bg-gradient-to-bl from-[#d4af37]/15 via-transparent to-transparent pointer-events-none blur-2xl" />
+
+          {/* Top Empty Placeholder for spacing balance */}
+          <div className="hidden lg:block h-2" />
+
+          {/* Centered Institutional Branding Section */}
+          <div className="my-auto py-6 lg:py-8 text-center flex flex-col items-center justify-center space-y-4 relative z-10">
+
+            {/* Unified Institutional Badge */}
+            <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#d4af37] animate-ping" />
               الجمهورية العربية السورية
             </span>
-            <h2 className="text-xl font-black text-white tracking-tight mt-1">
-              المديرية العامة للموانئ
-            </h2>
-            <p className="text-xs text-[#8daaa2] mt-0.5 font-medium">
-              منظومة متابعة الخطط والإنجاز اليومي
-            </p>
+
+            {/* Emblem Capsule */}
+            <div className="relative pt-1">
+              <div className="absolute -inset-1.5 rounded-3xl bg-gradient-to-tr from-[#d4af37]/40 via-[#d4af37]/20 to-transparent blur-sm" />
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#0c3e35] to-[#05261e] border-2 border-[#d4af37] flex items-center justify-center p-3.5 sm:p-4 shadow-2xl relative">
+                <Image
+                  src="/assets/Syrian_logo_icon_gold.svg"
+                  alt="شعار الجمهورية العربية السورية"
+                  width={68}
+                  height={68}
+                  className="object-contain drop-shadow-[0_4px_12px_rgba(212,175,55,0.4)]"
+                  priority
+                />
+              </div>
+            </div>
+
+            {/* Main Institutional Header Titles */}
+            <div className="space-y-1.5 max-w-md mx-auto pt-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
+                المديرية العامة للموانئ
+              </h1>
+              <p className="text-xs sm:text-sm font-bold text-[#d4af37] flex items-center justify-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#d4af37] shrink-0" />
+                <span>منظومة متابعة الخطط الصباحية والإنجاز اليومي</span>
+              </p>
+
+            </div>
+
           </div>
 
-          {/* Form Content */}
-          <form onSubmit={handleSubmit} className="p-7 space-y-5">
-
-            {error && (
-              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2 animate-fadeIn font-medium">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Username Field */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-[#0c3e35]">
-                اسم المستخدم أو البريد الإلكتروني:
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="أدخل اسم المستخدم أو البريد الإلكتروني"
-                  value={usernameOrEmail}
-                  onChange={(e) => setUsernameOrEmail(e.target.value)}
-                  className="w-full pl-4 pr-11 py-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] transition font-medium"
-                />
-                <UserIcon className="w-4 h-4 text-[#5e736e] absolute right-3.5 top-3.5" />
-              </div>
+          {/* Bottom Security / Trust Seal */}
+          <div className="pt-4 mt-auto border-t border-white/[0.08] flex items-center justify-center text-[11px] text-[#8daaa2] relative z-10">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              <span className="font-semibold text-white/90">بوابة الاتصال الحكومية الموحدة</span>
             </div>
-
-            {/* Password Field */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-[#0c3e35]">
-                كلمة المرور:
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-11 py-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] transition font-medium"
-                />
-                <Lock className="w-4 h-4 text-[#5e736e] absolute right-3.5 top-3.5" />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3.5 top-3.5 text-[#5e736e] hover:text-[#0c3e35] transition cursor-pointer"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 px-4 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>{loading ? 'جاري التحقق والدخول...' : 'تسجيل الدخول إلى المنظومة'}</span>
-            </button>
-
-          </form>
+          </div>
 
         </div>
 
-        {/* Footer Note */}
-        <p className="text-center text-[11px] text-[#5e736e] font-medium">
-          الجمهورية العربية السورية • المديرية العامة للموانئ © 2026
-        </p>
+        {/* ======================================================== */}
+        {/* LEFT COLUMN: Modern Executive Login Form Card (5 Cols) */}
+        {/* ======================================================== */}
+        <div className="lg:col-span-5 p-6 sm:p-8 lg:p-9 flex flex-col justify-between bg-[#f4f3ed] relative">
+
+          <div className="space-y-5">
+
+            {/* Form Header */}
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#edece4] border border-[#d2d1c9] text-[#0c3e35] text-xs font-bold mb-1">
+                <Lock className="w-3.5 h-3.5 text-[#0c3e35]" />
+                <span>الوصول المصرح به</span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-[#0c3e35] tracking-tight">
+                تسجيل الدخول
+              </h2>
+              <p className="text-xs text-[#5e736e] font-medium leading-relaxed">
+                أدخل بيانات الاعتماد الخاصة بحسابك للوصول إلى المنظومة.
+              </p>
+            </div>
+
+            {/* Error Message Box */}
+            {error && (
+              <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200/90 text-red-900 text-xs flex items-start gap-2.5 animate-fadeIn shadow-xs font-medium">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{error}</span>
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+
+              {/* Username / Email Field */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-[#0c3e35]">
+                  اسم المستخدم أو البريد الإلكتروني <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <input
+                    type="text"
+                    required
+                    autoComplete="username"
+                    placeholder="اسم المستخدم أو البريد الإلكتروني"
+                    value={usernameOrEmail}
+                    onChange={(e) => setUsernameOrEmail(e.target.value)}
+                    disabled={loading}
+                    className="w-full pl-4 pr-11 py-3.5 rounded-2xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 transition duration-200 font-medium shadow-2xs group-hover:border-[#0c3e35]/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <div className="absolute right-3.5 top-3.5 w-5 h-5 flex items-center justify-center text-[#5e736e] group-focus-within:text-[#0c3e35] transition">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-[#0c3e35]">
+                  كلمة المرور <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    className="w-full pl-11 pr-11 py-3.5 rounded-2xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 transition duration-200 font-medium shadow-2xs group-hover:border-[#0c3e35]/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <div className="absolute right-3.5 top-3.5 w-5 h-5 flex items-center justify-center text-[#5e736e] group-focus-within:text-[#0c3e35] transition">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute left-3.5 top-3.5 text-[#5e736e] hover:text-[#0c3e35] p-0.5 rounded-lg hover:bg-black/5 transition cursor-pointer"
+                    tabIndex={-1}
+                    title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                    aria-label="إظهار وإخفاء كلمة المرور"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Action Button */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 sm:py-4 px-5 rounded-2xl bg-gradient-to-r from-[#0c3e35] via-[#0e483e] to-[#05261e] hover:from-[#165b4f] hover:to-[#0c3e35] text-white font-bold text-xs sm:text-[13px] shadow-lg shadow-[#0c3e35]/25 hover:shadow-xl hover:shadow-[#0c3e35]/35 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 cursor-pointer border border-[#d4af37]/35 group"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
+                      <span>جاري التحقق والدخول...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4 text-[#d4af37] group-hover:translate-x-[-2px] transition-transform duration-200" />
+                      <span>تسجيل الدخول</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
+
+            {/* Help & IT Support Note */}
+            <div className="p-3 sm:p-3.5 rounded-2xl bg-[#edece4] border border-[#d2d1c9] text-[10.5px] sm:text-[11px] text-[#5e736e] leading-relaxed">
+              <p className="font-semibold text-[#0c3e35] mb-0.5">ملاحظة هامة للمستخدمين:</p>
+              في حال تعثر تسجيل الدخول أو الحاجة لتحديث بيانات الحساب، يرجى مراجعة إدارة المنظومة وقسم المعلوماتية.
+            </div>
+
+          </div>
+
+          {/* Institutional Footer */}
+          <div className="pt-5 mt-5 border-t border-[#d2d1c9] text-center">
+            <p className="text-[10.5px] text-[#5e736e] font-semibold">
+              الجمهورية العربية السورية • المديرية العامة للموانئ
+            </p>
+            <p className="text-[10px] text-[#8daaa2] mt-0.5 font-medium">
+              جميع الحقوق محفوظة © {new Date().getFullYear()}
+            </p>
+          </div>
+
+        </div>
 
       </div>
     </div>

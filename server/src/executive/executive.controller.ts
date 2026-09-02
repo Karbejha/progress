@@ -29,8 +29,19 @@ export class ExecutiveController {
   }
 
   @Get('announcements')
-  getAnnouncements() {
-    return this.executiveService.getAnnouncements();
+  getAnnouncements(@Request() req: any) {
+    return this.executiveService.getAnnouncements(req.user);
+  }
+
+  @Post('announcements/:id/read')
+  markAnnouncementAsRead(@Request() req: any, @Param('id') id: string) {
+    return this.executiveService.markAnnouncementAsRead(req.user, id);
+  }
+
+  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)
+  @Get('announcements/:id/readers')
+  getAnnouncementReaders(@Request() req: any, @Param('id') id: string) {
+    return this.executiveService.getAnnouncementReaders(req.user, id);
   }
 
   @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)

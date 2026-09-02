@@ -23,6 +23,8 @@ import {
   Send,
   Users,
   Layers,
+  Plus,
+  Eye,
 } from 'lucide-react';
 
 import { UsersManagementModal } from './UsersManagementModal';
@@ -48,6 +50,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [selectedDirectorate, setSelectedDirectorate] = useState<DirectorateOverviewItem | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [showAnnouncementsListModal, setShowAnnouncementsListModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showTasksModal, setShowTasksModal] = useState(false);
   const [activeTasksCount, setActiveTasksCount] = useState(0);
@@ -294,11 +297,27 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
           </button>
 
           <button
+            onClick={() => {
+              loadAnnouncements();
+              setShowAnnouncementsListModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
+          >
+            <Megaphone className="w-4 h-4 text-[#d4af37]" />
+            <span>التعاميم وسجل القراءة</span>
+            {announcements.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+                {announcements.length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setShowAnnouncementModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
           >
-            <Megaphone className="w-4 h-4" />
-            <span>إصدار تعميم</span>
+            <Plus className="w-4 h-4 text-[#d4af37]" />
+            <span>إصدار تعميم جديد</span>
           </button>
         </div>
       </div>
@@ -390,9 +409,56 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         </div>
       )}
 
-      {/* Announcements Bar (Only displayed if unread and not authored by the user) */}
+      {/* Announcements Bar */}
       {(() => {
-        if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR') return null;
+        const isExec = currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR';
+
+        if (isExec) {
+          if (announcements.length === 0) return null;
+          const latestAnn = announcements[0];
+          return (
+            <div
+              onClick={() => {
+                setSelectedAnnouncement({
+                  id: latestAnn.id,
+                  isAnnouncement: true,
+                  type: 'announcement',
+                  title: latestAnn.title,
+                  content: latestAnn.content,
+                  authorName: latestAnn.author?.fullName || 'المدير العام للموانئ',
+                  authorTitle: latestAnn.author?.title || 'المدير العام',
+                  priority: latestAnn.priority,
+                  createdAt: latestAnn.createdAt,
+                });
+              }}
+              className="p-4 rounded-2xl bg-white border border-[#d2d1c9] hover:border-[#0c3e35] transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer shadow-xs animate-fadeIn"
+            >
+              <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 shadow-xs">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
+                      آخر تعميم إداري صادر
+                    </span>
+                    <h4 className="text-xs font-bold text-[#0c3e35] truncate">{latestAnn.title}</h4>
+                  </div>
+                  <p className="text-xs text-[#5e736e] mt-0.5 truncate">{latestAnn.content}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-1.5 bg-[#f4f3ed] px-3 py-1.5 rounded-xl border border-[#d2d1c9] text-xs text-[#0c3e35] font-bold">
+                  <Eye className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>سجل القراءة: {latestAnn.readPercentage || 0}% ({latestAnn.readCount || 0} مديرية)</span>
+                </div>
+                <span className="text-[11px] text-[#0c3e35] font-bold bg-[#edece4] hover:bg-[#0c3e35] hover:text-white px-3.5 py-1.5 rounded-xl border border-[#d2d1c9] transition">
+                  عرض سجل المطّلعين
+                </span>
+              </div>
+            </div>
+          );
+        }
 
         const unreadAnnouncements = announcements.filter(
           (a) => !readAnnouncementIds.includes(a.id) && a.authorId !== currentUser.id
@@ -408,6 +474,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
               markAnnouncementAsRead(currentUser.id, currentAnn.id);
               setSelectedAnnouncement({
                 id: currentAnn.id,
+                isAnnouncement: true,
+                type: 'announcement',
                 title: currentAnn.title,
                 content: currentAnn.content,
                 authorName: currentAnn.author?.fullName || 'المدير العام للموانئ',
@@ -691,9 +759,144 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         document.body
       )}
 
+      {/* Published Announcements & Readership List Modal */}
+      {showAnnouncementsListModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
+          onClick={() => setShowAnnouncementsListModal(false)}
+        >
+          <div
+            className="w-full max-w-3xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-[#d2d1c9] bg-[#05261e] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white">
+                    التعاميم الصادرة وسجل القراءة والاطلاع
+                  </h3>
+                  <p className="text-xs text-[#8daaa2]">
+                    متابعة مدى اطلاع مدراء المديريات على التعاميم الرسمية الصادرة
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAnnouncementsListModal(false)}
+                className="p-2 rounded-xl text-[#8daaa2] hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {announcements.length === 0 ? (
+                <div className="py-12 text-center text-[#5e736e] text-xs">
+                  لا توجد تعاميم إدارية صادرة حتى الآن. يمكنك إصدار تعميم جديد من زر "إصدار تعميم جديد".
+                </div>
+              ) : (
+                announcements.map((ann) => {
+                  const percent = ann.readPercentage || 0;
+                  const reads = ann.readCount || 0;
+                  return (
+                    <div
+                      key={ann.id}
+                      className="p-5 rounded-2xl bg-white border border-[#d2d1c9] hover:border-[#0c3e35] transition shadow-xs space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#f0eee6] pb-3">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-extrabold text-[#0c3e35]">{ann.title}</h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#f4f3ed] text-[#0c3e35] border border-[#d2d1c9]">
+                            {ann.priority === 'URGENT' ? '🚨 عاجل' : '📌 عادي'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[#8daaa2]">
+                          {new Date(ann.createdAt).toLocaleDateString('ar-SY', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-[#5e736e] leading-relaxed line-clamp-2">
+                        {ann.content}
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                        <div className="flex items-center gap-3 flex-1 max-w-sm">
+                          <div className="flex-1 bg-[#edece4] rounded-full h-2.5 overflow-hidden">
+                            <div
+                              className="bg-[#0c3e35] h-full rounded-full transition-all"
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-[#0c3e35] shrink-0">
+                            {percent}% ({reads} مديرية)
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAnnouncement({
+                              id: ann.id,
+                              isAnnouncement: true,
+                              type: 'announcement',
+                              title: ann.title,
+                              content: ann.content,
+                              authorName: ann.author?.fullName || 'المدير العام للموانئ',
+                              authorTitle: ann.author?.title || 'المدير العام',
+                              priority: ann.priority,
+                              createdAt: ann.createdAt,
+                            });
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+                        >
+                          <Eye className="w-4 h-4 text-[#d4af37]" />
+                          <span>سجل المطّلعين والاطلاع</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-4 border-t border-[#d2d1c9] bg-white flex justify-between items-center shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAnnouncementsListModal(false);
+                  setShowAnnouncementModal(true);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>إصدار تعميم جديد</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAnnouncementsListModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#edece4] text-[#0c3e35] text-xs font-bold hover:bg-[#d2d1c9] transition cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Announcement Details Dialog */}
       <AnnouncementDetailsModal
         data={selectedAnnouncement}
+        currentUser={currentUser}
         onClose={() => setSelectedAnnouncement(null)}
       />
 

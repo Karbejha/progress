@@ -259,4 +259,93 @@ export class DailyPlansService {
       take: limit,
     });
   }
+
+  async getTaskTemplates(user: any) {
+    if (!user.directorateId) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
+    }
+
+    return this.prisma.taskTemplate.findMany({
+      where: { directorateId: user.directorateId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createTaskTemplate(user: any, dto: { title: string; description?: string; priority?: Priority; estimatedHours?: number }) {
+    if (!user.directorateId) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية');
+    }
+
+    if (!dto.title || !dto.title.trim()) {
+      throw new BadRequestException('عنوان المهمة مطلوب');
+    }
+
+    return this.prisma.taskTemplate.create({
+      data: {
+        directorateId: user.directorateId,
+        title: dto.title.trim(),
+        description: dto.description?.trim() || null,
+        priority: dto.priority || Priority.NORMAL,
+        estimatedHours: dto.estimatedHours || 1.0,
+      },
+    });
+  }
+
+  async deleteTaskTemplate(user: any, templateId: string) {
+    if (!user.directorateId) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية');
+    }
+
+    const template = await this.prisma.taskTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException('القالب غير موجود');
+    }
+
+    if (template.directorateId !== user.directorateId) {
+      throw new ForbiddenException('غير مصرح لك بحذف قالب مديرية أخرى');
+    }
+
+    await this.prisma.taskTemplate.delete({
+      where: { id: templateId },
+    });
+
+    return { message: 'تم حذف القالب بنجاح', templateId };
+  }
+
+  async clonePreviousPlan(user: any, currentDateStr?: string) {
+    if (!user.directorateId) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية');
+    }
+
+    const targetDate = this.normalizeDate(currentDateStr);
+
+    const previousPlan = await this.prisma.dailyPlan.findFirst({
+      where: {
+        directorateId: user.directorateId,
+        planDate: { lt: targetDate },
+      },
+      include: {
+        tasks: { orderBy: { displayOrder: 'asc' } },
+      },
+      orderBy: { planDate: 'desc' },
+    });
+
+    if (!previousPlan) {
+      throw new NotFoundException('لا توجد خطة سابقة لهذه المديرية لاستنساخها');
+    }
+
+    return {
+      previousDate: previousPlan.planDate,
+      generalFocus: previousPlan.generalFocus,
+      tasks: previousPlan.tasks.map((t) => ({
+        title: t.title,
+        description: t.description || '',
+        priority: t.priority,
+        estimatedHours: t.estimatedHours,
+      })),
+    };
+  }
 }

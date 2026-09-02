@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Directorate, ExecutiveTask, Priority, TaskStatus } from '../types';
+import { User, Directorate, ExecutiveTask, Priority, TaskStatus, GroupedExecutiveTask } from '../types';
 import { api } from '../services/api';
 import { getSocket } from '../lib/socket';
 import { DynamicIcon } from './Icons';
@@ -29,6 +29,13 @@ import {
   AlertCircle,
   MessageSquare,
   Sparkles,
+  Users,
+  LayoutGrid,
+  LayoutList,
+  Share2,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface ExecutiveTasksModalProps {
@@ -51,10 +58,13 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
+  // View mode: GROUPED (Smart Joint tasks grouped) or INDIVIDUAL (per directorate row)
+  const [viewMode, setViewMode] = useState<'GROUPED' | 'INDIVIDUAL'>('GROUPED');
+
   // Filter & Search states
   const [search, setSearch] = useState('');
   const [selectedDirFilter, setSelectedDirFilter] = useState<string>(initialDirectorateId || 'ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | TaskStatus | 'URGENT'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | TaskStatus | 'URGENT' | 'SHARED'>('ALL');
 
   // Mode: list or create
   const [isCreating, setIsCreating] = useState(initialOpenCreate);
@@ -81,6 +91,16 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   const [editStatus, setEditStatus] = useState<TaskStatus>('PENDING');
   const [editProgress, setEditProgress] = useState<number>(0);
   const [editNote, setEditNote] = useState<string>('');
+
+  // Custom Delete Confirmation Dialog state
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{
+    isOpen: boolean;
+    taskId: string;
+    isShared: boolean;
+    sharedCount: number;
+    title?: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -204,6 +224,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
 
     try {
       setSubmitting(true);
+      const count = form.selectedDirectorateIds.length;
       await api.createExecutiveTasks({
         title: form.title,
         description: form.description,
@@ -213,7 +234,9 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
       });
 
       showToast(
-        `تم إسناد التكليف بنجاح لـ (${form.selectedDirectorateIds.length}) مديرية وإشعار المدراء فوراً!`,
+        count > 1
+          ? `تم إسناد التكليف المشترك بنجاح لـ (${count}) مديريات وربطها معاً!`
+          : `تم إسناد التكليف بنجاح لمديرية وإشعار المدير فوراً!`
       );
       setForm({
         title: '',
@@ -252,15 +275,35 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('هل أنت متأكد من حذف هذا التكليف؟')) return;
+  const handleDeleteTask = (taskId: string, isShared = false, sharedCount = 1, title?: string) => {
+    setDeleteConfirmState({
+      isOpen: true,
+      taskId,
+      isShared,
+      sharedCount,
+      title,
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmState) return;
 
     try {
-      await api.deleteExecutiveTask(taskId);
-      showToast('تم حذف التكليف بنجاح');
+      setIsDeleting(true);
+      const isMultiShared = deleteConfirmState.isShared && deleteConfirmState.sharedCount > 1;
+      await api.deleteExecutiveTask(deleteConfirmState.taskId, isMultiShared);
+      showToast(
+        isMultiShared
+          ? 'تم حذف التكليف المشترك لكافة المديريات بنجاح'
+          : 'تم حذف التكليف بنجاح'
+      );
+      setDeleteConfirmState(null);
       loadData(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete task', err);
+      showToast(err.message || 'تعذر حذف التكليف');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -291,8 +334,71 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
     setEditNote(task.completionNote || '');
   };
 
-  // Filter tasks
-  const filteredTasks = tasks.filter((t) => {
+  // Grouped tasks calculation using useMemo
+  const groupedTasks: GroupedExecutiveTask[] = useMemo(() => {
+    const map = new Map<string, GroupedExecutiveTask>();
+
+    tasks.forEach((t) => {
+      const key = t.sharedGroupId || `single_${t.id}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          groupId: key,
+          sharedGroupId: t.sharedGroupId || null,
+          isShared: !!t.isShared || (t.coTasks && t.coTasks.length > 1) || false,
+          title: t.title,
+          description: t.description || undefined,
+          priority: t.priority,
+          dueDate: t.dueDate || undefined,
+          assignedBy: t.assignedBy,
+          createdAt: t.createdAt,
+          averageCompletionRate: 0,
+          overallStatus: 'PENDING',
+          directoratesCount: 0,
+          subTasks: [],
+        });
+      }
+
+      const group = map.get(key)!;
+      group.subTasks.push({
+        taskId: t.id,
+        directorateId: t.directorateId,
+        directorateName: t.directorate?.name || 'مديرية',
+        directorateCode: t.directorate?.code,
+        directorateIcon: t.directorate?.icon,
+        status: t.status,
+        completionPercentage: t.completionPercentage,
+        completionNote: t.completionNote,
+      });
+    });
+
+    // Compute average progress and overall status for each group
+    const list = Array.from(map.values()).map((g) => {
+      const count = g.subTasks.length;
+      g.directoratesCount = count;
+      g.isShared = count > 1 || !!g.sharedGroupId;
+
+      const sum = g.subTasks.reduce((acc, st) => acc + st.completionPercentage, 0);
+      g.averageCompletionRate = count > 0 ? Math.round((sum / count) * 10) / 10 : 0;
+
+      const allCompleted = g.subTasks.every((st) => st.status === 'COMPLETED' || st.completionPercentage === 100);
+      const anyInProgress = g.subTasks.some((st) => st.status === 'IN_PROGRESS' || (st.completionPercentage > 0 && st.completionPercentage < 100));
+
+      if (allCompleted && count > 0) {
+        g.overallStatus = 'COMPLETED';
+      } else if (anyInProgress || (g.averageCompletionRate > 0 && g.averageCompletionRate < 100)) {
+        g.overallStatus = 'IN_PROGRESS';
+      } else {
+        g.overallStatus = 'PENDING';
+      }
+
+      return g;
+    });
+
+    return list;
+  }, [tasks]);
+
+  // Filter individual tasks
+  const filteredIndividualTasks = tasks.filter((t) => {
     const matchesSearch =
       t.title.toLowerCase().includes(search.toLowerCase()) ||
       (t.description && t.description.toLowerCase().includes(search.toLowerCase())) ||
@@ -309,7 +415,39 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
       return t.priority === 'URGENT' || t.priority === 'HIGH';
     }
 
+    if (statusFilter === 'SHARED') {
+      return t.isShared || (t.coTasks && t.coTasks.length > 1);
+    }
+
     if (statusFilter !== 'ALL' && t.status !== statusFilter) {
+      return false;
+    }
+
+    return true;
+  });
+
+  // Filter grouped tasks
+  const filteredGroupedTasks = groupedTasks.filter((g) => {
+    const matchesSearch =
+      g.title.toLowerCase().includes(search.toLowerCase()) ||
+      (g.description && g.description.toLowerCase().includes(search.toLowerCase())) ||
+      g.subTasks.some((st) => st.directorateName.toLowerCase().includes(search.toLowerCase()) || (st.completionNote && st.completionNote.toLowerCase().includes(search.toLowerCase())));
+
+    if (!matchesSearch) return false;
+
+    if (selectedDirFilter !== 'ALL' && !g.subTasks.some((st) => st.directorateId === selectedDirFilter)) {
+      return false;
+    }
+
+    if (statusFilter === 'URGENT') {
+      return g.priority === 'URGENT' || g.priority === 'HIGH';
+    }
+
+    if (statusFilter === 'SHARED') {
+      return g.isShared;
+    }
+
+    if (statusFilter !== 'ALL' && g.overallStatus !== statusFilter) {
       return false;
     }
 
@@ -318,6 +456,8 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
 
   // Stats calculation
   const totalTasksCount = tasks.length;
+  const totalGroupedCount = groupedTasks.length;
+  const sharedTasksCount = groupedTasks.filter((g) => g.isShared).length;
   const pendingCount = tasks.filter((t) => t.status === 'PENDING').length;
   const inProgressCount = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
   const completedCount = tasks.filter((t) => t.status === 'COMPLETED').length;
@@ -415,11 +555,11 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   التكليفات والتوجيهات المباشرة للمديريات
                 </h2>
                 <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40">
-                  إسناد رئاسي
+                  إسناد رئاسي ذكي
                 </span>
               </div>
               <p className="text-xs text-[#8daaa2] mt-0.5">
-                إسناد مهام محددة للمدراء ومتابعة نسب الإنجاز وردود التنفيذ بشكل مباشر ولحظي
+                إسناد مهام مشتركة أو منفردة للمدراء ومتابعة نسب الإنجاز التراكمية والتفصيلية لحظياً
               </p>
             </div>
           </div>
@@ -529,6 +669,16 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   </button>
                 </div>
 
+                {/* Smart Joint Task Notification Banner if > 1 directorate */}
+                {form.selectedDirectorateIds.length > 1 && (
+                  <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center gap-2 text-xs text-emerald-900 font-semibold animate-fadeIn">
+                    <Users className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>
+                      <strong>النموذج التكاملي الذكي:</strong> سيتم ربط هذا التكليف تلقائياً كـ <strong>"مهمة مشتركة"</strong> موحدة بين ({form.selectedDirectorateIds.length}) مديريات، مع تتبع إنجاز تفصيلي ومستقل لكل مديرية.
+                    </span>
+                  </div>
+                )}
+
                 <div className="p-3.5 rounded-2xl bg-white border border-[#d2d1c9] max-h-48 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                   {directorates.map((dir) => {
                     const isSelected = form.selectedDirectorateIds.includes(dir.id);
@@ -592,7 +742,11 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   ) : (
                     <Send className="w-4 h-4 text-[#d4af37]" />
                   )}
-                  <span>إسناد التكليف للمديريات المحددة</span>
+                  <span>
+                    {form.selectedDirectorateIds.length > 1
+                      ? `إسناد التكليف المشترك لـ (${form.selectedDirectorateIds.length}) مديريات`
+                      : 'إسناد التكليف للمديرية المحددة'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -611,7 +765,21 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                 }`}
               >
                 <div className="text-[11px] font-semibold opacity-80">إجمالي التكليفات</div>
-                <div className="text-lg font-extrabold mt-0.5">{totalTasksCount}</div>
+                <div className="text-lg font-extrabold mt-0.5">
+                  {viewMode === 'GROUPED' ? totalGroupedCount : totalTasksCount}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setStatusFilter('SHARED')}
+                className={`p-3 rounded-2xl border text-right transition cursor-pointer ${
+                  statusFilter === 'SHARED'
+                    ? 'bg-[#0c3e35] text-[#d4af37] border-[#d4af37] shadow-xs ring-1 ring-[#d4af37]'
+                    : 'bg-emerald-50/70 border-emerald-200 text-emerald-900 hover:bg-emerald-100'
+                }`}
+              >
+                <div className="text-[11px] font-semibold opacity-80">مهام مشتركة</div>
+                <div className="text-lg font-extrabold mt-0.5">{sharedTasksCount}</div>
               </button>
 
               <button
@@ -640,7 +808,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
 
               <button
                 onClick={() => setStatusFilter('COMPLETED')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer ${
+                className={`p-3 rounded-2xl border text-right transition cursor-pointer col-span-2 sm:col-span-1 ${
                   statusFilter === 'COMPLETED'
                     ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
                     : 'bg-emerald-50/70 border-emerald-200 text-emerald-900 hover:bg-emerald-100'
@@ -649,21 +817,9 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                 <div className="text-[11px] font-semibold opacity-80">مكتملة ومُنجزة</div>
                 <div className="text-lg font-extrabold mt-0.5">{completedCount}</div>
               </button>
-
-              <button
-                onClick={() => setStatusFilter('URGENT')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer col-span-2 sm:col-span-1 ${
-                  statusFilter === 'URGENT'
-                    ? 'bg-red-600 text-white border-red-600 shadow-xs'
-                    : 'bg-red-50/70 border-red-200 text-red-900 hover:bg-red-100'
-                }`}
-              >
-                <div className="text-[11px] font-semibold opacity-80">عاجلة ومرتفعة</div>
-                <div className="text-lg font-extrabold mt-0.5">{urgentCount}</div>
-              </button>
             </div>
 
-            {/* Filter & Search Bar */}
+            {/* Filter & Search Bar + View Mode Switcher */}
             <div className="p-4 bg-[#f4f3ed] border-b border-[#d2d1c9] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 text-[#8daaa2] absolute right-3 top-3" />
@@ -676,20 +832,50 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                 />
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Filter className="w-4 h-4 text-[#5e736e] shrink-0" />
-                <select
-                  value={selectedDirFilter}
-                  onChange={(e) => setSelectedDirFilter(e.target.value)}
-                  className="w-full sm:w-auto p-2 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
-                >
-                  <option value="ALL">كافة المديريات والمكاتب (20)</option>
-                  {directorates.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-between sm:justify-end">
+                {/* View Mode Toggle */}
+                <div className="flex items-center bg-white p-1 rounded-xl border border-[#d2d1c9] shadow-2xs">
+                  <button
+                    onClick={() => setViewMode('GROUPED')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      viewMode === 'GROUPED'
+                        ? 'bg-[#0c3e35] text-white shadow-xs'
+                        : 'text-[#5e736e] hover:text-[#0c3e35]'
+                    }`}
+                    title="عرض مجمّع يربط المهام المشتركة كبند رئيسي موحد"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>عرض مجمّع ذكي</span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('INDIVIDUAL')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      viewMode === 'INDIVIDUAL'
+                        ? 'bg-[#0c3e35] text-white shadow-xs'
+                        : 'text-[#5e736e] hover:text-[#0c3e35]'
+                    }`}
+                    title="عرض مفصل لكل مديرية على حدة"
+                  >
+                    <LayoutList className="w-3.5 h-3.5" />
+                    <span>عرض تفصيلي</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-[#5e736e] shrink-0" />
+                  <select
+                    value={selectedDirFilter}
+                    onChange={(e) => setSelectedDirFilter(e.target.value)}
+                    className="w-full sm:w-auto p-2 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
+                  >
+                    <option value="ALL">كافة المديريات والمكاتب (20)</option>
+                    {directorates.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -700,7 +886,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   <Loader2 className="w-8 h-8 animate-spin text-[#0c3e35] mb-2" />
                   <span className="text-xs font-bold">جارٍ تحميل التكليفات...</span>
                 </div>
-              ) : filteredTasks.length === 0 ? (
+              ) : (viewMode === 'GROUPED' ? filteredGroupedTasks.length === 0 : filteredIndividualTasks.length === 0) ? (
                 <div className="flex flex-col items-center justify-center py-16 text-[#5e736e] bg-white rounded-2xl border border-dashed border-[#d2d1c9]">
                   <Layers className="w-12 h-12 text-[#8daaa2] mb-3 stroke-[1.5]" />
                   <h4 className="text-sm font-extrabold text-[#0c3e35]">لا توجد تكليفات مطابقة</h4>
@@ -717,9 +903,233 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                     <span>إسناد تكليف الآن</span>
                   </button>
                 </div>
+              ) : viewMode === 'GROUPED' ? (
+                /* GROUPED SMART VIEW */
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredGroupedTasks.map((group) => {
+                    const isCompleted = group.overallStatus === 'COMPLETED';
+                    const dueDateStr = group.dueDate
+                      ? new Date(group.dueDate).toLocaleDateString('ar-SY', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : null;
+
+                    const createdDateStr = new Date(group.createdAt).toLocaleDateString('ar-SY', {
+                      day: 'numeric',
+                      month: 'short',
+                    });
+
+                    return (
+                      <div
+                        key={group.groupId}
+                        className={`p-5 sm:p-6 rounded-2xl border transition shadow-xs hover:shadow-md ${
+                          group.isShared
+                            ? 'bg-white border-[#d4af37]/70 ring-1 ring-[#d4af37]/20'
+                            : isCompleted
+                            ? 'bg-white/80 border-emerald-200'
+                            : 'bg-white border-[#d2d1c9]'
+                        }`}
+                      >
+                        {/* Group Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#f0eee6] pb-3">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            {group.isShared ? (
+                              <span className="text-xs font-extrabold px-3 py-1 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/50 flex items-center gap-1.5 shadow-2xs">
+                                <Users className="w-3.5 h-3.5 text-[#d4af37]" />
+                                <span>تكليف مشترك بين ({group.subTasks.length}) مديريات</span>
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold px-3 py-1 rounded-xl bg-[#0c3e35] text-white flex items-center gap-1.5">
+                                <DynamicIcon name={group.subTasks[0]?.directorateIcon || 'Building2'} className="w-3.5 h-3.5 text-[#d4af37]" />
+                                {group.subTasks[0]?.directorateName}
+                              </span>
+                            )}
+                            {getPriorityBadge(group.priority)}
+                            {getStatusBadge(group.overallStatus)}
+                          </div>
+
+                          <div className="flex items-center gap-3 text-xs text-[#5e736e]">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5" />
+                              أُسند بتاريخ: {createdDateStr}
+                            </span>
+                            {dueDateStr && (
+                              <span className="flex items-center gap-1 font-bold text-[#0c3e35] bg-[#f4f3ed] px-2 py-0.5 rounded-lg border border-[#d2d1c9]">
+                                <Calendar className="w-3.5 h-3.5 text-[#d4af37]" />
+                                الاستحقاق: {dueDateStr}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Title & Description */}
+                        <div className="my-3 space-y-1.5">
+                          <h4 className="text-base font-extrabold text-[#05261e] leading-snug">
+                            {group.title}
+                          </h4>
+                          {group.description && (
+                            <p className="text-xs text-[#5e736e] leading-relaxed whitespace-pre-line bg-[#fcfbf7] p-2.5 rounded-xl border border-[#edece4]">
+                              {group.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Overall Progress Bar */}
+                        <div className="space-y-1.5 bg-[#f4f3ed] p-3.5 rounded-xl border border-[#d2d1c9]/70">
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <span className="text-[#0c3e35]">
+                              {group.isShared ? 'متوسط نسبة الإنجاز الكلية للتكليف المشترك:' : 'نسبة الإنجاز المحققة:'}
+                            </span>
+                            <span className={`${group.averageCompletionRate === 100 ? 'text-emerald-700' : 'text-[#0c3e35]'} font-black text-sm`}>
+                              {group.averageCompletionRate}%
+                            </span>
+                          </div>
+                          <div className="w-full h-2.5 bg-[#d2d1c9]/60 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 rounded-full ${
+                                group.averageCompletionRate === 100
+                                  ? 'bg-emerald-600'
+                                  : group.averageCompletionRate > 50
+                                  ? 'bg-blue-600'
+                                  : 'bg-[#d4af37]'
+                              }`}
+                              style={{ width: `${group.averageCompletionRate}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Multi-Directorates Breakdown Tile Grid if Shared */}
+                        {group.isShared && (
+                          <div className="mt-3.5 space-y-2">
+                            <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-[#d4af37]" />
+                              <span>موقف وتفاصيل إنجاز كل مديرية مشاركة:</span>
+                            </span>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                              {group.subTasks.map((st) => {
+                                const originalTask = tasks.find((t) => t.id === st.taskId);
+                                return (
+                                  <div
+                                    key={st.taskId}
+                                    className="p-3 rounded-xl bg-white border border-[#d2d1c9] shadow-2xs space-y-2 hover:border-[#0c3e35] transition"
+                                  >
+                                    <div className="flex items-center justify-between gap-1.5">
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <DynamicIcon name={st.directorateIcon || 'Building2'} className="w-3.5 h-3.5 text-[#0c3e35] shrink-0" />
+                                        <span className="text-xs font-extrabold text-[#05261e] truncate">{st.directorateName}</span>
+                                      </div>
+                                      <span className="text-xs font-black text-[#0c3e35] shrink-0">
+                                        {st.completionPercentage}%
+                                      </span>
+                                    </div>
+
+                                    {/* Mini progress bar */}
+                                    <div className="w-full h-1.5 bg-[#edece4] rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full ${
+                                          st.completionPercentage === 100
+                                            ? 'bg-emerald-600'
+                                            : st.completionPercentage > 0
+                                            ? 'bg-blue-600'
+                                            : 'bg-gray-300'
+                                        }`}
+                                        style={{ width: `${st.completionPercentage}%` }}
+                                      />
+                                    </div>
+
+                                    {/* Note preview if any */}
+                                    {st.completionNote && (
+                                      <div className="text-[11px] text-[#5e736e] bg-[#fcfbf7] p-1.5 rounded-lg border border-[#edece4] flex items-start gap-1">
+                                        <MessageSquare className="w-3 h-3 text-[#0c3e35] shrink-0 mt-0.5" />
+                                        <span className="line-clamp-2">{st.completionNote}</span>
+                                      </div>
+                                    )}
+
+                                    {/* Quick edit button for this directorate */}
+                                    <div className="flex items-center justify-between pt-1 border-t border-[#f0eee6]">
+                                      <span className="text-[10px] text-[#5e736e]">
+                                        {st.status === 'COMPLETED' ? 'مكتملة' : st.status === 'IN_PROGRESS' ? 'قيد العمل' : 'انتظار'}
+                                      </span>
+                                      {originalTask && (
+                                        <button
+                                          onClick={() => openEditModal(originalTask)}
+                                          className="text-[10px] font-bold text-[#0c3e35] hover:text-[#d4af37] underline cursor-pointer"
+                                        >
+                                          تحديث موقفها
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Footer & Actions */}
+                        <div className="mt-4 pt-3 border-t border-[#f0eee6] flex items-center justify-between gap-3 text-xs flex-wrap">
+                          <div className="text-[#5e736e] text-[11px]">
+                            بواسطة: <strong className="text-[#0c3e35]">{group.assignedBy?.fullName}</strong> ({group.assignedBy?.title})
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* If single task, allow toggle status */}
+                            {!group.isShared && group.subTasks[0] && (
+                              <button
+                                onClick={() => {
+                                  const originalTask = tasks.find((t) => t.id === group.subTasks[0].taskId);
+                                  if (originalTask) handleToggleStatus(originalTask);
+                                }}
+                                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs ${
+                                  isCompleted
+                                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                    : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                }`}
+                              >
+                                <CheckCheck className="w-3.5 h-3.5" />
+                                <span>{isCompleted ? 'إعادة للعمل' : 'اعتماد كمنجز'}</span>
+                              </button>
+                            )}
+
+                            {/* Edit Modal trigger */}
+                            {group.subTasks[0] && (
+                              <button
+                                onClick={() => {
+                                  const originalTask = tasks.find((t) => t.id === group.subTasks[0].taskId);
+                                  if (originalTask) openEditModal(originalTask);
+                                }}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[#0c3e35] hover:bg-[#edece4] border border-[#d2d1c9] transition cursor-pointer font-bold text-xs"
+                                title="تعديل"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>تعديل</span>
+                              </button>
+                            )}
+
+                            {/* Delete trigger */}
+                            {group.subTasks[0] && (
+                              <button
+                                onClick={() => handleDeleteTask(group.subTasks[0].taskId, group.isShared, group.subTasks.length, group.title)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer font-bold text-xs"
+                                title="حذف التكليف"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
+                /* INDIVIDUAL DETAILED VIEW */
                 <div className="grid grid-cols-1 gap-3.5">
-                  {filteredTasks.map((task) => {
+                  {filteredIndividualTasks.map((task) => {
                     const isCompleted = task.status === 'COMPLETED';
                     const dueDateStr = task.dueDate
                       ? new Date(task.dueDate).toLocaleDateString('ar-SY', {
@@ -738,7 +1148,9 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                       <div
                         key={task.id}
                         className={`p-5 rounded-2xl border transition shadow-xs hover:shadow-md ${
-                          isCompleted
+                          task.isShared
+                            ? 'bg-white border-[#d4af37]/60'
+                            : isCompleted
                             ? 'bg-white/80 border-emerald-200'
                             : 'bg-white border-[#d2d1c9]'
                         }`}
@@ -750,6 +1162,12 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                               <DynamicIcon name={task.directorate?.icon || 'Building2'} className="w-3.5 h-3.5 text-[#d4af37]" />
                               {task.directorate?.name}
                             </span>
+                            {task.isShared && (
+                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+                                <Users className="w-3 h-3 text-emerald-700" />
+                                تكليف مشترك ({task.sharedDirectoratesCount || task.coTasks?.length} مديريات)
+                              </span>
+                            )}
                             {getPriorityBadge(task.priority)}
                             {getStatusBadge(task.status)}
                           </div>
@@ -779,6 +1197,30 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                             </p>
                           )}
                         </div>
+
+                        {/* Co-Tasks Partner preview if shared */}
+                        {task.isShared && task.coTasks && task.coTasks.length > 1 && (
+                          <div className="my-2.5 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-xs space-y-1.5">
+                            <span className="text-[11px] font-bold text-[#0c3e35] block">
+                              المديريات المشاركة في هذا التكليف:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {task.coTasks.map((ct) => (
+                                <span
+                                  key={ct.id}
+                                  className={`text-[10px] font-bold px-2 py-1 rounded-lg border flex items-center gap-1 ${
+                                    ct.directorateId === task.directorateId
+                                      ? 'bg-[#0c3e35] text-white border-[#0c3e35]'
+                                      : 'bg-white text-[#05261e] border-[#d2d1c9]'
+                                  }`}
+                                >
+                                  <span>{ct.directorateName}</span>
+                                  <span className="text-[9px] opacity-80">({ct.completionPercentage}%)</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Progress Bar */}
                         <div className="space-y-1.5 bg-[#f4f3ed] p-3 rounded-xl border border-[#d2d1c9]/70">
@@ -841,7 +1283,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                             </button>
 
                             <button
-                              onClick={() => handleDeleteTask(task.id)}
+                              onClick={() => handleDeleteTask(task.id, task.isShared, task.sharedDirectoratesCount, task.title)}
                               className="p-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer"
                               title="حذف التكليف"
                             >
@@ -950,8 +1392,82 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
           </div>
         </div>
       )}
+      {/* Custom Delete Confirmation Dialog */}
+      {deleteConfirmState?.isOpen && (
+        <div 
+          className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+          onClick={() => !isDeleting && setDeleteConfirmState(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 border border-red-200 shadow-2xl space-y-4 text-right relative font-sans animate-fadeIn"
+          >
+            {/* Header Danger Icon */}
+            <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-200 text-red-600 flex items-center justify-center mx-auto shadow-xs">
+              <Trash2 className="w-7 h-7 text-red-600" />
+            </div>
+
+            {/* Titles & Message */}
+            <div className="text-center space-y-2">
+              <h3 className="text-base sm:text-lg font-black text-[#05261e]">
+                تأكيد حذف التكليف
+              </h3>
+              
+              {deleteConfirmState.title && (
+                <p className="text-xs font-bold text-[#0c3e35] bg-[#f4f3ed] p-2.5 rounded-xl border border-[#d2d1c9] break-words">
+                  "{deleteConfirmState.title}"
+                </p>
+              )}
+
+              <p className="text-xs text-[#5e736e] leading-relaxed font-medium">
+                {deleteConfirmState.isShared && deleteConfirmState.sharedCount > 1 ? (
+                  <>
+                    هذا التكليف مشترك ومربوط بين <strong className="text-red-700 font-bold">({deleteConfirmState.sharedCount}) مديريات</strong>.
+                    <br />
+                    سيؤدي تأكيد الحذف إلى إزالته نهائياً لكافة المديريات المشاركة.
+                  </>
+                ) : (
+                  'هل أنت متأكد من رغبتك في حذف هذا التكليف نهائياً؟ لا يمكن التراجع عن هذه العملية بعد التأكيد.'
+                )}
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-3 border-t border-[#edece4]">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>جارٍ الحذف...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>نعم، تأكيد الحذف</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteConfirmState(null)}
+                className="py-3 px-5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] text-[#0c3e35] font-bold text-xs border border-[#d2d1c9] transition-all cursor-pointer disabled:opacity-50"
+              >
+                إلغاء الأمر
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
   return createPortal(modalContent, document.body);
 };
+

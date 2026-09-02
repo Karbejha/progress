@@ -1,11 +1,15 @@
-'use client';
-
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { User, Announcement } from '../types';
 import { api } from '../services/api';
-import { getSocket } from '../lib/socket';
-import { getReadAnnouncementIds, markAnnouncementAsRead, markAllAnnouncementsAsRead } from '../lib/announcements';
+import { getSocket, joinUserRooms } from '../lib/socket';
+import { playSubtleChime, playUrgentAlert, isSoundEnabled, setSoundEnabled } from '../lib/audio';
+import {
+  getReadNotificationIds,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  markAnnouncementAsRead,
+} from '../lib/announcements';
 import {
   Shield,
   Ship,
@@ -23,6 +27,8 @@ import {
   ChevronLeft,
   Megaphone,
   CheckCheck,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
@@ -53,7 +59,8 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+  const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
+  const [soundOn, setSoundOn] = useState<boolean>(true);
 
   const notifRef = React.useRef<HTMLDivElement>(null);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
@@ -65,6 +72,24 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
   const isGeneralDirector =
     currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+
+  useEffect(() => {
+    setSoundOn(isSoundEnabled());
+    const handleSoundToggle = (e: any) => {
+      setSoundOn(e.detail?.enabled ?? isSoundEnabled());
+    };
+    window.addEventListener('ports_sound_toggled', handleSoundToggle);
+    return () => window.removeEventListener('ports_sound_toggled', handleSoundToggle);
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+    if (next) {
+      playSubtleChime();
+    }
+  };
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -92,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     };
   }, []);
 
-  // Load read status & announcements
+  // Load read status & comprehensive notifications (Executive tasks, Announcements, Plans, Summaries)
   useEffect(() => {
     if (!currentUser) {
       setNotifications([]);
@@ -100,80 +125,204 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       return;
     }
 
-    // Reset notifications when switching user
+    // Join authorized WebSocket rooms
+    joinUserRooms(currentUser);
+
+    // Reset and sync read tracking for this user
     setNotifications([]);
     setUnreadCount(0);
-    setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
+    const initialReads = getReadNotificationIds(currentUser.id);
+    setReadNotifIds(initialReads);
 
     const handleReadUpdate = (e: any) => {
       if (e.detail?.userId === currentUser.id) {
-        setReadAnnouncementIds(e.detail.readIds || getReadAnnouncementIds(currentUser.id));
+        setReadNotifIds(e.detail.readIds || getReadNotificationIds(currentUser.id));
       }
     };
 
     window.addEventListener('announcements:read_updated', handleReadUpdate);
+    window.addEventListener('notifications:read_updated', handleReadUpdate);
 
-    // Fetch existing announcements from server (for non-author/non-executive users who should receive alerts)
-    const fetchInitialAnnouncements = async () => {
+    // Fetch existing historical/offline notifications from server
+    const fetchInitialNotifications = async () => {
       try {
-        // Executive leadership (General Director / Assistant) issues circulars and should not receive alerts for their own circulars
-        if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR') {
-          return;
+        const loadedNotifs: LiveNotification[] = [];
+        const currentReads = getReadNotificationIds(currentUser.id);
+
+        if (currentUser.role === 'DIRECTOR') {
+          // 1. Fetch Announcements
+          try {
+            const anns = await api.getAnnouncements();
+            const targetAnns = anns.filter((a) => a.authorId !== currentUser.id);
+            targetAnns.forEach((a) => {
+              loadedNotifs.push({
+                id: a.id,
+                title: 'تعميم إداري رسمي',
+                message: a.title,
+                content: a.content,
+                authorName: a.author?.fullName || 'المدير العام للموانئ',
+                authorTitle: a.author?.title || 'المدير العام',
+                priority: a.priority,
+                createdAt: a.createdAt,
+                type: 'announcement',
+                time: a.createdAt
+                  ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : 'اليوم',
+                fullPayload: a,
+              });
+            });
+          } catch (err) {
+            console.debug('Failed to load announcements in header', err);
+          }
+
+          // 2. Fetch Executive Tasks assigned to directorate (including offline tasks)
+          if (currentUser.directorateId) {
+            try {
+              const tasks = await api.getExecutiveTasks({ directorateId: currentUser.directorateId });
+              tasks.forEach((t) => {
+                loadedNotifs.push({
+                  id: `exec-task-${t.id}`,
+                  title: t.isShared ? 'تكليف رئاسي مشترك' : 'تكليف رئاسي مباشر',
+                  message: `وردك تكليف من المدير العام: "${t.title}"`,
+                  content: t.description || t.title,
+                  authorName: t.assignedBy?.fullName || 'المدير العام للموانئ',
+                  authorTitle: t.assignedBy?.title || 'المدير العام',
+                  priority: t.priority,
+                  createdAt: t.createdAt,
+                  type: 'feedback',
+                  time: t.createdAt
+                    ? new Date(t.createdAt).toLocaleDateString('ar-SY', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'اليوم',
+                  fullPayload: {
+                    ...t,
+                    title: t.title,
+                    content: t.description || t.title,
+                    authorName: t.assignedBy?.fullName || 'المدير العام للموانئ',
+                  },
+                });
+              });
+            } catch (err) {
+              console.debug('Failed to load executive tasks in header', err);
+            }
+          }
+        } else if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR') {
+          // 1. Fetch Executive Overview (Today's submitted plans and summaries)
+          try {
+            const overview = await api.getExecutiveOverview();
+            if (overview.directorates) {
+              overview.directorates.forEach((d) => {
+                if (d.hasPlan) {
+                  loadedNotifs.push({
+                    id: `plan-sub-${d.directorateId}-${overview.date}`,
+                    title: 'رفع خطة صباحية',
+                    message: `قامت (${d.directorateName}) باعتماد ورفع خطة اليوم (${d.tasksCount || 0} مهام).`,
+                    type: 'plan',
+                    time: 'اليوم',
+                    createdAt: d.planSubmittedAt || overview.date,
+                    fullPayload: d,
+                  });
+                }
+
+                if (d.hasSummary) {
+                  loadedNotifs.push({
+                    id: `summary-sub-${d.directorateId}-${overview.date}`,
+                    title: 'تسليم ملخص الإنجاز',
+                    message: `سلّمت (${d.directorateName}) ملخص نهاية الدوام بنسبة إنجاز ${d.completionRate || 0}%.`,
+                    priority: d.urgentFlag ? 'URGENT' : 'NORMAL',
+                    type: 'summary',
+                    time: 'اليوم',
+                    createdAt: d.summarySubmittedAt || overview.date,
+                    fullPayload: d,
+                  });
+                }
+              });
+            }
+          } catch (err) {
+            console.debug('Failed to load executive overview in header', err);
+          }
+
+          // 2. Fetch Executive Task progress updates
+          try {
+            const allTasks = await api.getExecutiveTasks();
+            allTasks
+              .filter((t) => t.completionPercentage > 0 || t.status === 'COMPLETED' || t.completionNote)
+              .slice(0, 10)
+              .forEach((t) => {
+                loadedNotifs.push({
+                  id: `exec-task-update-${t.id}-${t.updatedAt}`,
+                  title: 'تحديث إنجاز تكليف رئاسي',
+                  message: `قامت (${t.directorate?.name}) بتحديث التكليف "${t.title}" إلى (${t.completionPercentage}%).`,
+                  type: 'task',
+                  time: t.updatedAt
+                    ? new Date(t.updatedAt).toLocaleDateString('ar-SY', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'مؤخراً',
+                  createdAt: t.updatedAt,
+                  fullPayload: t,
+                });
+              });
+          } catch (err) {
+            console.debug('Failed to load executive task updates in header', err);
+          }
         }
 
-        const anns = await api.getAnnouncements();
-        // Filter out announcements authored by the current user
-        const targetAnns = anns.filter((a) => a.authorId !== currentUser.id);
-        const currentRead = getReadAnnouncementIds(currentUser.id);
-
-        const annNotifs: LiveNotification[] = targetAnns.map((a) => ({
-          id: a.id,
-          title: 'تعميم إداري رسمي',
-          message: a.title,
-          content: a.content,
-          authorName: a.author?.fullName || 'المدير العام للموانئ',
-          authorTitle: a.author?.title || 'المدير العام',
-          priority: a.priority,
-          createdAt: a.createdAt,
-          type: 'announcement',
-          time: a.createdAt
-            ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
-                month: 'short',
-                day: 'numeric',
-              })
-            : 'اليوم',
-          fullPayload: a,
-        }));
-
-        const unreadAnns = targetAnns.filter((a) => !currentRead.includes(a.id));
-        setUnreadCount(unreadAnns.length);
-
-        setNotifications((prev) => {
-          const prevMap = new Map(prev.map((p) => [p.id, p]));
-          annNotifs.forEach((an) => prevMap.set(an.id, an));
-          return Array.from(prevMap.values());
+        // Sort notifications by date descending
+        loadedNotifs.sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB - tA;
         });
+
+        // Compute unread count
+        const unreadItems = loadedNotifs.filter((n) => !currentReads.includes(n.id));
+        setUnreadCount(unreadItems.length);
+
+        setNotifications(loadedNotifs);
       } catch (err) {
-        console.error('Failed to load initial announcements in header', err);
+        console.error('Failed to load initial notifications in header', err);
       }
     };
 
-    fetchInitialAnnouncements();
+    fetchInitialNotifications();
 
     return () => {
       window.removeEventListener('announcements:read_updated', handleReadUpdate);
+      window.removeEventListener('notifications:read_updated', handleReadUpdate);
     };
   }, [currentUser]);
 
+  // Real-time Socket Event Listeners
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
-    const handleConnect = () => setIsConnected(true);
+    const handleConnect = () => {
+      setIsConnected(true);
+      if (currentUser) {
+        joinUserRooms(currentUser);
+      }
+    };
     const handleDisconnect = () => setIsConnected(false);
 
     if (socket.connected) {
       setIsConnected(true);
+      if (currentUser) {
+        joinUserRooms(currentUser);
+      }
     }
 
     socket.on('connect', handleConnect);
@@ -185,29 +334,30 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         id: notif.id || Math.random().toString(),
         time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
       };
-      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 25)]);
+      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 30)]);
       setUnreadCount((c) => c + 1);
     };
 
     socket.on('plan:submitted', (data: any) => {
-      // Only notify executive leadership (General Director / Assistant Director)
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (!isExec) return;
 
       addNotif({
+        id: `plan-sub-${data.directorateId || Math.random()}-${new Date().toISOString().split('T')[0]}`,
         title: 'رفع خطة صباحية',
         message: `قامت ${data.directorateName} باعتماد خطة اليوم (${data.tasksCount} مهام).`,
         type: 'plan',
         fullPayload: data,
       });
+      playSubtleChime();
     });
 
     socket.on('task:updated', (data: any) => {
-      // Only notify executive leadership (General Director / Assistant Director)
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (!isExec) return;
 
       addNotif({
+        id: `task-up-${data.taskId || Math.random()}`,
         title: 'تحديث حالة مهمة',
         message: `قامت ${data.directorateName} بتحديث: "${data.taskTitle}" (${data.completionPercentage}%).`,
         type: 'task',
@@ -216,22 +366,27 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     });
 
     socket.on('summary:submitted', (data: any) => {
-      // Only notify executive leadership (General Director / Assistant Director)
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (!isExec) return;
 
       addNotif({
+        id: `summary-sub-${data.directorateId || Math.random()}-${new Date().toISOString().split('T')[0]}`,
         title: 'تسليم ملخص الإنجاز',
         message: `سلّمت ${data.directorateName} ملخص نهاية الدوام بنسبة ${data.overallCompletionRate}%.`,
         type: 'summary',
         fullPayload: data,
       });
+      if (data.urgentFlag) {
+        playUrgentAlert();
+      } else {
+        playSubtleChime();
+      }
     });
 
     socket.on('feedback:sent', (data: any) => {
-      // Only notify the targeted directorate's director (never notify the executive leadership who sent it)
       if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
         addNotif({
+          id: `feedback-${Math.random()}`,
           title: 'توجيه من المدير العام',
           message: data.feedbackText,
           content: data.feedbackText,
@@ -239,11 +394,11 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           type: 'feedback',
           fullPayload: data,
         });
+        playSubtleChime();
       }
     });
 
     socket.on('announcement:created', (data: any) => {
-      // Do not notify the executive leadership or the author of the circular
       if (currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR') return;
       if (data.authorId && data.authorId === currentUser?.id) return;
 
@@ -259,13 +414,19 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         type: 'announcement',
         fullPayload: data,
       });
+
+      if (data.priority === 'URGENT' || data.priority === 'HIGH') {
+        playUrgentAlert();
+      } else {
+        playSubtleChime();
+      }
     });
 
     socket.on('executive-task:created', (data: any) => {
       if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId === data.directorateId) {
         addNotif({
-          id: data.task?.id,
-          title: 'تكليف رئاسي جديد',
+          id: `exec-task-${data.task?.id || Math.random()}`,
+          title: data.task?.isShared ? 'تكليف رئاسي مشترك' : 'تكليف رئاسي جديد',
           message: `وردك تكليف من المدير العام: "${data.task?.title}"`,
           content: data.task?.description || data.task?.title,
           authorName: data.assignedByName || 'المدير العام',
@@ -273,6 +434,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           type: 'feedback',
           fullPayload: data,
         });
+        playUrgentAlert();
       }
     });
 
@@ -280,12 +442,13 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (isExec && data.updatedByRole === 'DIRECTOR') {
         addNotif({
-          id: data.task?.id,
+          id: `exec-task-update-${data.task?.id || Math.random()}-${new Date().getTime()}`,
           title: 'تحديث إنجاز تكليف رئاسي',
           message: `قامت (${data.directorateName}) بتحديث التكليف "${data.task?.title}" إلى (${data.task?.completionPercentage}%).`,
           type: 'task',
           fullPayload: data,
         });
+        playSubtleChime();
       }
     });
 
@@ -305,34 +468,45 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   const handleOpenNotifications = () => {
     setShowNotifications(!showNotifications);
     setShowUserMenu(false);
-    if (!showNotifications) {
-      setUnreadCount(0);
-    }
   };
 
   const handleMarkAllAsRead = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentUser) return;
 
-    const annIds = notifications
-      .filter((n) => n.type === 'announcement' && n.id)
-      .map((n) => n.id);
+    const allIds = notifications.map((n) => n.id);
+    if (allIds.length > 0) {
+      markAllNotificationsAsRead(currentUser.id, allIds);
+      setReadNotifIds((prev) => Array.from(new Set([...prev, ...allIds])));
 
-    if (annIds.length > 0) {
-      markAllAnnouncementsAsRead(currentUser.id, annIds);
-      setReadAnnouncementIds((prev) => Array.from(new Set([...prev, ...annIds])));
+      // Also trigger server-side read for announcements
+      notifications
+        .filter((n) => n.type === 'announcement' && n.id)
+        .forEach((n) => {
+          api.markAnnouncementRead(n.id).catch(() => {});
+        });
     }
 
     setUnreadCount(0);
   };
 
   const handleNotificationClick = (n: LiveNotification) => {
-    if (n.type === 'announcement') {
-      if (currentUser && n.id) {
+    if (currentUser && n.id) {
+      markNotificationAsRead(currentUser.id, n.id);
+      setReadNotifIds((prev) => Array.from(new Set([...prev, n.id])));
+      setUnreadCount((c) => Math.max(0, c - 1));
+
+      if (n.type === 'announcement') {
         markAnnouncementAsRead(currentUser.id, n.id);
+        api.markAnnouncementRead(n.id).catch(() => {});
       }
+    }
+
+    if (n.type === 'announcement') {
       setSelectedAnnouncement({
         id: n.id,
+        isAnnouncement: true,
+        type: 'announcement',
         title: n.fullPayload?.title || n.message,
         content: n.fullPayload?.content || n.content || n.message,
         authorName: n.fullPayload?.authorName || n.authorName || 'المدير العام للموانئ',
@@ -344,11 +518,13 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     } else if (n.type === 'feedback') {
       setSelectedAnnouncement({
         id: n.id,
-        title: 'توجيه وملاحظات من المدير العام',
+        isAnnouncement: false,
+        type: 'feedback',
+        title: n.title || 'توجيه وتكليف من المدير العام',
         content: n.content || n.message,
         authorName: n.authorName || 'المدير العام للموانئ',
         authorTitle: 'المدير العام',
-        priority: 'HIGH',
+        priority: n.priority || 'HIGH',
         createdAt: n.createdAt,
       });
       setShowNotifications(false);
@@ -388,9 +564,23 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
             </div>
 
             {/* User Profile & Actions */}
-            <div className="flex items-center gap-3 relative">
+            <div className="flex items-center gap-2.5 relative">
               {currentUser && (
                 <>
+                  {/* Sound Chimes Toggle Button */}
+                  <button
+                    onClick={toggleSound}
+                    className={`flex items-center justify-center w-10 h-10 rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${
+                      soundOn
+                        ? 'bg-[#0c3e35] border-[#d4af37]/30 text-[#d4af37] hover:bg-[#0c4237]'
+                        : 'bg-[#05261e] border-[#5e736e]/40 text-[#8daaa2] hover:text-white'
+                    }`}
+                    title={soundOn ? 'نغمات التنبيه الصوتية مفعلة (انقر للكتم)' : 'نغمات التنبيه الصوتية مكتومة (انقر للتفعيل)'}
+                    aria-label="تبديل نغمة التنبيه"
+                  >
+                    {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </button>
+
                   {/* Notifications Bell */}
                   <div ref={notifRef} className="relative">
                     <button
@@ -444,17 +634,15 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                           ) : (
                             notifications.map((n) => {
                               const isClickable = n.type === 'announcement' || n.type === 'feedback';
-                              const isAnnRead = n.type === 'announcement' && readAnnouncementIds.includes(n.id);
+                              const isRead = readNotifIds.includes(n.id);
 
                               return (
                                 <div
                                   key={n.id}
                                   onClick={() => isClickable && handleNotificationClick(n)}
                                   className={`p-3 rounded-2xl border text-xs space-y-1.5 transition ${
-                                    n.type === 'announcement'
-                                      ? isAnnRead
-                                        ? 'bg-white/80 border-[#d2d1c9] hover:bg-[#edece4] cursor-pointer'
-                                        : 'bg-amber-50/80 border-amber-300 shadow-xs hover:bg-amber-100/70 cursor-pointer'
+                                    !isRead
+                                      ? 'bg-amber-50/85 border-amber-300 shadow-xs hover:bg-amber-100/80 cursor-pointer'
                                       : isClickable
                                       ? 'bg-white border-[#d2d1c9] hover:border-[#0c3e35] hover:bg-[#f4f3ed] cursor-pointer'
                                       : 'bg-white border-[#d2d1c9]'
@@ -471,16 +659,14 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                     </span>
                                     
                                     <div className="flex items-center gap-1.5">
-                                      {n.type === 'announcement' && (
-                                        isAnnRead ? (
-                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#edece4] text-[#5e736e]">
-                                            تمت القراءة
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">
-                                            جديد
-                                          </span>
-                                        )
+                                      {isRead ? (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#edece4] text-[#5e736e]">
+                                          تمت القراءة
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">
+                                          جديد
+                                        </span>
                                       )}
                                       <span className="text-[10px] text-[#8daaa2] font-medium">{n.time}</span>
                                     </div>
@@ -494,10 +680,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                     <div className="pt-1 flex items-center justify-between text-[10px] text-[#0c3e35] font-bold border-t border-[#e5e4dc]">
                                       <span>
                                         {n.type === 'announcement'
-                                          ? isAnnRead
+                                          ? isRead
                                             ? 'انقر لإعادة قراءة نص وتفاصيل التعميم 📖'
                                             : 'انقر لقراءة نص وتفاصيل التعميم 📖'
-                                          : 'انقر لعرض كامل التفاصيل'}
+                                          : 'انقر لعرض تفاصيل التكليف والتوجيه 📖'}
                                       </span>
                                       <ChevronLeft className="w-3 h-3 text-[#0c3e35]" />
                                     </div>
@@ -603,6 +789,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       {/* Announcement Full Details Dialog */}
       <AnnouncementDetailsModal
         data={selectedAnnouncement}
+        currentUser={currentUser}
         onClose={() => setSelectedAnnouncement(null)}
       />
     </>

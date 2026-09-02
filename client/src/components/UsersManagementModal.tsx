@@ -37,6 +37,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // Form states
@@ -223,17 +224,23 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
     }
   };
 
-  const handleDeleteUser = async (u: User) => {
-    if (!confirm(`هل أنت متأكد من رغبتك في حذف حساب "${u.fullName}"؟`)) {
-      return;
-    }
+  const handleDeleteUser = (u: User) => {
+    setUserToDelete(u);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
 
     try {
-      await api.deleteUser(u.id);
-      showToast(`تم حذف حساب ${u.fullName} بنجاح`);
+      setActionLoading(true);
+      await api.deleteUser(userToDelete.id);
+      showToast(`تم حذف حساب ${userToDelete.fullName} بنجاح`);
+      setUserToDelete(null);
       loadData();
     } catch (err: any) {
-      alert(err.message || 'فشل حذف الحساب');
+      showToast(err.message || 'فشل حذف الحساب');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -770,6 +777,54 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {userToDelete && (
+        <div 
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+          onClick={() => !actionLoading && setUserToDelete(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 border border-red-200 shadow-2xl space-y-4 text-right relative font-sans animate-fadeIn"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-200 text-red-600 flex items-center justify-center mx-auto shadow-xs">
+              <Trash2 className="w-7 h-7 text-red-600" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-base sm:text-lg font-black text-[#05261e]">
+                تأكيد حذف الحساب
+              </h3>
+              <p className="text-xs font-bold text-[#0c3e35] bg-[#f4f3ed] p-2.5 rounded-xl border border-[#d2d1c9]">
+                {userToDelete.fullName} ({userToDelete.username})
+              </p>
+              <p className="text-xs text-[#5e736e] leading-relaxed font-medium">
+                هل أنت متأكد من رغبتك في حذف هذا الحساب نهائياً؟ سيتم إلغاء صلاحية الوصول الخاصة بهذا المستخدم فوراً.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-3 border-t border-[#edece4]">
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={confirmDeleteUser}
+                className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+              >
+                {actionLoading ? 'جارٍ الحذف...' : 'نعم، تأكيد الحذف'}
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => setUserToDelete(null)}
+                className="py-3 px-5 rounded-xl bg-[#f4f3ed] hover:bg-[#edece4] text-[#0c3e35] font-bold text-xs border border-[#d2d1c9] transition-all cursor-pointer disabled:opacity-50"
+              >
+                إلغاء الأمر
+              </button>
+            </div>
           </div>
         </div>
       )}

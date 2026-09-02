@@ -66,11 +66,37 @@ class ApiService {
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      throw new Error(errorBody.message || `Request failed with status ${response.status}`);
+      let errorMessage = `Request failed with status ${response.status}`;
+      try {
+        const errorText = await response.text();
+        if (errorText) {
+          const errorBody = JSON.parse(errorText);
+          if (errorBody && errorBody.message) {
+            errorMessage = Array.isArray(errorBody.message)
+              ? errorBody.message.join(', ')
+              : errorBody.message;
+          }
+        }
+      } catch {
+        // fallback to default error message
+      }
+      throw new Error(errorMessage);
     }
 
-    return response.json();
+    if (response.status === 204) {
+      return null as unknown as T;
+    }
+
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      return null as unknown as T;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text as unknown as T;
+    }
   }
 
   // Auth endpoints
@@ -178,6 +204,16 @@ class ApiService {
     return this.request<Announcement[]>('/executive/announcements');
   }
 
+  async markAnnouncementRead(id: string): Promise<{ success: boolean; announcementId: string; readAt: string }> {
+    return this.request<{ success: boolean; announcementId: string; readAt: string }>(`/executive/announcements/${id}/read`, {
+      method: 'POST',
+    });
+  }
+
+  async getAnnouncementReaders(id: string): Promise<any> {
+    return this.request<any>(`/executive/announcements/${id}/readers`);
+  }
+
   async createAnnouncement(payload: { title: string; content: string; priority?: string }) {
     return this.request<Announcement>('/executive/announcements', {
       method: 'POST',
@@ -189,6 +225,41 @@ class ApiService {
   async getMyTodayPlan(dateStr?: string): Promise<DailyPlan | null> {
     const query = dateStr ? `?date=${dateStr}` : '';
     return this.request<DailyPlan | null>(`/daily-plans/my-today${query}`);
+  }
+
+  async clonePreviousPlan(dateStr?: string): Promise<{
+    previousDate: string;
+    generalFocus?: string;
+    tasks: { title: string; description?: string; priority: string; estimatedHours: number }[];
+  }> {
+    const query = dateStr ? `?date=${dateStr}` : '';
+    return this.request<{
+      previousDate: string;
+      generalFocus?: string;
+      tasks: { title: string; description?: string; priority: string; estimatedHours: number }[];
+    }>(`/daily-plans/clone-previous${query}`);
+  }
+
+  async getTaskTemplates(): Promise<any[]> {
+    return this.request<any[]>('/daily-plans/templates');
+  }
+
+  async createTaskTemplate(payload: {
+    title: string;
+    description?: string;
+    priority?: string;
+    estimatedHours?: number;
+  }): Promise<any> {
+    return this.request<any>('/daily-plans/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteTaskTemplate(id: string): Promise<{ message: string; templateId: string }> {
+    return this.request<{ message: string; templateId: string }>(`/daily-plans/templates/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   async submitPlan(payload: {
@@ -289,8 +360,9 @@ class ApiService {
     });
   }
 
-  async deleteExecutiveTask(id: string): Promise<{ message: string; taskId: string }> {
-    return this.request<{ message: string; taskId: string }>(`/executive-tasks/${id}`, {
+  async deleteExecutiveTask(id: string, deleteAllInGroup?: boolean): Promise<{ message: string; taskId?: string; count?: number }> {
+    const qs = deleteAllInGroup ? '?deleteAllInGroup=true' : '';
+    return this.request<{ message: string; taskId?: string; count?: number }>(`/executive-tasks/${id}${qs}`, {
       method: 'DELETE',
     });
   }

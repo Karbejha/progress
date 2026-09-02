@@ -284,16 +284,177 @@ export class ExecutiveService {
     return feedback;
   }
 
-  async getAnnouncements() {
-    return this.prisma.announcement.findMany({
+  async getAnnouncements(user?: any) {
+    const totalDirectorates = await this.prisma.directorate.count();
+
+    const announcements = await this.prisma.announcement.findMany({
       include: {
         author: {
           select: { fullName: true, title: true },
         },
+        reads: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                title: true,
+                directorateId: true,
+                directorate: { select: { id: true, name: true, code: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
-      take: 10,
+      take: 20,
     });
+
+    return announcements.map((ann) => {
+      const isReadByMe = user ? ann.reads.some((r) => r.userId === user.id) : false;
+      const readCount = ann.reads.length;
+      const readPercentage = Math.round((readCount / (totalDirectorates || 1)) * 100);
+
+      return {
+        id: ann.id,
+        title: ann.title,
+        content: ann.content,
+        priority: ann.priority,
+        authorId: ann.authorId,
+        author: ann.author,
+        createdAt: ann.createdAt,
+        isReadByMe,
+        readCount,
+        totalDirectorates,
+        readPercentage,
+        reads: ann.reads.map((r) => ({
+          userId: r.userId,
+          userName: r.user?.fullName || 'مستخدم غير محدد',
+          userTitle: r.user?.title || '',
+          directorateName: r.user?.directorate?.name || null,
+          readAt: r.readAt,
+        })),
+      };
+    });
+  }
+
+  async markAnnouncementAsRead(user: any, announcementId: string) {
+    const ann = await this.prisma.announcement.findUnique({
+      where: { id: announcementId },
+    });
+
+    if (!ann) {
+      throw new NotFoundException('التعميم غير موجود');
+    }
+
+    const read = await this.prisma.announcementRead.upsert({
+      where: {
+        announcementId_userId: {
+          announcementId,
+          userId: user.id,
+        },
+      },
+      create: {
+        announcementId,
+        userId: user.id,
+      },
+      update: {
+        readAt: new Date(),
+      },
+    });
+
+    return {
+      success: true,
+      announcementId,
+      userId: user.id,
+      readAt: read.readAt,
+    };
+  }
+
+  async getAnnouncementReaders(user: any, announcementId: string) {
+    const ann = await this.prisma.announcement.findUnique({
+      where: { id: announcementId },
+      include: {
+        author: { select: { fullName: true, title: true } },
+        reads: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                title: true,
+                role: true,
+                directorateId: true,
+                directorate: { select: { id: true, name: true, code: true, icon: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!ann) {
+      throw new NotFoundException('التعميم غير موجود');
+    }
+
+    // Get all directorates to identify who hasn't read yet
+    const allDirectorates = await this.prisma.directorate.findMany({
+      orderBy: { displayOrder: 'asc' },
+      include: {
+        users: {
+          select: { id: true, fullName: true, title: true, role: true },
+        },
+      },
+    });
+
+    const readUserIds = new Set(ann.reads.map((r) => r.userId));
+    const readDirectorateIds = new Set(
+      ann.reads.map((r) => r.user?.directorateId).filter(Boolean),
+    );
+
+    const readers = ann.reads.map((r) => ({
+      userId: r.userId,
+      userName: r.user?.fullName || 'مستخدم غير محدد',
+      userTitle: r.user?.title || '',
+      directorateId: r.user?.directorateId,
+      directorateName: r.user?.directorate?.name || 'الإدارة العليا / غير محدد',
+      directorateCode: r.user?.directorate?.code || null,
+      readAt: r.readAt,
+    }));
+
+    const unreadDirectorates = allDirectorates
+      .filter((dir) => !readDirectorateIds.has(dir.id))
+      .map((dir) => ({
+        directorateId: dir.id,
+        directorateName: dir.name,
+        directorateCode: dir.code,
+        icon: dir.icon,
+        directorName: dir.users[0]?.fullName || 'غير محدد',
+      }));
+
+    const totalDirectorates = allDirectorates.length;
+    const readCount = readDirectorateIds.size;
+    const unreadCount = unreadDirectorates.length;
+    const readPercentage = Math.round((readCount / (totalDirectorates || 1)) * 100);
+
+    return {
+      announcement: {
+        id: ann.id,
+        title: ann.title,
+        content: ann.content,
+        priority: ann.priority,
+        authorName: ann.author?.fullName,
+        createdAt: ann.createdAt,
+      },
+      stats: {
+        totalDirectorates,
+        readCount,
+        unreadCount,
+        readPercentage,
+      },
+      readers,
+      unreadDirectorates,
+    };
   }
 
   async createAnnouncement(user: any, dto: CreateAnnouncementDto) {

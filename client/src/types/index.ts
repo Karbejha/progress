@@ -91,6 +91,17 @@ export interface ExecutiveFeedback {
   createdAt: string;
 }
 
+export interface TaskTemplate {
+  id: string;
+  directorateId: string;
+  title: string;
+  description?: string | null;
+  priority: Priority;
+  estimatedHours: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Announcement {
   id: string;
   title: string;
@@ -102,6 +113,50 @@ export interface Announcement {
     title: string;
   };
   createdAt: string;
+  isReadByMe?: boolean;
+  readCount?: number;
+  totalDirectorates?: number;
+  readPercentage?: number;
+  reads?: Array<{
+    userId: string;
+    userName: string;
+    userTitle: string;
+    directorateName?: string | null;
+    readAt: string;
+  }>;
+}
+
+export interface AnnouncementReadersResponse {
+  announcement: {
+    id: string;
+    title: string;
+    content: string;
+    priority: Priority;
+    authorName?: string;
+    createdAt?: string;
+  };
+  stats: {
+    totalDirectorates: number;
+    readCount: number;
+    unreadCount: number;
+    readPercentage: number;
+  };
+  readers: Array<{
+    userId: string;
+    userName: string;
+    userTitle: string;
+    directorateId?: string | null;
+    directorateName: string;
+    directorateCode?: string | null;
+    readAt: string;
+  }>;
+  unreadDirectorates: Array<{
+    directorateId: string;
+    directorateName: string;
+    directorateCode: string;
+    icon?: string | null;
+    directorName: string;
+  }>;
 }
 
 export interface ExecutiveOverviewKPIs {
@@ -114,6 +169,18 @@ export interface ExecutiveOverviewKPIs {
   totalCompletedTasksCount: number;
   averageCompletionRate: number;
   urgentIssuesCount: number;
+}
+
+export interface ExecutiveCoTask {
+  id: string;
+  directorateId: string;
+  directorateName: string;
+  directorateCode?: string;
+  directorateCategory?: string;
+  directorateIcon?: string;
+  status: TaskStatus;
+  completionPercentage: number;
+  completionNote?: string | null;
 }
 
 export interface ExecutiveTask {
@@ -146,8 +213,42 @@ export interface ExecutiveTask {
     fullName: string;
     title: string;
   };
+  sharedGroupId?: string | null;
+  isShared?: boolean;
+  sharedDirectoratesCount?: number;
+  coTasks?: ExecutiveCoTask[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GroupedExecutiveTask {
+  groupId: string;
+  sharedGroupId: string | null;
+  isShared: boolean;
+  title: string;
+  description?: string;
+  priority: Priority;
+  dueDate?: string;
+  assignedBy?: {
+    id: string;
+    fullName: string;
+    title: string;
+    role?: Role;
+  };
+  createdAt: string;
+  averageCompletionRate: number;
+  overallStatus: TaskStatus;
+  directoratesCount: number;
+  subTasks: Array<{
+    taskId: string;
+    directorateId: string;
+    directorateName: string;
+    directorateCode?: string;
+    directorateIcon?: string;
+    status: TaskStatus;
+    completionPercentage: number;
+    completionNote?: string | null;
+  }>;
 }
 
 export interface DirectorateOverviewItem {

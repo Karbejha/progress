@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, DailyPlan, PlanTask, Priority, TaskStatus, ExecutiveTask } from '../types';
+import { User, DailyPlan, PlanTask, Priority, TaskStatus, ExecutiveTask, TaskTemplate } from '../types';
 import { api } from '../services/api';
 import { DynamicIcon } from './Icons';
 import {
@@ -25,6 +25,11 @@ import {
   Loader2,
   CheckCheck,
   MessageSquare,
+  Copy,
+  Bookmark,
+  BookmarkPlus,
+  RefreshCw,
+  Users,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -46,6 +51,93 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [saving, setSaving] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+
+  // Drafts State (Requirement 4)
+  const getTodayLocalKey = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayKey = getTodayLocalKey();
+  const planDraftKey = `ports_plan_draft_${currentUser.id}_${todayKey}`;
+  const summaryDraftKey = `ports_summary_draft_${currentUser.id}_${todayKey}`;
+
+  // Read initial drafts synchronously from localStorage
+  const getInitialPlanDraft = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(planDraftKey);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  };
+
+  const getInitialSummaryDraft = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(summaryDraftKey);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  };
+
+  const initPlanDraft = getInitialPlanDraft();
+  const initSummaryDraft = getInitialSummaryDraft();
+
+  const [planDraftSavedTime, setPlanDraftSavedTime] = useState<string | null>(() =>
+    initPlanDraft?.updatedAt
+      ? new Date(initPlanDraft.updatedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })
+      : null
+  );
+
+  const [summaryDraftSavedTime, setSummaryDraftSavedTime] = useState<string | null>(() =>
+    initSummaryDraft?.updatedAt
+      ? new Date(initSummaryDraft.updatedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })
+      : null
+  );
+
+  // Form states initialized with local draft
+  const [generalFocus, setGeneralFocus] = useState(() => initPlanDraft?.generalFocus || '');
+  const [tasks, setTasks] = useState<
+    { title: string; description: string; priority: Priority; estimatedHours: number }[]
+  >(() =>
+    initPlanDraft?.tasks && initPlanDraft.tasks.length > 0
+      ? initPlanDraft.tasks
+      : [{ title: '', description: '', priority: 'NORMAL', estimatedHours: 2.0 }]
+  );
+
+  // Summary wizard states initialized with local draft
+  const [summaryText, setSummaryText] = useState(() => initSummaryDraft?.summaryText || '');
+  const [achievements, setAchievements] = useState<string[]>(() =>
+    initSummaryDraft?.achievements && initSummaryDraft.achievements.length > 0
+      ? initSummaryDraft.achievements
+      : ['']
+  );
+  const [challenges, setChallenges] = useState(() => initSummaryDraft?.challenges || '');
+  const [directorNotes, setDirectorNotes] = useState(() => initSummaryDraft?.directorNotes || '');
+  const [urgentFlag, setUrgentFlag] = useState<boolean>(() => Boolean(initSummaryDraft?.urgentFlag));
+  const [tomorrowPlanPreview, setTomorrowPlanPreview] = useState(() => initSummaryDraft?.tomorrowPlanPreview || '');
+
+  // Cloning & Templates State (Requirement 2)
+  const [loadingPreviousPlan, setLoadingPreviousPlan] = useState(false);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [newTemplateForm, setNewTemplateForm] = useState<{
+    title: string;
+    description: string;
+    priority: Priority;
+    estimatedHours: number;
+  }>({
+    title: '',
+    description: '',
+    priority: 'NORMAL',
+    estimatedHours: 1.5,
+  });
 
   // Executive Tasks state
   const [executiveTasks, setExecutiveTasks] = useState<ExecutiveTask[]>([]);
@@ -73,22 +165,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     return () => window.removeEventListener('announcements:read_updated', handleReadUpdate);
   }, [currentUser.id]);
 
-  // Form states
-  const [generalFocus, setGeneralFocus] = useState('');
-  const [tasks, setTasks] = useState<
-    { title: string; description: string; priority: Priority; estimatedHours: number }[]
-  >([
-    { title: '', description: '', priority: 'NORMAL', estimatedHours: 2.0 },
-  ]);
-
-  // Summary wizard states
-  const [summaryText, setSummaryText] = useState('');
-  const [achievements, setAchievements] = useState<string[]>(['']);
-  const [challenges, setChallenges] = useState('');
-  const [directorNotes, setDirectorNotes] = useState('');
-  const [urgentFlag, setUrgentFlag] = useState(false);
-  const [tomorrowPlanPreview, setTomorrowPlanPreview] = useState('');
-
   const todayFormatted = new Date().toLocaleDateString('ar-SY', {
     weekday: 'long',
     year: 'numeric',
@@ -99,7 +175,128 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   useEffect(() => {
     loadTodayData();
     loadExecutiveTasks();
+    loadTemplates();
   }, []);
+
+  const loadTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const res = await api.getTaskTemplates();
+      setTemplates(res);
+    } catch (err) {
+      console.error('Failed to load task templates', err);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  // Synchronous flush before page unload/refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!plan) {
+        const hasPlanContent = generalFocus.trim().length > 0 || tasks.some((t) => t.title.trim().length > 0);
+        if (hasPlanContent) {
+          localStorage.setItem(
+            planDraftKey,
+            JSON.stringify({
+              generalFocus,
+              tasks,
+              updatedAt: new Date().toISOString(),
+            })
+          );
+        }
+      }
+      if (!plan?.dailySummary) {
+        const hasSummaryContent =
+          summaryText.trim().length > 0 ||
+          challenges.trim().length > 0 ||
+          directorNotes.trim().length > 0 ||
+          tomorrowPlanPreview.trim().length > 0 ||
+          achievements.some((a) => a.trim().length > 0);
+        if (hasSummaryContent) {
+          localStorage.setItem(
+            summaryDraftKey,
+            JSON.stringify({
+              summaryText,
+              achievements,
+              challenges,
+              directorNotes,
+              urgentFlag,
+              tomorrowPlanPreview,
+              updatedAt: new Date().toISOString(),
+            })
+          );
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [generalFocus, tasks, summaryText, achievements, challenges, directorNotes, urgentFlag, tomorrowPlanPreview, plan, planDraftKey, summaryDraftKey]);
+
+  // Auto-save Plan Draft Effect
+  useEffect(() => {
+    if (loading || plan) return;
+    const hasContent = generalFocus.trim().length > 0 || tasks.some((t) => t.title.trim().length > 0);
+    if (!hasContent) {
+      // If user cleared everything, remove draft
+      localStorage.removeItem(planDraftKey);
+      setPlanDraftSavedTime(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        const payload = {
+          generalFocus,
+          tasks,
+          updatedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(planDraftKey, JSON.stringify(payload));
+        setPlanDraftSavedTime(new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }));
+      } catch (e) {
+        console.error('Error saving plan draft', e);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [generalFocus, tasks, plan, loading, planDraftKey]);
+
+  // Auto-save Summary Draft Effect
+  useEffect(() => {
+    if (loading || plan?.dailySummary) return;
+    const hasContent =
+      summaryText.trim().length > 0 ||
+      challenges.trim().length > 0 ||
+      directorNotes.trim().length > 0 ||
+      tomorrowPlanPreview.trim().length > 0 ||
+      achievements.some((a) => a.trim().length > 0);
+    if (!hasContent) {
+      localStorage.removeItem(summaryDraftKey);
+      setSummaryDraftSavedTime(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      try {
+        const payload = {
+          summaryText,
+          achievements,
+          challenges,
+          directorNotes,
+          urgentFlag,
+          tomorrowPlanPreview,
+          updatedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(summaryDraftKey, JSON.stringify(payload));
+        setSummaryDraftSavedTime(new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }));
+      } catch (e) {
+        console.error('Error saving summary draft', e);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [summaryText, achievements, challenges, directorNotes, urgentFlag, tomorrowPlanPreview, plan?.dailySummary, loading, summaryDraftKey]);
 
   useEffect(() => {
     const socket = getSocket();
@@ -170,31 +367,52 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         isModified: false,
       };
 
-      const updated = {
-        ...current,
-        [field]: value,
-      };
+      let nextStatus = current.status;
+      let nextPercentage = current.completionPercentage;
+      let nextNote = current.completionNote;
 
-      // Auto set completed if progress 100
-      if (field === 'completionPercentage' && value === 100) {
-        updated.status = 'COMPLETED';
-      } else if (field === 'status' && value === 'COMPLETED' && current.completionPercentage < 100) {
-        updated.completionPercentage = 100;
+      if (field === 'completionPercentage') {
+        const p = typeof value === 'number' ? value : parseInt(value, 10) || 0;
+        nextPercentage = p;
+        if (p === 100) {
+          nextStatus = 'COMPLETED';
+        } else if (p === 0) {
+          nextStatus = 'PENDING';
+        } else {
+          nextStatus = 'IN_PROGRESS';
+        }
+      } else if (field === 'status') {
+        const s = value as TaskStatus;
+        nextStatus = s;
+        if (s === 'COMPLETED') {
+          nextPercentage = 100;
+        } else if (s === 'PENDING') {
+          nextPercentage = 0;
+        } else if (s === 'IN_PROGRESS') {
+          if (nextPercentage === 0 || nextPercentage === 100) {
+            nextPercentage = 50;
+          }
+        }
+      } else if (field === 'completionNote') {
+        nextNote = value;
       }
 
       // Check if actually modified compared to original saved task
       const original = executiveTasks.find((t) => t.id === taskId);
       const isDifferent = original
-        ? (original.status !== updated.status ||
-           original.completionPercentage !== updated.completionPercentage ||
-           (original.completionNote || '').trim() !== (updated.completionNote || '').trim())
+        ? (original.status !== nextStatus ||
+           original.completionPercentage !== nextPercentage ||
+           (original.completionNote || '').trim() !== (nextNote || '').trim())
         : true;
-
-      updated.isModified = isDifferent;
 
       return {
         ...prev,
-        [taskId]: updated,
+        [taskId]: {
+          status: nextStatus,
+          completionPercentage: nextPercentage,
+          completionNote: nextNote,
+          isModified: isDifferent,
+        },
       };
     });
   };
@@ -259,6 +477,32 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           setDirectorNotes(s.directorNotes || '');
           setUrgentFlag(s.urgentFlag || false);
           setTomorrowPlanPreview(s.tomorrowPlanPreview || '');
+        } else {
+          // Check for summary draft
+          const rawSummaryDraft = localStorage.getItem(summaryDraftKey);
+          if (rawSummaryDraft) {
+            try {
+              const parsed = JSON.parse(rawSummaryDraft);
+              if (parsed.summaryText) setSummaryText(parsed.summaryText);
+              if (parsed.achievements) setAchievements(parsed.achievements);
+              if (parsed.challenges) setChallenges(parsed.challenges);
+              if (parsed.directorNotes) setDirectorNotes(parsed.directorNotes);
+              if (parsed.urgentFlag !== undefined) setUrgentFlag(parsed.urgentFlag);
+              if (parsed.tomorrowPlanPreview) setTomorrowPlanPreview(parsed.tomorrowPlanPreview);
+              setSummaryDraftSavedTime(new Date(parsed.updatedAt || Date.now()).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }));
+            } catch (e) {}
+          }
+        }
+      } else {
+        // No plan on server yet -> check for local plan draft
+        const rawPlanDraft = localStorage.getItem(planDraftKey);
+        if (rawPlanDraft) {
+          try {
+            const parsed = JSON.parse(rawPlanDraft);
+            if (parsed.generalFocus) setGeneralFocus(parsed.generalFocus);
+            if (parsed.tasks && parsed.tasks.length > 0) setTasks(parsed.tasks);
+            setPlanDraftSavedTime(new Date(parsed.updatedAt || Date.now()).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }));
+          } catch (e) {}
         }
       }
     } catch (err) {
@@ -279,7 +523,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   const showToast = (msg: string) => {
     setSuccessToast(msg);
-    setTimeout(() => setSuccessToast(null), 3000);
+    setTimeout(() => setSuccessToast(null), 3500);
   };
 
   // Plan actions
@@ -297,6 +541,125 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     setTasks(updated);
   };
 
+  // Cloning Previous Plan (Requirement 2)
+  const handleClonePreviousPlan = async () => {
+    try {
+      setLoadingPreviousPlan(true);
+      const res = await api.clonePreviousPlan();
+      if (res && res.tasks && res.tasks.length > 0) {
+        setGeneralFocus(res.generalFocus || '');
+        setTasks(
+          res.tasks.map((t) => ({
+            title: t.title,
+            description: t.description || '',
+            priority: (t.priority as Priority) || 'NORMAL',
+            estimatedHours: t.estimatedHours || 1.5,
+          }))
+        );
+        showToast('تم استيراد مهام آخر خطة سابقة بنجاح!');
+      }
+    } catch (err: any) {
+      alert(err.message || 'لا توجد خطة سابقة لهذه المديرية لاستيرادها');
+    } finally {
+      setLoadingPreviousPlan(false);
+    }
+  };
+
+  // Templates Management (Requirement 2)
+  const handleApplyTemplate = (tpl: TaskTemplate) => {
+    setTasks((prev) => [
+      ...prev.filter((t) => t.title.trim().length > 0),
+      {
+        title: tpl.title,
+        description: tpl.description || '',
+        priority: tpl.priority,
+        estimatedHours: tpl.estimatedHours,
+      },
+    ]);
+    showToast(`تم إدراج مهمة: "${tpl.title}" من القالب!`);
+    setShowTemplatesModal(false);
+  };
+
+  const handleApplyAllTemplates = () => {
+    if (templates.length === 0) return;
+    setTasks((prev) => [
+      ...prev.filter((t) => t.title.trim().length > 0),
+      ...templates.map((tpl) => ({
+        title: tpl.title,
+        description: tpl.description || '',
+        priority: tpl.priority,
+        estimatedHours: tpl.estimatedHours,
+      })),
+    ]);
+    showToast(`تم إدراج كافة القوالب (${templates.length} مهام) في الخطة!`);
+    setShowTemplatesModal(false);
+  };
+
+  const handleSaveSingleTaskAsTemplate = async (task: {
+    title: string;
+    description: string;
+    priority: Priority;
+    estimatedHours: number;
+  }) => {
+    if (!task.title.trim()) {
+      alert('يرجى كتابة عنوان للمهمة أولاً لحفظها كقالب');
+      return;
+    }
+    try {
+      await api.createTaskTemplate({
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        estimatedHours: task.estimatedHours,
+      });
+      showToast(`تم حفظ "${task.title}" كقالب مهمة متكررة بنجاح!`);
+      loadTemplates();
+    } catch (err) {
+      console.error('Failed to create template', err);
+      alert('حدث خطأ أثناء حفظ القالب');
+    }
+  };
+
+  const handleCreateNewTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTemplateForm.title.trim()) return;
+
+    try {
+      setCreatingTemplate(true);
+      await api.createTaskTemplate({
+        title: newTemplateForm.title,
+        description: newTemplateForm.description,
+        priority: newTemplateForm.priority,
+        estimatedHours: newTemplateForm.estimatedHours,
+      });
+      setNewTemplateForm({
+        title: '',
+        description: '',
+        priority: 'NORMAL',
+        estimatedHours: 1.5,
+      });
+      showToast('تمت إضافة القالب الجديد بنجاح!');
+      loadTemplates();
+    } catch (err) {
+      console.error('Failed to create template', err);
+      alert('حدث خطأ أثناء حفظ القالب');
+    } finally {
+      setCreatingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا القالب؟')) return;
+    try {
+      await api.deleteTaskTemplate(id);
+      showToast('تم حذف القالب بنجاح');
+      loadTemplates();
+    } catch (err) {
+      console.error('Failed to delete template', err);
+      alert('حدث خطأ أثناء حذف القالب');
+    }
+  };
+
   const handleSubmitPlan = async (e: React.FormEvent) => {
     e.preventDefault();
     const validTasks = tasks.filter((t) => t.title.trim().length > 0);
@@ -312,6 +675,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         tasks: validTasks,
       });
       setPlan(res);
+      // Clear plan draft
+      localStorage.removeItem(planDraftKey);
+      setPlanDraftSavedTime(null);
       showToast('تم اعتماد وإرسال الخطة الصباحية للمدير العام بنجاح!');
       setActiveTab('TRACK');
     } catch (err) {
@@ -366,6 +732,10 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         nextPercentage = 100;
       } else if (newStatus === 'PENDING') {
         nextPercentage = 0;
+      } else if (newStatus === 'IN_PROGRESS') {
+        if (nextPercentage === 0 || nextPercentage === 100) {
+          nextPercentage = 50;
+        }
       }
 
       const isDifferent =
@@ -581,6 +951,10 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         tomorrowPlanPreview: tomorrowPlanPreview.trim() || undefined,
       });
 
+      // Clear local summary draft
+      localStorage.removeItem(summaryDraftKey);
+      setSummaryDraftSavedTime(null);
+
       loadTodayData();
       showToast(hasSummary ? 'تم حفظ وتحديث ملخص الإنجاز بنجاح!' : 'تم إرسال ملخص الإنجاز المسائي للمدير العام بنجاح!');
     } catch (err) {
@@ -674,6 +1048,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               markAnnouncementAsRead(currentUser.id, currentAnn.id);
               setSelectedAnnouncement({
                 id: currentAnn.id,
+                isAnnouncement: true,
+                type: 'announcement',
                 title: currentAnn.title,
                 content: currentAnn.content,
                 authorName: currentAnn.author?.fullName || 'المدير العام للموانئ',
@@ -830,12 +1206,20 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       {/* Tab 1: Morning Plan Builder */}
       {activeTab === 'PLAN' && (
         <form onSubmit={handleSubmitPlan} className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
-          <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4">
+          <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4 flex-wrap gap-3">
             <div>
-              <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#0c3e35]" />
-                إعداد الخطة اليومية لمديرية {currentUser.directorate?.name}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-[#0c3e35]" />
+                  إعداد الخطة اليومية لمديرية {currentUser.directorate?.name}
+                </h3>
+                {planDraftSavedTime && !plan && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1 animate-fadeIn">
+                    <Save className="w-3 h-3 text-amber-700" />
+                    <span>مسودة محفوظة محلياً ({planDraftSavedTime})</span>
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
                 سجل المهام الرئيسية المستهدفة اليوم ليتمكن المدير العام من متابعتها ودعمكم.
               </p>
@@ -850,18 +1234,49 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
           {/* Dynamic Tasks List */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <label className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
                 <span>المهام المجدولة لتنفيذها اليوم:</span>
               </label>
-              <button
-                type="button"
-                onClick={handleAddTask}
-                className="flex items-center gap-1 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إضافة مهمة جديدة</span>
-              </button>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Clone Previous Plan Button */}
+                <button
+                  type="button"
+                  onClick={handleClonePreviousPlan}
+                  disabled={loadingPreviousPlan}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                  title="استيراد مهام آخر خطة سابقة تم تقديمها"
+                >
+                  {loadingPreviousPlan ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-[#d4af37]" />
+                  )}
+                  <span>استيراد مهام الأمس</span>
+                </button>
+
+                {/* Templates Modal Trigger Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatesModal(true)}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer shadow-xs active:scale-95"
+                  title="استعراض وإدراج قوالب المهام المتكررة"
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>قوالب المهام المتكررة ({templates.length})</span>
+                </button>
+
+                {/* Add New Empty Task Button */}
+                <button
+                  type="button"
+                  onClick={handleAddTask}
+                  className="flex items-center gap-1 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] transition cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة مهمة جديدة</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -882,6 +1297,17 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
                       className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
                     />
+
+                    {/* Bookmark Task as Template */}
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSingleTaskAsTemplate(task)}
+                      className="p-2 rounded-xl text-[#5e736e] hover:text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer"
+                      title="حفظ هذه المهمة كقالب مهمة متكررة"
+                    >
+                      <Bookmark className="w-4 h-4 text-[#8daaa2] hover:text-[#d4af37]" />
+                    </button>
+
                     {tasks.length > 1 && (
                       <button
                         type="button"
@@ -1148,10 +1574,18 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         <form onSubmit={handleSubmitSummary} className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[#d2d1c9] pb-4">
             <div>
-              <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#d4af37]" />
-                ملخص إنجاز نهاية الدوام الرسمي
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-[#d4af37]" />
+                  ملخص إنجاز نهاية الدوام الرسمي
+                </h3>
+                {summaryDraftSavedTime && !plan?.dailySummary && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1 animate-fadeIn">
+                    <Save className="w-3 h-3 text-amber-700" />
+                    <span>مسودة الملخص محفوظة محلياً ({summaryDraftSavedTime})</span>
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
                 يقوم النظام باحتساب إنجازاتك تلقائياً من واقع مهام اليوم دون الحاجة لإعادة كتابتها.
               </p>
@@ -1400,6 +1834,12 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#f0eee6] pb-3">
                       <div className="flex items-center gap-2.5 flex-wrap">
                         <span className="text-sm font-extrabold text-[#05261e]">{task.title}</span>
+                        {task.isShared && (
+                          <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                            <Users className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>تكليف مشترك (بالتنسيق مع {task.sharedDirectoratesCount ? task.sharedDirectoratesCount - 1 : (task.coTasks?.length || 1) - 1} مديريات أخرى)</span>
+                          </span>
+                        )}
                         {getBadge(task.priority)}
                         <span
                           className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
@@ -1438,13 +1878,68 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       </div>
                     )}
 
+                    {/* Co-assigned partner directorates progress preview */}
+                    {task.isShared && task.coTasks && task.coTasks.length > 1 && (
+                      <div className="my-3.5 p-3.5 rounded-2xl bg-[#edece4] border border-[#d2d1c9] space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                            <Users className="w-4 h-4 text-[#0c3e35]" />
+                            <span>المديريات المكلفة بالتنفيذ المشترك وحالة إنجازها الميداني:</span>
+                          </span>
+                          <span className="text-[11px] text-[#5e736e]">
+                            (للتنسيق المباشر والتعاون المشترك)
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {task.coTasks.map((ct) => {
+                            const isMyDirectorate = ct.directorateId === currentUser.directorateId;
+                            return (
+                              <div
+                                key={ct.id}
+                                className={`p-2.5 rounded-xl border transition ${
+                                  isMyDirectorate
+                                    ? 'bg-white border-[#0c3e35] ring-1 ring-[#0c3e35]/30'
+                                    : 'bg-white/80 border-[#d2d1c9]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-1 text-xs">
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <DynamicIcon name={ct.directorateIcon || 'Building2'} className="w-3.5 h-3.5 text-[#0c3e35] shrink-0" />
+                                    <span className="font-extrabold text-[#05261e] truncate">
+                                      {ct.directorateName} {isMyDirectorate && '(مديريتكم)'}
+                                    </span>
+                                  </div>
+                                  <span className="font-black text-[#0c3e35]">{ct.completionPercentage}%</span>
+                                </div>
+                                <div className="w-full h-1 bg-[#edece4] rounded-full overflow-hidden mt-1.5">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      ct.completionPercentage === 100
+                                        ? 'bg-emerald-600'
+                                        : ct.completionPercentage > 0
+                                        ? 'bg-blue-600'
+                                        : 'bg-gray-300'
+                                    }`}
+                                    style={{ width: `${ct.completionPercentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Interactive Execution & Response Controls */}
                     <div className="mt-4 p-4 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] space-y-4">
+                      <div className="text-xs font-extrabold text-[#0c3e35] flex items-center gap-1.5 pb-2 border-b border-[#d2d1c9]">
+                        <span>توثيق نسبة إنجاز ورد مديرية {currentUser.directorate?.name}:</span>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* Status Dropdown */}
                         <div>
                           <label className="block text-xs font-bold text-[#0c3e35] mb-1">
-                            حالة التنفيذ الحالية:
+                            حالة التنفيذ الحالية لمديريتكم:
                           </label>
                           <select
                             value={local.status}
@@ -1617,9 +2112,179 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       )}
 
+      {/* Task Templates Modal (Requirement 2) */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#edece4] border border-[#d2d1c9] rounded-[28px] max-w-2xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shadow-xs">
+                  <BookmarkPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-[#0c3e35]">
+                    قوالب المهام المتكررة
+                  </h3>
+                  <p className="text-xs text-[#5e736e]">
+                    إدارة واستخدام المهام الدورية لمديرية {currentUser.directorate?.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowTemplatesModal(false)}
+                className="p-2 rounded-xl text-[#5e736e] hover:text-[#0c3e35] hover:bg-white/80 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Create New Template Card */}
+            <form onSubmit={handleCreateNewTemplate} className="p-4 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs">
+              <h4 className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-[#d4af37]" />
+                <span>إضافة قالب مهمة متكررة جديد:</span>
+              </h4>
+              <input
+                type="text"
+                required
+                placeholder="عنوان القالب (مثلاً: جرد حركة السفن اليومية بالمرافئ)..."
+                value={newTemplateForm.title}
+                onChange={(e) => setNewTemplateForm({ ...newTemplateForm, title: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="وصف تفصيلي أو إجراءات تنفيذ القالب (اختياري)..."
+                    value={newTemplateForm.description}
+                    onChange={(e) => setNewTemplateForm({ ...newTemplateForm, description: e.target.value })}
+                    className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={newTemplateForm.priority}
+                    onChange={(e) => setNewTemplateForm({ ...newTemplateForm, priority: e.target.value as Priority })}
+                    className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs focus:outline-none focus:border-[#0c3e35] font-bold"
+                  >
+                    <option value="URGENT">عاجل جداً</option>
+                    <option value="HIGH">أولوية مرتفعة</option>
+                    <option value="NORMAL">أولوية عادية</option>
+                    <option value="LOW">منخفضة</option>
+                  </select>
+                  <div className="flex items-center gap-1 bg-[#f4f3ed] border border-[#d2d1c9] px-2 py-2 rounded-xl text-xs text-[#0c3e35] shrink-0 font-bold">
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="12"
+                      step="0.5"
+                      value={newTemplateForm.estimatedHours}
+                      onChange={(e) => setNewTemplateForm({ ...newTemplateForm, estimatedHours: parseFloat(e.target.value) })}
+                      className="w-9 bg-transparent text-center text-[#0c3e35] focus:outline-none font-bold"
+                    />
+                    <span>س</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={creatingTemplate || !newTemplateForm.title.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] text-xs font-bold shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {creatingTemplate ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  <span>حفظ القالب</span>
+                </button>
+              </div>
+            </form>
+
+            {/* Saved Templates List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-[#0c3e35]">
+                  القوالب المحفوظة ({templates.length}):
+                </h4>
+                {templates.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleApplyAllTemplates}
+                    className="text-xs font-bold text-[#0c3e35] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[#d4af37]" />
+                    <span>إدراج كافة القوالب في الخطة دفعة واحدة</span>
+                  </button>
+                )}
+              </div>
+
+              {loadingTemplates ? (
+                <div className="py-8 text-center text-[#5e736e]">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#0c3e35] mb-1" />
+                  <span className="text-xs font-medium">جارٍ تحميل القوالب...</span>
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white border border-dashed border-[#d2d1c9] text-center text-xs text-[#5e736e]">
+                  لا توجد قوالب مهام محفوظة لهذه المديرية بعد. يمكنك إضافة قوالب جديدة أعلاه أو حفظ أي مهمة كقالب أثناء كتابة الخطة.
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                  {templates.map((tpl) => (
+                    <div
+                      key={tpl.id}
+                      className="p-3.5 rounded-xl bg-white border border-[#d2d1c9] flex items-center justify-between gap-3 shadow-xs hover:border-[#0c3e35] transition"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h5 className="text-xs font-extrabold text-[#0c3e35] truncate">{tpl.title}</h5>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#f4f3ed] text-[#0c3e35] border border-[#d2d1c9]">
+                            {tpl.estimatedHours} س
+                          </span>
+                        </div>
+                        {tpl.description && (
+                          <p className="text-[11px] text-[#5e736e] mt-0.5 line-clamp-1">{tpl.description}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyTemplate(tpl)}
+                          className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg bg-[#0c3e35] text-white hover:bg-[#072923] transition cursor-pointer shadow-xs active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>إدراج في الخطة</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTemplate(tpl.id)}
+                          className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition cursor-pointer"
+                          title="حذف القالب"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-[#d2d1c9]">
+              <button
+                type="button"
+                onClick={() => setShowTemplatesModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs font-bold hover:bg-[#f4f3ed] transition cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Announcement Details Dialog */}
       <AnnouncementDetailsModal
         data={selectedAnnouncement}
+        currentUser={currentUser}
         onClose={() => setSelectedAnnouncement(null)}
       />
 

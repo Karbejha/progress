@@ -57,6 +57,7 @@ model Directorate {
   dailySummaries DailySummary[]
   feedbacks    ExecutiveFeedback[]
   executiveTasks ExecutiveTask[]
+  taskTemplates TaskTemplate[]
 }
 
 model User {
@@ -78,6 +79,7 @@ model User {
   dailySummaries DailySummary[]
   feedbacksSent ExecutiveFeedback[] @relation("SentFeedbacks")
   announcements Announcement[]
+  announcementReads AnnouncementRead[]
   assignedExecutiveTasks ExecutiveTask[] @relation("ExecutiveAssignedTasks")
   receivedExecutiveTasks ExecutiveTask[] @relation("AssignedToUserTasks")
 }
@@ -166,6 +168,31 @@ model Announcement {
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  reads     AnnouncementRead[]
+}
+
+model AnnouncementRead {
+  id             String       @id @default(uuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@unique([announcementId, userId])
+}
+
+model TaskTemplate {
+  id             String      @id @default(uuid())
+  directorateId  String
+  directorate    Directorate @relation(fields: [directorateId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  priority       Priority    @default(NORMAL)
+  estimatedHours Float       @default(1.0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
 
 model ExecutiveTask {
@@ -190,6 +217,11 @@ model ExecutiveTask {
   assignedToUserId     String?
   assignedToUser       User?         @relation("AssignedToUserTasks", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
+  // Shared Group ID for multi-directorate joint tasks
+  sharedGroupId        String?
+
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+
+  @@index([sharedGroupId])
 }

@@ -51,3 +51,50 @@ export const markAllAnnouncementsAsRead = (userId: string, announcementIds: stri
   }
 };
 
+// Generic Notification Read Helpers (for Tasks, Plans, Summaries, Feedback)
+export const getReadNotificationIds = (userId: string): string[] => {
+  if (typeof window === 'undefined' || !userId) return [];
+  try {
+    const raw = localStorage.getItem(`ports_read_notifications_${userId}`);
+    const annReads = getReadAnnouncementIds(userId);
+    const notifReads: string[] = raw ? JSON.parse(raw) : [];
+    return Array.from(new Set([...notifReads, ...annReads]));
+  } catch {
+    return [];
+  }
+};
+
+export const markNotificationAsRead = (userId: string, notifId: string): void => {
+  if (typeof window === 'undefined' || !userId || !notifId) return;
+  try {
+    const current = getReadNotificationIds(userId);
+    if (!current.includes(notifId)) {
+      const updated = [...current, notifId];
+      localStorage.setItem(`ports_read_notifications_${userId}`, JSON.stringify(updated));
+      window.dispatchEvent(
+        new CustomEvent('notifications:read_updated', {
+          detail: { userId, notifId, readIds: updated },
+        })
+      );
+    }
+  } catch (e) {
+    console.error('Failed to mark notification as read', e);
+  }
+};
+
+export const markAllNotificationsAsRead = (userId: string, notifIds: string[]): void => {
+  if (typeof window === 'undefined' || !userId || !notifIds.length) return;
+  try {
+    const current = getReadNotificationIds(userId);
+    const set = new Set([...current, ...notifIds]);
+    const updated = Array.from(set);
+    localStorage.setItem(`ports_read_notifications_${userId}`, JSON.stringify(updated));
+    window.dispatchEvent(
+      new CustomEvent('notifications:read_updated', {
+        detail: { userId, readIds: updated },
+      })
+    );
+  } catch (e) {
+    console.error('Failed to mark all notifications as read', e);
+  }
+};
