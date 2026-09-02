@@ -28,11 +28,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Java JDK 17
+      - name: Setup Java JDK 21 (Required by Capacitor 8)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -83,13 +83,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ports-daily-system-debug.apk
-          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          path: client/android/app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
       - name: Upload Release APK Artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ports-daily-system-release-unsigned.apk
-          path: client/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          name: ports-daily-system-release.apk
+          path: client/android/app/build/outputs/apk/release/*.apk
           retention-days: 14
