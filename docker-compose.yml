@@ -33,7 +33,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ports_daily_system}?schema=public
       JWT_SECRET: ${JWT_SECRET}
       PORT: 4000
-      SEED_ON_START: ${SEED_ON_START:-true}
+      SEED_ON_START: ${SEED_ON_START:-false}
 
     ports:
       - "${BACKEND_PORT:-4010}:4000"
