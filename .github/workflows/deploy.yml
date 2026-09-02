@@ -100,9 +100,14 @@ jobs:
 
           Set-Location "C:\Docker\progress"
 
-          Write-Host "Building and deploying Progress..."
+          Write-Host "Building server container..."
+          docker compose build server
 
-          docker compose up -d --build client server
+          Write-Host "Building client container..."
+          docker compose build client
+
+          Write-Host "Starting updated application containers..."
+          docker compose up -d client server
 
           if ($LASTEXITCODE -ne 0) {
               throw "Docker deployment failed."
