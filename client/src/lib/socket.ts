@@ -2,11 +2,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { User } from '../types';
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-
-const SOCKET_URL = API_URL.replace(/\/api\/?$/, '');
+import { getApiBaseUrl } from '../services/api';
 
 let socket: Socket | null = null;
 let currentJoinedUser: User | null = null;
@@ -25,7 +21,8 @@ export const joinUserRooms = (user: User | null) => {
 
 export const getSocket = (): Socket => {
   if (!socket && typeof window !== 'undefined') {
-    socket = io(SOCKET_URL, {
+    const socketUrl = getApiBaseUrl().replace(/\/api\/?$/, '');
+    socket = io(socketUrl, {
       path: '/socket.io',
       autoConnect: true,
       reconnection: true,

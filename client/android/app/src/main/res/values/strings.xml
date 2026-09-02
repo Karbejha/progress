@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">منظومة الموانئ</string>
+    <string name="title_activity_main">منظومة الموانئ</string>
+    <string name="package_name">sy.gov.ports.daily</string>
+    <string name="custom_url_scheme">sy.gov.ports.daily</string>
+</resources>

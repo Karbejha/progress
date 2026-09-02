@@ -9,7 +9,25 @@ import {
   ExecutiveTask,
 } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+export const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const customUrl = localStorage.getItem('ports_custom_api_url');
+    if (customUrl && customUrl.trim()) {
+      return customUrl.trim().replace(/\/+$/, '');
+    }
+  }
+  return (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+};
+
+export const setCustomApiUrl = (url: string | null) => {
+  if (typeof window !== 'undefined') {
+    if (url && url.trim()) {
+      localStorage.setItem('ports_custom_api_url', url.trim().replace(/\/+$/, ''));
+    } else {
+      localStorage.removeItem('ports_custom_api_url');
+    }
+  }
+};
 
 class ApiService {
   private tokenKey = 'ports_auth_token';
@@ -60,7 +78,8 @@ class ApiService {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers,
     });

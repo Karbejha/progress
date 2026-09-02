@@ -1,0 +1,31 @@
+{
+  "name": "المديرية العامة للموانئ - منظومة المتابعة اليومية",
+  "short_name": "منظومة الموانئ",
+  "description": "المنظومة التنفيذية لمتابعة وإدارة الخطط الصباحية وملخصات الإنجاز للمديرية العامة للموانئ",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f3ed",
+  "theme_color": "#0c3e35",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/assets/Syrian_logo_icon_gold.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/Syrian_logo_icon_gold.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/Syrian_logo_icon_gold.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

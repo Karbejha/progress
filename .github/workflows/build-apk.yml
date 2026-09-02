@@ -1,0 +1,95 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: 'رابط السيرفر المباشر (مثل: http://192.168.1.100:4000 أو https://api.ports.gov.sy)'
+        required: false
+        default: 'http://localhost:4000'
+      build_type:
+        description: 'نوع النسخة (debug أو release)'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-apk:
+    name: Build Android APK (Cloud Runner)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'client/package-lock.json'
+
+      - name: Install Client Dependencies
+        working-directory: client
+        run: |
+          npm ci || npm install
+
+      - name: Build Next.js Application
+        working-directory: client
+        env:
+          NEXT_PUBLIC_API_URL: ${{ github.event.inputs.server_url || 'http://localhost:4000' }}
+        run: |
+          npm run build
+
+      - name: Sync Capacitor Android
+        working-directory: client
+        run: |
+          npx cap sync android
+
+      - name: Grant Execute Permission for Gradlew
+        working-directory: client/android
+        run: |
+          chmod +x gradlew
+
+      - name: Build Debug APK
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        working-directory: client/android
+        run: |
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK (Unsigned)
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        working-directory: client/android
+        run: |
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Debug APK Artifact
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ports-daily-system-debug.apk
+          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+      - name: Upload Release APK Artifact
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ports-daily-system-release-unsigned.apk
+          path: client/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 14

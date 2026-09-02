@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>المديرية العامة للموانئ</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0c3e35;
+      color: #d4af37;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: system-ui, -apple-system, sans-serif;
+      text-align: center;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(212, 175, 55, 0.2);
+      border-top-color: #d4af37;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .logo {
+      width: 96px;
+      height: 96px;
+      margin-bottom: 16px;
+    }
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    p {
+      margin-top: 8px;
+      color: #edece4;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <img src="assets/Syrian_logo_icon_gold.png" alt="الجمهورية العربية السورية - المديرية العامة للموانئ" class="logo">
+  <div class="spinner"></div>
+  <h2>المديرية العامة للموانئ</h2>
+  <p>جاري تحميل منظومة المتابعة اليومية...</p>
+
+  <script>
+    (function() {
+      var customUrl = localStorage.getItem('ports_custom_api_url');
+      if (customUrl) {
+        window.location.replace(customUrl);
+      }
+    })();
+  </script>
+</body>
+</html>
