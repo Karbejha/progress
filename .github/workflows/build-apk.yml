@@ -72,7 +72,7 @@ jobs:
         run: |
           ./gradlew assembleDebug --stacktrace
 
-      - name: Build Release APK (Unsigned)
+      - name: Build Release APK (Signed)
         if: ${{ github.event.inputs.build_type == 'release' }}
         working-directory: client/android
         run: |
