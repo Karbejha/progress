@@ -63,7 +63,7 @@ export default function Home() {
             alt="المديرية العامة للموانئ"
             width={40}
             height={40}
-            className="object-contain"
+            className="object-contain w-auto h-auto"
           />
         </div>
         <p className="text-sm font-bold text-[#d4af37]">

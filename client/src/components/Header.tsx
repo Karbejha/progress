@@ -545,7 +545,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   alt="شعار الجمهورية العربية السورية - الموانئ"
                   width={36}
                   height={36}
-                  className="object-contain"
+                  className="object-contain w-auto h-auto"
                 />
               </div>
               <div>

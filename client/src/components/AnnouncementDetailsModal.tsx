@@ -163,7 +163,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
                 alt="شعار المديرية العامة للموانئ"
                 width={36}
                 height={36}
-                className="object-contain"
+                className="object-contain w-auto h-auto"
               />
             </div>
             <div>
@@ -246,6 +246,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
                     alt="شعار"
                     width={80}
                     height={80}
+                    className="w-auto h-auto"
                   />
                 </div>
 

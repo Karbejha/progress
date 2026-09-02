@@ -327,11 +327,18 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       }
     });
 
+    socket.on('executive-task:deleted', (payload: any) => {
+      if (payload.directorateId === currentUser.directorateId) {
+        loadExecutiveTasks();
+      }
+    });
+
     return () => {
       socket.off('feedback:sent');
       socket.off('announcement:created');
       socket.off('executive-task:created');
       socket.off('executive-task:updated');
+      socket.off('executive-task:deleted');
     };
   }, [currentUser]);
 
@@ -439,9 +446,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         [taskId]: { ...prev[taskId], isModified: false },
       }));
       loadExecutiveTasks();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update executive task', err);
-      alert('حدث خطأ أثناء حفظ التعديل');
+      if (err?.message?.includes('غير موجود')) {
+        showToast('هذا التكليف لم يعد موجوداً في النظام (قد يكون تم حذفه من الإدارة العامة).');
+        loadExecutiveTasks();
+      } else {
+        alert('حدث خطأ أثناء حفظ التعديل: ' + (err?.message || ''));
+      }
     } finally {
       setUpdatingTaskId(null);
     }

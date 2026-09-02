@@ -108,7 +108,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                   alt="شعار الجمهورية العربية السورية"
                   width={68}
                   height={68}
-                  className="object-contain drop-shadow-[0_4px_12px_rgba(212,175,55,0.4)]"
+                  className="object-contain drop-shadow-[0_4px_12px_rgba(212,175,55,0.4)] w-auto h-auto"
                   priority
                 />
               </div>
