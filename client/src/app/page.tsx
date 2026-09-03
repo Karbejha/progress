@@ -8,12 +8,14 @@ import { Header } from '../components/Header';
 import { LoginForm } from '../components/LoginForm';
 import { ExecutiveDashboard } from '../components/ExecutiveDashboard';
 import { DirectorPortal } from '../components/DirectorPortal';
+import { initNotificationService, requestNotificationPermissions } from '../lib/notifications';
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    initNotificationService();
     initAuth();
   }, []);
 
@@ -47,6 +49,7 @@ export default function Home() {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
+    requestNotificationPermissions();
   };
 
   const handleLogout = () => {

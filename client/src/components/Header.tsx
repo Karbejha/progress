@@ -33,6 +33,13 @@ import {
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
+import {
+  initNotificationService,
+  requestNotificationPermissions,
+  notifyCircular,
+  notifyExecutiveTask,
+  notifyFeedback,
+} from '../lib/notifications';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -116,6 +123,51 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       window.removeEventListener('keydown', handleEscape);
     };
   }, []);
+
+  // Initialize Native Android & Web Notifications
+  useEffect(() => {
+    initNotificationService();
+    if (currentUser) {
+      requestNotificationPermissions();
+    }
+
+    const handleExternalNotificationClick = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      if (detail.type === 'announcement') {
+        setSelectedAnnouncement({
+          id: detail.id,
+          isAnnouncement: true,
+          type: 'announcement',
+          title: detail.title,
+          content: detail.content,
+          authorName: detail.authorName || 'المدير العام للموانئ',
+          authorTitle: detail.authorTitle || 'المدير العام',
+          priority: detail.priority || 'NORMAL',
+          createdAt: detail.createdAt,
+        });
+        setShowNotifications(false);
+      } else if (detail.type === 'feedback') {
+        setSelectedAnnouncement({
+          id: detail.id || `feedback-${Date.now()}`,
+          isAnnouncement: false,
+          type: 'feedback',
+          title: detail.title || 'توجيه وتكليف من المدير العام',
+          content: detail.content || detail.feedbackText,
+          authorName: detail.fromUserName || detail.authorName || 'المدير العام للموانئ',
+          authorTitle: 'المدير العام',
+          priority: detail.priority || 'HIGH',
+          createdAt: detail.createdAt || new Date().toISOString(),
+        });
+        setShowNotifications(false);
+      }
+    };
+
+    window.addEventListener('ports:notification_clicked', handleExternalNotificationClick);
+    return () => {
+      window.removeEventListener('ports:notification_clicked', handleExternalNotificationClick);
+    };
+  }, [currentUser]);
 
   // Load read status & comprehensive notifications (Executive tasks, Announcements, Plans, Summaries)
   useEffect(() => {
@@ -395,11 +447,17 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           fullPayload: data,
         });
         playSubtleChime();
+
+        notifyFeedback({
+          directorateId: data.directorateId,
+          fromUserName: data.fromUserName,
+          feedbackText: data.feedbackText,
+          rating: data.rating,
+        });
       }
     });
 
     socket.on('announcement:created', (data: any) => {
-      if (currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR') return;
       if (data.authorId && data.authorId === currentUser?.id) return;
 
       addNotif({
@@ -420,6 +478,16 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       } else {
         playSubtleChime();
       }
+
+      notifyCircular({
+        id: data.id,
+        title: data.title,
+        content: data.content,
+        authorName: data.authorName || 'المدير العام للموانئ',
+        authorTitle: data.authorTitle || 'المدير العام',
+        priority: data.priority || 'NORMAL',
+        createdAt: data.createdAt || new Date().toISOString(),
+      });
     });
 
     socket.on('executive-task:created', (data: any) => {
@@ -435,6 +503,14 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           fullPayload: data,
         });
         playUrgentAlert();
+
+        notifyExecutiveTask({
+          id: data.task?.id || `${Date.now()}`,
+          title: data.task?.title,
+          directorateName: data.directorateName,
+          assignedByName: data.assignedByName,
+          isShared: data.task?.isShared,
+        });
       }
     });
 

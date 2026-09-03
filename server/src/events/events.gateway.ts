@@ -125,8 +125,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     authorName: string;
     createdAt?: string;
   }) {
-    this.logger.log(`Broadcasting announcement:created: ${payload.title} to room:authenticated`);
-    this.server.to('room:authenticated').emit('announcement:created', payload);
+    this.logger.log(`Broadcasting announcement:created: ${payload.title} to all connected clients`);
+    this.server.emit('announcement:created', payload);
   }
 
   emitExecutiveTaskCreated(payload: {

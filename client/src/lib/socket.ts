@@ -26,7 +26,7 @@ export const getSocket = (): Socket => {
       path: '/socket.io',
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 15,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
@@ -45,10 +45,28 @@ export const getSocket = (): Socket => {
 
     socket.on('disconnect', (reason) => {
       console.log('🔌 Disconnected from Real-Time Gateway:', reason);
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        socket?.connect();
+      }
     });
 
     socket.on('connect_error', (error) => {
       console.error('❌ Socket.IO connection error:', error.message);
+    });
+
+    // Reconnect automatically when app returns from background / network reconnects
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && socket && !socket.connected) {
+        console.log('📱 App resumed from background - reconnecting real-time socket...');
+        socket.connect();
+      }
+    });
+
+    window.addEventListener('online', () => {
+      console.log('🌐 Network online detected - reconnecting real-time socket...');
+      if (socket && !socket.connected) {
+        socket.connect();
+      }
     });
   }
 
