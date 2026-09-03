@@ -64,7 +64,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       });
       onLoginSuccess(res.user);
     } catch (err: any) {
-      setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة، يرجى المحاولة مجدداً');
+      if (err.message === 'Failed to fetch' || err.message?.includes('NetworkError') || err.message?.includes('Load failed')) {
+        setError('تعذر الاتصال بالخادم. يرجى التأكد من تشغيل السيرفر وكتابة عنوان IP الصحيح في (إعدادات اتصال السيرفر) بالأسفل.');
+      } else {
+        setError(err.message || 'اسم المستخدم أو كلمة المرور غير صحيحة، يرجى المحاولة مجدداً');
+      }
     } finally {
       setLoading(false);
     }
