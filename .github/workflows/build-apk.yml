@@ -8,13 +8,13 @@ on:
         required: false
         default: 'https://progress.gdp.gov.sy/api'
       build_type:
-        description: 'نوع النسخة (debug أو release)'
+        description: 'نوع النسخة (release أو debug)'
         required: true
-        default: 'debug'
+        default: 'release'
         type: choice
         options:
-          - debug
           - release
+          - debug
   push:
     tags:
       - 'v*'
@@ -68,19 +68,19 @@ jobs:
           chmod +x gradlew
 
       - name: Build Debug APK
-        if: ${{ github.event.inputs.build_type != 'release' }}
+        if: ${{ github.event.inputs.build_type == 'debug' }}
         working-directory: client/android
         run: |
           ./gradlew assembleDebug --stacktrace
 
-      - name: Build Release APK (Signed)
-        if: ${{ github.event.inputs.build_type == 'release' }}
+      - name: Build Release APK (Signed with Official Keystore)
+        if: ${{ github.event.inputs.build_type != 'debug' }}
         working-directory: client/android
         run: |
           ./gradlew assembleRelease --stacktrace
 
       - name: Upload Debug APK Artifact
-        if: ${{ github.event.inputs.build_type != 'release' }}
+        if: ${{ github.event.inputs.build_type == 'debug' }}
         uses: actions/upload-artifact@v4
         with:
           name: ports-daily-system-debug.apk
@@ -88,7 +88,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Release APK Artifact
-        if: ${{ github.event.inputs.build_type == 'release' }}
+        if: ${{ github.event.inputs.build_type != 'debug' }}
         uses: actions/upload-artifact@v4
         with:
           name: ports-daily-system-release.apk
