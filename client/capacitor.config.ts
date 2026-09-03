@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'sy.gov.ports.daily',
   appName: 'منظومة الموانئ',
-  webDir: 'public',
+  webDir: 'out',
   android: {
     allowMixedContent: true,
     captureInput: true,

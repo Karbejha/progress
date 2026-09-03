@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { api } from '../services/api';
+import { api, getApiBaseUrl, setCustomApiUrl } from '../services/api';
 import { User } from '../types';
 import {
   Lock,
@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Sparkles,
   Loader2,
+  Server,
+  Check,
 } from 'lucide-react';
 
 interface LoginFormProps {
@@ -25,6 +27,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [customServerUrl, setCustomServerUrl] = useState('');
+  const [serverSavedSuccess, setServerSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCustomServerUrl(getApiBaseUrl());
+    }
+  }, []);
+
+  const handleSaveServerUrl = () => {
+    if (customServerUrl && customServerUrl.trim()) {
+      setCustomApiUrl(customServerUrl.trim());
+      setServerSavedSuccess(true);
+      setTimeout(() => {
+        setServerSavedSuccess(false);
+        setShowServerModal(false);
+      }, 1200);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,10 +278,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
               في حال تعثر تسجيل الدخول أو الحاجة لتحديث بيانات الحساب، يرجى مراجعة إدارة المنظومة وقسم المعلوماتية.
             </div>
 
+            {/* Server Settings Link for Mobile App */}
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomServerUrl(getApiBaseUrl());
+                  setShowServerModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 text-[11px] text-[#5e736e] hover:text-[#0c3e35] transition py-1 px-3 rounded-lg hover:bg-black/5 cursor-pointer font-medium"
+              >
+                <Server className="w-3.5 h-3.5 text-[#d4af37]" />
+                <span>إعدادات اتصال السيرفر</span>
+              </button>
+            </div>
+
           </div>
 
           {/* Institutional Footer */}
-          <div className="pt-5 mt-5 border-t border-[#d2d1c9] text-center">
+          <div className="pt-4 mt-4 border-t border-[#d2d1c9] text-center">
             <p className="text-[10.5px] text-[#5e736e] font-semibold">
               الجمهورية العربية السورية • المديرية العامة للموانئ
             </p>
@@ -271,6 +308,71 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
         </div>
 
       </div>
+
+      {/* Server Config Modal */}
+      {showServerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl bg-[#ffffff] border border-[#d4af37]/40 shadow-2xl p-6 text-right space-y-4">
+            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-[#0c3e35]/10 text-[#0c3e35]">
+                  <Server className="w-5 h-5 text-[#d4af37]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#0c3e35]">عنوان خادم المنظومة (Server URL)</h3>
+                  <p className="text-[11px] text-[#5e736e]">حدد عنوان الـ IP أو الدومين للربط مع قاعدة البيانات</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowServerModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg text-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-[#0c3e35]">رابط الخادم المباشر (API URL)</label>
+              <input
+                type="text"
+                value={customServerUrl}
+                onChange={(e) => setCustomServerUrl(e.target.value)}
+                placeholder="مثال: http://192.168.1.50:4000 أو https://api.ports.gov.sy"
+                className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-[#d2d1c9] focus:border-[#0c3e35] focus:ring-1 focus:ring-[#0c3e35] outline-none text-left"
+                dir="ltr"
+              />
+              <p className="text-[10px] text-[#5e736e] leading-relaxed">
+                * عند استخدام التطبيق على الهاتف المحمول، أدخل عنوان IP السيرفر المحلي أو الدومين الخارجي (وليس localhost).
+              </p>
+            </div>
+
+            {serverSavedSuccess && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600" />
+                تم حفظ عنوان السيرفر بنجاح!
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowServerModal(false)}
+                className="px-4 py-2 rounded-xl border border-[#d2d1c9] text-xs font-semibold text-[#5e736e] hover:bg-gray-50 cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveServerUrl}
+                className="px-5 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#165b4f] transition shadow-md cursor-pointer"
+              >
+                حفظ وتطبيق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

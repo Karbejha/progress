@@ -53,6 +53,7 @@ jobs:
         working-directory: client
         env:
           NEXT_PUBLIC_API_URL: ${{ github.event.inputs.server_url || 'http://localhost:4000' }}
+          NEXT_EXPORT: 'true'
         run: |
           npm run build
 
