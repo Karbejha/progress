@@ -10,13 +10,33 @@ import {
 } from '../types';
 
 export const getApiBaseUrl = (): string => {
+  let url = '';
   if (typeof window !== 'undefined') {
     const customUrl = localStorage.getItem('ports_custom_api_url');
     if (customUrl && customUrl.trim()) {
-      return customUrl.trim().replace(/\/+$/, '');
+      url = customUrl.trim();
     }
   }
-  return (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+  if (!url) {
+    url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').trim();
+  }
+
+  url = url.replace(/\/+$/, '');
+
+  // If pointing to a domain (like https://progress.gdp.gov.sy) without port 4000/4010 and without /api,
+  // append /api automatically because on the production server NestJS API is mapped under /api
+  if (url.startsWith('https://') || url.startsWith('http://')) {
+    try {
+      const parsed = new URL(url);
+      if (!parsed.port && !parsed.pathname.endsWith('/api') && parsed.hostname !== 'localhost') {
+        url = `${url}/api`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return url;
 };
 
 export const setCustomApiUrl = (url: string | null) => {

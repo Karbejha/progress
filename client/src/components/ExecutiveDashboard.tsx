@@ -242,9 +242,9 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         </div>
       )}
 
-      <div className="space-y-7 animate-fadeIn pb-16 relative">
+      <div className="space-y-4 sm:space-y-7 animate-fadeIn pb-16 relative">
         {/* Top Banner / Welcome & Actions */}
-      <div className="p-7 rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-white">
+      <div className="p-4 sm:p-7 rounded-2xl sm:rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 text-white">
         <div className="relative z-10 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5">

@@ -533,44 +533,46 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full bg-[#05261e] border-b border-[#0c3e35] shadow-md transition-all font-sans">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
+      <header className="sticky top-0 z-40 w-full bg-[#05261e] border-b border-[#0c3e35] shadow-md transition-all font-sans pt-[env(safe-area-inset-top,0px)]">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between min-h-[3.75rem] sm:h-20 py-2 sm:py-0 gap-2">
             
             {/* Logo & Title */}
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center p-1.5 shadow-md">
+            <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center p-1.5 shadow-md shrink-0">
                 <Image
                   src="/assets/Syrian_logo_icon_gold.svg"
                   alt="شعار الجمهورية العربية السورية - الموانئ"
                   width={36}
                   height={36}
                   className="object-contain w-auto h-auto"
+                  priority
                 />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="text-[9.5px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 whitespace-nowrap">
                     المديرية العامة للموانئ
                   </span>
-                  <span className="text-[11px] text-[#8daaa2] hidden sm:inline font-medium">
+                  <span className="text-[10px] text-[#8daaa2] hidden md:inline font-medium">
                     • الجمهورية العربية السورية
                   </span>
                 </div>
-                <h1 className="text-base sm:text-lg font-extrabold text-white tracking-tight mt-0.5">
-                  منظومة متابعة الخطط والإنجاز اليومي
+                <h1 className="text-xs sm:text-base md:text-lg font-extrabold text-white tracking-tight mt-0.5 truncate leading-snug">
+                  <span className="inline sm:hidden">منظومة المتابعة اليومية</span>
+                  <span className="hidden sm:inline">منظومة متابعة الخطط والإنجاز اليومي</span>
                 </h1>
               </div>
             </div>
 
             {/* User Profile & Actions */}
-            <div className="flex items-center gap-2.5 relative">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 relative shrink-0">
               {currentUser && (
                 <>
                   {/* Sound Chimes Toggle Button */}
                   <button
                     onClick={toggleSound}
-                    className={`flex items-center justify-center w-10 h-10 rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${
+                    className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${
                       soundOn
                         ? 'bg-[#0c3e35] border-[#d4af37]/30 text-[#d4af37] hover:bg-[#0c4237]'
                         : 'bg-[#05261e] border-[#5e736e]/40 text-[#8daaa2] hover:text-white'
@@ -578,20 +580,20 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     title={soundOn ? 'نغمات التنبيه الصوتية مفعلة (انقر للكتم)' : 'نغمات التنبيه الصوتية مكتومة (انقر للتفعيل)'}
                     aria-label="تبديل نغمة التنبيه"
                   >
-                    {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                    {soundOn ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                   </button>
 
                   {/* Notifications Bell */}
                   <div ref={notifRef} className="relative">
                     <button
                       onClick={handleOpenNotifications}
-                      className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] hover:border-[#d4af37]/40 transition cursor-pointer shadow-sm active:scale-95"
+                      className="relative flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#0c3e35] border border-[#d2d1c9]/20 text-[#d4af37] hover:bg-[#0c4237] hover:border-[#d4af37]/40 transition cursor-pointer shadow-sm active:scale-95"
                       title="التنبيهات اللحظية"
                       aria-label="التنبيهات اللحظية"
                     >
-                      <Bell className="w-4 h-4" />
+                      <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       {unreadCount > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white font-black text-[10px] leading-none flex items-center justify-center border-2 border-[#05261e] shadow-md z-10 pointer-events-none select-none">
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-4.5 sm:min-w-[20px] sm:h-5 px-1 rounded-full bg-red-600 text-white font-black text-[9px] sm:text-[10px] leading-none flex items-center justify-center border-2 border-[#05261e] shadow-md z-10 pointer-events-none select-none">
                           {unreadCount > 99 ? '99+' : unreadCount}
                         </span>
                       )}
@@ -599,7 +601,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
                     {/* Notifications Dropdown */}
                     {showNotifications && (
-                      <div className="absolute left-0 mt-3 w-80 sm:w-96 bg-[#edece4] border border-[#d2d1c9] rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right">
+                      <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:absolute sm:inset-auto sm:left-0 sm:top-auto sm:mt-3 w-auto sm:w-96 bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right">
                         <div className="p-3.5 sm:p-4 bg-[#05261e] text-white flex items-center justify-between border-b border-[#0c3e35] gap-2">
                           <h4 className="text-xs font-bold flex items-center gap-1.5 text-[#d4af37] shrink-0">
                             <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
@@ -704,12 +706,12 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                         setShowUserMenu(!showUserMenu);
                         setShowNotifications(false);
                       }}
-                      className="flex items-center gap-2.5 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 hover:border-[#d4af37]/40 rounded-xl px-2.5 h-10 transition cursor-pointer shadow-sm"
+                      className="flex items-center gap-1.5 sm:gap-2.5 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 hover:border-[#d4af37]/40 rounded-lg sm:rounded-xl px-2 sm:px-2.5 h-8 sm:h-10 transition cursor-pointer shadow-sm"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold shrink-0">
-                        {isGeneralDirector ? <Shield className="w-3.5 h-3.5 text-[#d4af37]" /> : <Ship className="w-3.5 h-3.5 text-[#8daaa2]" />}
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold shrink-0">
+                        {isGeneralDirector ? <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#d4af37]" /> : <Ship className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#8daaa2]" />}
                       </div>
-                      <div className="hidden sm:block text-right">
+                      <div className="hidden md:block text-right">
                         <p className="text-xs font-bold text-white leading-tight">
                           {currentUser.fullName}
                         </p>
@@ -717,12 +719,12 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                           {currentUser.title}
                         </p>
                       </div>
-                      <ChevronDown className="w-3.5 h-3.5 text-[#8daaa2] shrink-0" />
+                      <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#8daaa2] shrink-0" />
                     </button>
 
                     {/* User Dropdown */}
                     {showUserMenu && (
-                      <div className="absolute left-0 mt-3 w-64 bg-[#edece4] border border-[#d2d1c9] rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right p-2 space-y-1">
+                      <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:absolute sm:inset-auto sm:left-0 sm:top-auto sm:mt-3 w-auto sm:w-64 bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right p-2 space-y-1">
                         
                         {/* Option 1: Manage Users (for General Director / Assistant) */}
                         {isGeneralDirector && (
