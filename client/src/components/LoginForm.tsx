@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { api, getApiBaseUrl, setCustomApiUrl } from '../services/api';
+import { forceReconnectSocket } from '../lib/socket';
 import { User } from '../types';
 import {
   Lock,
@@ -40,6 +41,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const handleSaveServerUrl = () => {
     if (customServerUrl && customServerUrl.trim()) {
       setCustomApiUrl(customServerUrl.trim());
+      forceReconnectSocket();
       setServerSavedSuccess(true);
       setTimeout(() => {
         setServerSavedSuccess(false);

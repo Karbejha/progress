@@ -27,7 +27,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+    client.join('room:authenticated');
+    this.logger.log(`Client connected: ${client.id} and joined room:authenticated`);
   }
 
   handleDisconnect(client: Socket) {

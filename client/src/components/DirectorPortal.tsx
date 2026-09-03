@@ -302,43 +302,49 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     const socket = getSocket();
     if (!socket) return;
 
-    socket.on('feedback:sent', (payload: any) => {
+    const handleFeedbackSent = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
         showToast(`وصلك توجيه جديد وملاحظات من المدير العام!`);
         loadTodayData();
       }
-    });
+    };
 
-    socket.on('announcement:created', (payload: any) => {
+    const handleAnnouncementCreated = (payload: any) => {
       showToast(`تم نشر تعميم إداري عام جديد من المدير العام: "${payload.title}"`);
       api.getAnnouncements().then((res) => setAnnouncements(res)).catch(() => {});
-    });
+    };
 
-    socket.on('executive-task:created', (payload: any) => {
+    const handleTaskCreated = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
         showToast(`⚡ وصلك تكليف جديد من المدير العام: "${payload.task?.title || ''}"`);
         loadExecutiveTasks();
       }
-    });
+    };
 
-    socket.on('executive-task:updated', (payload: any) => {
+    const handleTaskUpdated = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
         loadExecutiveTasks();
       }
-    });
+    };
 
-    socket.on('executive-task:deleted', (payload: any) => {
+    const handleTaskDeleted = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
         loadExecutiveTasks();
       }
-    });
+    };
+
+    socket.on('feedback:sent', handleFeedbackSent);
+    socket.on('announcement:created', handleAnnouncementCreated);
+    socket.on('executive-task:created', handleTaskCreated);
+    socket.on('executive-task:updated', handleTaskUpdated);
+    socket.on('executive-task:deleted', handleTaskDeleted);
 
     return () => {
-      socket.off('feedback:sent');
-      socket.off('announcement:created');
-      socket.off('executive-task:created');
-      socket.off('executive-task:updated');
-      socket.off('executive-task:deleted');
+      socket.off('feedback:sent', handleFeedbackSent);
+      socket.off('announcement:created', handleAnnouncementCreated);
+      socket.off('executive-task:created', handleTaskCreated);
+      socket.off('executive-task:updated', handleTaskUpdated);
+      socket.off('executive-task:deleted', handleTaskDeleted);
     };
   }, [currentUser]);
 

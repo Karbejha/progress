@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { User, Announcement } from '../types';
 import { api } from '../services/api';
-import { getSocket, joinUserRooms } from '../lib/socket';
+import { getSocket, joinUserRooms, onSocketStatusChange, forceReconnectSocket, getSocketStatus, SocketConnectionStatus } from '../lib/socket';
 import { playSubtleChime, playUrgentAlert, isSoundEnabled, setSoundEnabled } from '../lib/audio';
 import {
   getReadNotificationIds,
@@ -29,6 +29,11 @@ import {
   CheckCheck,
   Volume2,
   VolumeX,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  Activity,
+  Info,
 } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
@@ -62,6 +67,12 @@ interface LiveNotification {
 
 export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   const [isConnected, setIsConnected] = useState(false);
+  const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>('disconnected');
+  const [socketError, setSocketError] = useState<string | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [testNotifSending, setTestNotifSending] = useState(false);
+  const [testNotifSuccess, setTestNotifSuccess] = useState(false);
+
   const [notifications, setNotifications] = useState<LiveNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -79,6 +90,16 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
   const isGeneralDirector =
     currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+
+  // Real-time socket status listener
+  useEffect(() => {
+    const unsubscribe = onSocketStatusChange((status, err) => {
+      setSocketStatus(status);
+      setSocketError(err || null);
+      setIsConnected(status === 'connected');
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     setSoundOn(isSoundEnabled());
@@ -357,28 +378,20 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     };
   }, [currentUser]);
 
-  // Real-time Socket Event Listeners
+  // Real-time Socket Event Listeners with Safe Named Callbacks
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
+    if (socket.connected && currentUser) {
+      joinUserRooms(currentUser);
+    }
+
     const handleConnect = () => {
-      setIsConnected(true);
       if (currentUser) {
         joinUserRooms(currentUser);
       }
     };
-    const handleDisconnect = () => setIsConnected(false);
-
-    if (socket.connected) {
-      setIsConnected(true);
-      if (currentUser) {
-        joinUserRooms(currentUser);
-      }
-    }
-
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
 
     const addNotif = (notif: Omit<LiveNotification, 'id' | 'time'> & { id?: string }) => {
       const newN: LiveNotification = {
@@ -390,7 +403,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       setUnreadCount((c) => c + 1);
     };
 
-    socket.on('plan:submitted', (data: any) => {
+    const handlePlanSubmitted = (data: any) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (!isExec) return;
 
@@ -402,9 +415,9 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         fullPayload: data,
       });
       playSubtleChime();
-    });
+    };
 
-    socket.on('task:updated', (data: any) => {
+    const handleTaskUpdated = (data: any) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (!isExec) return;
 
@@ -415,9 +428,9 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         type: 'task',
         fullPayload: data,
       });
-    });
+    };
 
-    socket.on('summary:submitted', (data: any) => {
+    const handleSummarySubmitted = (data: any) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (!isExec) return;
 
@@ -433,9 +446,9 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       } else {
         playSubtleChime();
       }
-    });
+    };
 
-    socket.on('feedback:sent', (data: any) => {
+    const handleFeedbackSent = (data: any) => {
       if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
         addNotif({
           id: `feedback-${Math.random()}`,
@@ -455,9 +468,9 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           rating: data.rating,
         });
       }
-    });
+    };
 
-    socket.on('announcement:created', (data: any) => {
+    const handleAnnouncementCreated = (data: any) => {
       if (data.authorId && data.authorId === currentUser?.id) return;
 
       addNotif({
@@ -488,9 +501,9 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         priority: data.priority || 'NORMAL',
         createdAt: data.createdAt || new Date().toISOString(),
       });
-    });
+    };
 
-    socket.on('executive-task:created', (data: any) => {
+    const handleExecutiveTaskCreated = (data: any) => {
       if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId === data.directorateId) {
         addNotif({
           id: `exec-task-${data.task?.id || Math.random()}`,
@@ -512,9 +525,9 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           isShared: data.task?.isShared,
         });
       }
-    });
+    };
 
-    socket.on('executive-task:updated', (data: any) => {
+    const handleExecutiveTaskUpdated = (data: any) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
       if (isExec && data.updatedByRole === 'DIRECTOR') {
         addNotif({
@@ -526,18 +539,26 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         });
         playSubtleChime();
       }
-    });
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('plan:submitted', handlePlanSubmitted);
+    socket.on('task:updated', handleTaskUpdated);
+    socket.on('summary:submitted', handleSummarySubmitted);
+    socket.on('feedback:sent', handleFeedbackSent);
+    socket.on('announcement:created', handleAnnouncementCreated);
+    socket.on('executive-task:created', handleExecutiveTaskCreated);
+    socket.on('executive-task:updated', handleExecutiveTaskUpdated);
 
     return () => {
       socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-      socket.off('plan:submitted');
-      socket.off('task:updated');
-      socket.off('summary:submitted');
-      socket.off('feedback:sent');
-      socket.off('announcement:created');
-      socket.off('executive-task:created');
-      socket.off('executive-task:updated');
+      socket.off('plan:submitted', handlePlanSubmitted);
+      socket.off('task:updated', handleTaskUpdated);
+      socket.off('summary:submitted', handleSummarySubmitted);
+      socket.off('feedback:sent', handleFeedbackSent);
+      socket.off('announcement:created', handleAnnouncementCreated);
+      socket.off('executive-task:created', handleExecutiveTaskCreated);
+      socket.off('executive-task:updated', handleExecutiveTaskUpdated);
     };
   }, [currentUser]);
 
@@ -659,6 +680,33 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     {soundOn ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                   </button>
 
+                  {/* Real-time Socket Connection Status Badge */}
+                  <button
+                    onClick={() => setShowStatusModal(true)}
+                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm text-[10px] sm:text-xs font-bold active:scale-95 ${
+                      socketStatus === 'connected'
+                        ? 'bg-[#0c3e35] border-emerald-500/40 text-emerald-300 hover:bg-[#0c4237]'
+                        : socketStatus === 'connecting'
+                        ? 'bg-amber-950/60 border-amber-500/40 text-amber-300 hover:bg-amber-900/60 animate-pulse'
+                        : 'bg-red-950/60 border-red-500/40 text-red-300 hover:bg-red-900/60'
+                    }`}
+                    title="حالة الاتصال المباشر بالسيرفر (انقر للتفاصيل وإعادة الاتصال)"
+                    aria-label="حالة الاتصال المباشر"
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        socketStatus === 'connected'
+                          ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]'
+                          : socketStatus === 'connecting'
+                          ? 'bg-amber-400'
+                          : 'bg-red-500'
+                      }`}
+                    />
+                    <span className="hidden md:inline">
+                      {socketStatus === 'connected' ? 'بث مباشر متصل' : socketStatus === 'connecting' ? 'جاري الاتصال...' : 'البث غير متصل'}
+                    </span>
+                  </button>
+
                   {/* Notifications Bell */}
                   <div ref={notifRef} className="relative">
                     <button
@@ -702,6 +750,42 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                               <X className="w-4 h-4" />
                             </button>
                           </div>
+                        </div>
+
+                        {/* Test Notification Banner Inside Dropdown */}
+                        <div className="p-2.5 bg-[#f4f3ed] border-b border-[#d2d1c9] flex items-center justify-between gap-2">
+                          <button
+                            onClick={async () => {
+                              setTestNotifSending(true);
+                              try {
+                                await requestNotificationPermissions();
+                                await notifyCircular({
+                                  id: 'test-' + Date.now(),
+                                  title: 'إشعار تجريبي لاختبار الموبايل',
+                                  content: 'تم استقبال هذا التنبيه بنجاح واختبار الصوت والاهتزاز وشريط الإشعارات على هاتفك.',
+                                  authorName: 'المدير العام للموانئ',
+                                  priority: 'HIGH',
+                                  createdAt: new Date().toISOString(),
+                                });
+                                playUrgentAlert();
+                                setTestNotifSuccess(true);
+                                setTimeout(() => setTestNotifSuccess(false), 3000);
+                              } catch (e) {
+                                console.error('Test notification error:', e);
+                              } finally {
+                                setTestNotifSending(false);
+                              }
+                            }}
+                            disabled={testNotifSending}
+                            className={`w-full py-2 px-3 text-xs font-extrabold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-xs active:scale-95 border ${
+                              testNotifSuccess
+                                ? 'bg-emerald-700 text-white border-emerald-600'
+                                : 'bg-[#0c3e35] hover:bg-[#0c4237] text-[#d4af37] border-[#d4af37]/30'
+                            }`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>{testNotifSuccess ? 'تم إرسال الإشعار التجريبي لهاتفك بنجاح!' : testNotifSending ? 'جاري الاختبار...' : '🔔 اختبار إشعار الموبايل الفوري (صوت واهتزاز)'}</span>
+                          </button>
                         </div>
 
                         <div className="max-h-80 overflow-y-auto p-3 space-y-2">
@@ -870,6 +954,79 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         currentUser={currentUser}
         onClose={() => setSelectedAnnouncement(null)}
       />
+
+      {/* Socket Status & Troubleshooting Modal */}
+      {showStatusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-[#edece4] rounded-2xl border border-[#d2d1c9] shadow-2xl max-w-md w-full p-5 text-right font-sans">
+            <div className="flex items-center justify-between pb-3 border-b border-[#d2d1c9]">
+              <h3 className="text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
+                <Activity className="w-5 h-5 text-[#d4af37]" />
+                <span>حالة الاتصال المباشر بالخادم (Real-time Gateway)</span>
+              </h3>
+              <button
+                onClick={() => setShowStatusModal(false)}
+                className="p-1 rounded-lg text-gray-500 hover:text-black hover:bg-gray-200 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3 text-xs">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[#d2d1c9]">
+                <span className="text-[#5e736e] font-bold">حالة الاتصال اللحظي:</span>
+                <span className={`px-2.5 py-1 rounded-lg font-extrabold flex items-center gap-1.5 ${
+                  socketStatus === 'connected'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : socketStatus === 'connecting'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${
+                    socketStatus === 'connected' ? 'bg-emerald-600' : socketStatus === 'connecting' ? 'bg-amber-600' : 'bg-red-600'
+                  }`} />
+                  {socketStatus === 'connected' ? 'متصل بنجاح (Online)' : socketStatus === 'connecting' ? 'جاري محاولة الاتصال...' : 'غير متصل (Disconnected)'}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white border border-[#d2d1c9] space-y-1">
+                <div className="text-[#5e736e] font-bold">رابط السيرفر المباشر:</div>
+                <div className="font-mono text-[11px] text-[#0c3e35] break-all dir-ltr text-left bg-gray-100 p-2 rounded-lg">
+                  {getSocketStatus().targetUrl || 'غير محدد'}
+                </div>
+              </div>
+
+              {socketError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
+                  <strong>رسالة الخطأ:</strong> {socketError}
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] leading-relaxed">
+                💡 <strong>معلومة:</strong> يعمل هذا الاتصال على استلام التعاميم الإدارية والتكاليف اللحظية فور صدورها من المدير العام وإرسال إشعار فوري لهاتفك المحمول.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-3 border-t border-[#d2d1c9]">
+              <button
+                onClick={() => {
+                  forceReconnectSocket();
+                }}
+                className="flex-1 py-2.5 px-4 bg-[#0c3e35] hover:bg-[#0c4237] text-[#d4af37] font-bold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-sm active:scale-95"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>إعادة الاتصال الفوري بالسيرفر</span>
+              </button>
+              <button
+                onClick={() => setShowStatusModal(false)}
+                className="py-2.5 px-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl transition cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

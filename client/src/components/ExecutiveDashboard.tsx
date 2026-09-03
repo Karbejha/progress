@@ -120,45 +120,53 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       setTimeout(() => setLiveToast(null), 4000);
     };
 
-    socket.on('plan:submitted', (payload: any) => {
+    const handlePlanSubmitted = (payload: any) => {
       triggerLiveAlert('خطة جديدة مرفوعة لحظياً', `قام ${payload.directorName} (${payload.directorateName}) برفع الخطة الصباحية.`);
-    });
+    };
 
-    socket.on('task:updated', (payload: any) => {
+    const handleTaskUpdated = (payload: any) => {
       triggerLiveAlert('تحديث إنجاز مهمة لحظياً', `قامت ${payload.directorateName} بتحديث "${payload.taskTitle}" إلى (${payload.completionPercentage}%).`);
-    });
+    };
 
-    socket.on('summary:submitted', (payload: any) => {
+    const handleSummarySubmitted = (payload: any) => {
       triggerLiveAlert('تسليم ملخص إنجاز لحظياً', `سلّمت ${payload.directorateName} ملخص نهاية الدوام بنسبة ${payload.overallCompletionRate}%.`);
-    });
+    };
 
-    socket.on('announcement:created', (payload: any) => {
+    const handleAnnouncementCreated = () => {
       loadAnnouncements();
-    });
+    };
 
-    socket.on('executive-task:created', (payload: any) => {
+    const handleExecutiveTaskCreated = (payload: any) => {
       triggerLiveAlert('تكليف جديد من المدير العام', `تم إسناد تكليف لـ (${payload.directorateName}): "${payload.task?.title || ''}"`);
       loadTasksCount();
-    });
+    };
 
-    socket.on('executive-task:updated', (payload: any) => {
+    const handleExecutiveTaskUpdated = (payload: any) => {
       triggerLiveAlert('تحديث إنجاز تكليف المدير العام', `قامت (${payload.directorateName}) بتحديث إنجاز التكليف "${payload.task?.title}" إلى (${payload.task?.completionPercentage}%).`);
       loadTasksCount();
-    });
+    };
 
-    socket.on('executive-task:deleted', () => {
+    const handleExecutiveTaskDeleted = () => {
       loadOverview();
       loadTasksCount();
-    });
+    };
+
+    socket.on('plan:submitted', handlePlanSubmitted);
+    socket.on('task:updated', handleTaskUpdated);
+    socket.on('summary:submitted', handleSummarySubmitted);
+    socket.on('announcement:created', handleAnnouncementCreated);
+    socket.on('executive-task:created', handleExecutiveTaskCreated);
+    socket.on('executive-task:updated', handleExecutiveTaskUpdated);
+    socket.on('executive-task:deleted', handleExecutiveTaskDeleted);
 
     return () => {
-      socket.off('plan:submitted');
-      socket.off('task:updated');
-      socket.off('summary:submitted');
-      socket.off('announcement:created');
-      socket.off('executive-task:created');
-      socket.off('executive-task:updated');
-      socket.off('executive-task:deleted');
+      socket.off('plan:submitted', handlePlanSubmitted);
+      socket.off('task:updated', handleTaskUpdated);
+      socket.off('summary:submitted', handleSummarySubmitted);
+      socket.off('announcement:created', handleAnnouncementCreated);
+      socket.off('executive-task:created', handleExecutiveTaskCreated);
+      socket.off('executive-task:updated', handleExecutiveTaskUpdated);
+      socket.off('executive-task:deleted', handleExecutiveTaskDeleted);
     };
   }, []);
 
