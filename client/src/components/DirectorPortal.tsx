@@ -316,7 +316,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     socket.on('executive-task:created', (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
-        showToast(`⚡ وصلك تكليف رئاسي جديد من المدير العام: "${payload.task?.title || ''}"`);
+        showToast(`⚡ وصلك تكليف جديد من المدير العام: "${payload.task?.title || ''}"`);
         loadExecutiveTasks();
       }
     });
@@ -931,7 +931,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         ...executiveTasks.map((et) => {
           const local = taskLocalState[et.id];
           return {
-            title: `[تكليف رئاسي] ${et.title}`,
+            title: `[تكليف المدير العام] ${et.title}`,
             completionPercentage: local ? local.completionPercentage : et.completionPercentage,
             status: local ? local.status : et.status,
           };
@@ -1179,7 +1179,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           }`}
         >
           <Layers className="w-4 h-4 text-[#d4af37]" />
-          <span>3. التكليفات الرئاسية المباشرة</span>
+          <span>3. تكليفات وتوجيهات المدير العام</span>
           {executiveTasks.length > 0 && (
             <span className="px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
               {executiveTasks.filter((t) => t.status !== 'COMPLETED').length || executiveTasks.length}
@@ -1625,7 +1625,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 const local = taskLocalState[et.id];
                 return {
                   id: et.id,
-                  title: `[تكليف رئاسي] ${et.title}`,
+                  title: `[تكليف المدير العام] ${et.title}`,
                   completionPercentage: local ? local.completionPercentage : et.completionPercentage,
                   status: local ? local.status : et.status,
                   isExecutive: true,
@@ -1770,14 +1770,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </form>
       )}
 
-      {/* Tab 3: Executive Tasks (التكليفات الرئاسية المباشرة) */}
+      {/* Tab 3: Executive Tasks (تكليفات وتوجيهات المدير العام) */}
       {activeTab === 'EXECUTIVE_TASKS' && (
         <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6 animate-fadeIn">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#d2d1c9] pb-4">
             <div>
               <h3 className="text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
                 <Layers className="w-5 h-5 text-[#d4af37]" />
-                التكليفات والتوجيهات الرئاسية المباشرة لمديرية {currentUser.directorate?.name}
+                تكليفات وتوجيهات المدير العام المباشرة لمديرية {currentUser.directorate?.name}
               </h3>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
                 المهام الموجهة لمديريتكم حصراً من المدير العام ومعاونيه لمتابعة تنفيذها ورفع تقرير الإنجاز.
@@ -1794,12 +1794,12 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           {loadingExecTasks ? (
             <div className="py-12 text-center text-[#5e736e]">
               <Loader2 className="w-7 h-7 animate-spin mx-auto text-[#0c3e35] mb-2" />
-              <span className="text-xs font-bold">جارٍ تحميل التكليفات الرئاسية...</span>
+              <span className="text-xs font-bold">جارٍ تحميل تكليفات المدير العام...</span>
             </div>
           ) : executiveTasks.length === 0 ? (
             <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-[#d2d1c9] p-6 space-y-2">
               <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto stroke-[1.5]" />
-              <h4 className="text-sm font-extrabold text-[#0c3e35]">لا توجد تكليفات رئاسية معلقة</h4>
+              <h4 className="text-sm font-extrabold text-[#0c3e35]">لا توجد تكليفات معلقة من المدير العام</h4>
               <p className="text-xs text-[#5e736e]">
                 كافة المهام والتكليفات منجزة أو لم يتم إسناد تكليفات جديدة لمديريتكم حالياً.
               </p>

@@ -555,7 +555,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   التكليفات والتوجيهات المباشرة للمديريات
                 </h2>
                 <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40">
-                  إسناد رئاسي ذكي
+                  تكليف ومتابعة مباشرة
                 </span>
               </div>
               <p className="text-xs text-[#8daaa2] mt-0.5">

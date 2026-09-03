@@ -187,7 +187,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
               tasks.forEach((t) => {
                 loadedNotifs.push({
                   id: `exec-task-${t.id}`,
-                  title: t.isShared ? 'تكليف رئاسي مشترك' : 'تكليف رئاسي مباشر',
+                  title: t.isShared ? 'تكليف مشترك من المدير العام' : 'تكليف من المدير العام',
                   message: `وردك تكليف من المدير العام: "${t.title}"`,
                   content: t.description || t.title,
                   authorName: t.assignedBy?.fullName || 'المدير العام للموانئ',
@@ -260,7 +260,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
               .forEach((t) => {
                 loadedNotifs.push({
                   id: `exec-task-update-${t.id}-${t.updatedAt}`,
-                  title: 'تحديث إنجاز تكليف رئاسي',
+                  title: 'تحديث إنجاز تكليف المدير العام',
                   message: `قامت (${t.directorate?.name}) بتحديث التكليف "${t.title}" إلى (${t.completionPercentage}%).`,
                   type: 'task',
                   time: t.updatedAt
@@ -426,7 +426,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId === data.directorateId) {
         addNotif({
           id: `exec-task-${data.task?.id || Math.random()}`,
-          title: data.task?.isShared ? 'تكليف رئاسي مشترك' : 'تكليف رئاسي جديد',
+          title: data.task?.isShared ? 'تكليف مشترك من المدير العام' : 'تكليف جديد من المدير العام',
           message: `وردك تكليف من المدير العام: "${data.task?.title}"`,
           content: data.task?.description || data.task?.title,
           authorName: data.assignedByName || 'المدير العام',
@@ -443,7 +443,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       if (isExec && data.updatedByRole === 'DIRECTOR') {
         addNotif({
           id: `exec-task-update-${data.task?.id || Math.random()}-${new Date().getTime()}`,
-          title: 'تحديث إنجاز تكليف رئاسي',
+          title: 'تحديث إنجاز تكليف المدير العام',
           message: `قامت (${data.directorateName}) بتحديث التكليف "${data.task?.title}" إلى (${data.task?.completionPercentage}%).`,
           type: 'task',
           fullPayload: data,

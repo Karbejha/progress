@@ -130,10 +130,10 @@ export class ExecutiveService {
       } else if (execTasks.length > 0) {
         const allDone = execTasks.every((t) => t.status === 'COMPLETED' || t.completionPercentage === 100);
         if (allDone) {
-          statusTag = 'تم إنجاز التكليفات الرئاسية';
+          statusTag = 'تم إنجاز تكليفات المدير العام';
           statusColor = 'emerald';
         } else {
-          statusTag = 'متابعة التكليفات الرئاسية';
+          statusTag = 'متابعة تكليفات المدير العام';
           statusColor = 'blue';
         }
       }

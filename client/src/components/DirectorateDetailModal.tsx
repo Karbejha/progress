@@ -222,7 +222,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-[#d4af37]" />
                 <h3 className="text-sm font-bold text-[#0c3e35]">
-                  التكليفات والمهام الرئاسية الموجهة للمديرية ({executiveTasks.length})
+                  تكليفات وتوجيهات المدير العام للمديرية ({executiveTasks.length})
                 </h3>
               </div>
               <button
@@ -312,7 +312,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
               <div className="py-4 text-center text-xs text-[#5e736e]">جارٍ تحميل التكليفات...</div>
             ) : executiveTasks.length === 0 ? (
               <div className="py-3 text-center text-xs text-[#5e736e] bg-[#fcfbf7] rounded-xl border border-dashed border-[#d2d1c9]">
-                لا توجد تكليفات رئاسية مسندة لهذه المديرية حالياً.
+                لا توجد تكليفات مسندة من المدير العام لهذه المديرية حالياً.
               </div>
             ) : (
               <div className="space-y-2.5 max-h-56 overflow-y-auto">

@@ -137,12 +137,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
     });
 
     socket.on('executive-task:created', (payload: any) => {
-      triggerLiveAlert('تكليف رئاسي جديد', `تم إسناد تكليف لـ (${payload.directorateName}): "${payload.task?.title || ''}"`);
+      triggerLiveAlert('تكليف جديد من المدير العام', `تم إسناد تكليف لـ (${payload.directorateName}): "${payload.task?.title || ''}"`);
       loadTasksCount();
     });
 
     socket.on('executive-task:updated', (payload: any) => {
-      triggerLiveAlert('تحديث إنجاز تكليف رئاسي', `قامت (${payload.directorateName}) بتحديث إنجاز التكليف "${payload.task?.title}" إلى (${payload.task?.completionPercentage}%).`);
+      triggerLiveAlert('تحديث إنجاز تكليف المدير العام', `قامت (${payload.directorateName}) بتحديث إنجاز التكليف "${payload.task?.title}" إلى (${payload.task?.completionPercentage}%).`);
       loadTasksCount();
     });
 
