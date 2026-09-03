@@ -30,6 +30,7 @@ import {
   BookmarkPlus,
   RefreshCw,
   Users,
+  Building2,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -993,62 +994,85 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       )}
 
-      <div className="space-y-7 animate-fadeIn pb-16">
-        {/* Directorate Banner */}
-      <div className="p-7 rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 text-white">
-        <div className="relative z-10 flex items-start gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-md shrink-0">
-            <DynamicIcon name={currentUser.directorate?.icon} className="w-7 h-7" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30">
-                {currentUser.directorate?.name || 'المديرية المعنية'}
-              </span>
-              <span className="text-xs text-[#8daaa2] font-medium">
-                • {todayFormatted}
-              </span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white mt-1">
-              إعداد الخطة وتوثيق الإنجاز
-            </h2>
-            <p className="text-xs text-[#8daaa2] mt-0.5">
-              المدير المسؤول: <strong className="text-white">{currentUser.fullName}</strong> ({currentUser.title})
-            </p>
-          </div>
-        </div>
+      <div className="space-y-5 sm:space-y-7 animate-fadeIn pb-16">
+        {/* Directorate Banner - Fully Responsive & Mobile-Optimized */}
+        <div className="p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-[28px] bg-gradient-to-br from-[#062e25] via-[#05261e] to-[#031d17] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6 text-white">
+          {/* Ambient Lighting Background Accents */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-[#d4af37]/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-[#0c3e35]/50 rounded-full blur-2xl pointer-events-none" />
 
-        {/* Quick status pill */}
-        <div className="relative z-10 bg-[#0c3e35] border border-[#d2d1c9]/20 p-4 rounded-2xl text-xs space-y-1.5 min-w-[220px]">
-          <div className="flex items-center justify-between text-[#8daaa2]">
-            <span>حالة خطة اليوم:</span>
-            {plan ? (
-              <span className="text-[#d4af37] font-bold flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                تم إرسال الخطة
-              </span>
-            ) : (
-              <span className="text-amber-400 font-bold flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" />
-                بانتظار الإعداد
-              </span>
-            )}
+          {/* Identity & Directorate Details */}
+          <div className="relative z-10 flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#0c3e35] to-[#07241c] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-md shrink-0 mt-0.5">
+              <DynamicIcon name={currentUser.directorate?.icon} className="w-6 h-6 sm:w-7 sm:h-7" />
+            </div>
+
+            <div className="flex-1 min-w-0 space-y-1 sm:space-y-1.5">
+              {/* Directorate Badge & Date Header */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[10.5px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 max-w-full shadow-xs">
+                  <Building2 className="w-3 h-3 text-[#d4af37] shrink-0" />
+                  <span className="truncate">{currentUser.directorate?.name || 'المديرية المعنية'}</span>
+                </span>
+                <span className="text-[11px] sm:text-xs text-[#8daaa2] font-medium flex items-center gap-1 bg-black/25 px-2.5 py-0.5 rounded-full shrink-0">
+                  <Calendar className="w-3 h-3 text-[#d4af37] shrink-0" />
+                  <span>{todayFormatted}</span>
+                </span>
+              </div>
+
+              {/* Banner Main Title */}
+              <h2 className="text-base sm:text-xl md:text-2xl font-black text-white tracking-tight leading-snug">
+                إعداد الخطة وتوثيق الإنجاز
+              </h2>
+
+              {/* Responsible Director Info */}
+              <p className="text-[11px] sm:text-xs text-[#8daaa2] font-medium flex items-center gap-1.5 flex-wrap">
+                <span>المدير المسؤول:</span>
+                <strong className="text-white font-bold">{currentUser.fullName || currentUser.title}</strong>
+                {currentUser.title && currentUser.fullName && currentUser.fullName !== currentUser.title && (
+                  <span className="text-white/60 font-normal">({currentUser.title})</span>
+                )}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center justify-between text-[#8daaa2]">
-            <span>ملخص الإنجاز:</span>
-            {plan?.dailySummary ? (
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                منجز ({plan.dailySummary.overallCompletionRate}%)
-              </span>
-            ) : (
-              <span className="text-slate-400">
-                بانتظار نهاية الدوام
-              </span>
-            )}
+
+          {/* Quick status pill - 2 Column Grid on Mobile, Column on Desktop */}
+          <div className="relative z-10 w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t border-white/10 md:border-t-0">
+            <div className="grid grid-cols-2 md:flex md:flex-col gap-2 md:gap-1.5 bg-[#0c3e35]/80 backdrop-blur-xs border border-[#d2d1c9]/20 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl text-xs md:min-w-[230px] shadow-sm">
+              {/* Plan Status */}
+              <div className="bg-[#05261e]/60 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 text-[#8daaa2]">
+                <span className="text-[10px] sm:text-[11px] md:text-xs font-semibold text-[#8daaa2]">خطة اليوم:</span>
+                {plan ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">تم الاعتماد</span>
+                  </span>
+                ) : (
+                  <span className="text-amber-400 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                    <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+                    <span className="truncate">بانتظار الإعداد</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Summary Status */}
+              <div className="bg-[#05261e]/60 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 text-[#8daaa2]">
+                <span className="text-[10px] sm:text-[11px] md:text-xs font-semibold text-[#8daaa2]">ملخص الإنجاز:</span>
+                {plan?.dailySummary ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">منجز ({plan.dailySummary.overallCompletionRate}%)</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-300 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">بانتظار الدوام</span>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Official General Announcements Bar (Only if unread) */}
       {(() => {
@@ -1076,14 +1100,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 createdAt: currentAnn.createdAt,
               });
             }}
-            className="p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9] hover:border-[#0c3e35] transition flex items-start justify-between gap-4 cursor-pointer shadow-xs animate-fadeIn"
+            className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-[#edece4] border border-[#d2d1c9] hover:border-[#0c3e35] transition flex items-start justify-between gap-3 sm:gap-4 cursor-pointer shadow-xs animate-fadeIn"
           >
-            <div className="flex items-start gap-3 flex-1">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
               <div className="w-9 h-9 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
                 <Megaphone className="w-4 h-4" />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h4 className="text-xs font-bold text-[#0c3e35]">{currentAnn.title}</h4>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
                     تعميم إداري جديد
@@ -1093,7 +1117,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-[11px] text-[#0c3e35] font-bold bg-white px-3 py-1 rounded-lg border border-[#d2d1c9]">
+              <span className="hidden sm:inline-block text-[11px] text-[#0c3e35] font-bold bg-white px-3 py-1 rounded-lg border border-[#d2d1c9]">
                 انقر لقراءة نص التعميم
               </span>
               <button
@@ -1113,7 +1137,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
       {/* Directives from General Director */}
       {plan?.feedbacks && plan.feedbacks.length > 0 && (
-        <div className="p-5 rounded-[22px] bg-[#05261e] border-2 border-[#d4af37] text-white space-y-2 shadow-md">
+        <div className="p-4 sm:p-5 rounded-2xl sm:rounded-[22px] bg-[#05261e] border-2 border-[#d4af37] text-white space-y-2 shadow-md">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-[#d4af37] flex items-center gap-2">
               <Shield className="w-4 h-4 text-[#d4af37]" />
@@ -1137,38 +1161,40 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       )}
 
-      {/* Tabs Navigation */}
-      <div className="flex items-center gap-3 border-b border-[#d2d1c9] pb-3 overflow-x-auto">
+      {/* Tabs Navigation - Smooth Scroll on Mobile */}
+      <div className="flex items-center gap-2 sm:gap-3 border-b border-[#d2d1c9] pb-2.5 sm:pb-3 overflow-x-auto scrollbar-none -mx-1 px-1">
         <button
           onClick={() => setActiveTab('PLAN')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'PLAN'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
-          <FileText className="w-4 h-4" />
-          <span>1. الخطة الصباحية (بداية الدوام)</span>
+          <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span>1. الخطة الصباحية</span>
+          <span className="hidden sm:inline">(بداية الدوام)</span>
         </button>
 
         <button
           onClick={() => setActiveTab('TRACK')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'TRACK'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
-          <Clock className="w-4 h-4" />
-          <span>2. متابعة المهام (خلال الدوام)</span>
+          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span>2. متابعة المهام</span>
+          <span className="hidden sm:inline">(خلال الدوام)</span>
           {plan?.tasks && (
-            <span className="px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+            <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
               {plan.tasks.length}
             </span>
           )}
           {modifiedTaskIds.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold animate-pulse">
-              {modifiedTaskIds.length} غير محفوظة
+            <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold animate-pulse">
+              {modifiedTaskIds.length}
             </span>
           )}
         </button>
@@ -1178,16 +1204,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             setActiveTab('EXECUTIVE_TASKS');
             loadExecutiveTasks();
           }}
-          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'EXECUTIVE_TASKS'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
-          <Layers className="w-4 h-4 text-[#d4af37]" />
-          <span>3. تكليفات وتوجيهات المدير العام</span>
+          <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#d4af37] shrink-0" />
+          <span>3. تكليفات المدير العام</span>
           {executiveTasks.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+            <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
               {executiveTasks.filter((t) => t.status !== 'COMPLETED').length || executiveTasks.length}
             </span>
           )}
@@ -1195,14 +1221,15 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
         <button
           onClick={() => setActiveTab('SUMMARY')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'SUMMARY'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
-          <Sparkles className="w-4 h-4" />
-          <span>4. ملخص الإنجاز (نهاية الدوام)</span>
+          <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+          <span>4. ملخص الإنجاز</span>
+          <span className="hidden sm:inline">(نهاية الدوام)</span>
         </button>
 
         <button
@@ -1210,26 +1237,28 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             setActiveTab('HISTORY');
             loadHistory();
           }}
-          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'HISTORY'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
-          <History className="w-4 h-4" />
+          <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           <span>سجل إنجازات المديرية</span>
         </button>
       </div>
 
       {/* Tab 1: Morning Plan Builder */}
       {activeTab === 'PLAN' && (
-        <form onSubmit={handleSubmitPlan} className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
+        <form onSubmit={handleSubmitPlan} className="bg-[#edece4] p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6">
           <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4 flex-wrap gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-[#0c3e35]" />
-                  إعداد الخطة اليومية لمديرية {currentUser.directorate?.name}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-bold text-[#0c3e35] flex items-center gap-2">
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-[#0c3e35] shrink-0" />
+                  <span>
+                    إعداد الخطة اليومية {currentUser.directorate?.name?.trim().startsWith('مديرية') || currentUser.directorate?.name?.trim().startsWith('فرع') || currentUser.directorate?.name?.trim().startsWith('مكتب') ? `لـ ${currentUser.directorate?.name}` : `لمديرية ${currentUser.directorate?.name}`}
+                  </span>
                 </h3>
                 {planDraftSavedTime && !plan && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1 animate-fadeIn">
