@@ -240,11 +240,11 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                 type: 'announcement',
                 time: a.createdAt
                   ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
                   : 'اليوم',
                 fullPayload: a,
               });
@@ -270,11 +270,11 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   type: 'feedback',
                   time: t.createdAt
                     ? new Date(t.createdAt).toLocaleDateString('ar-SY', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
                     : 'اليوم',
                   fullPayload: {
                     ...t,
@@ -338,11 +338,11 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   type: 'task',
                   time: t.updatedAt
                     ? new Date(t.updatedAt).toLocaleDateString('ar-SY', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
                     : 'مؤخراً',
                   createdAt: t.updatedAt,
                   fullPayload: t,
@@ -580,7 +580,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       notifications
         .filter((n) => n.type === 'announcement' && n.id)
         .forEach((n) => {
-          api.markAnnouncementRead(n.id).catch(() => {});
+          api.markAnnouncementRead(n.id).catch(() => { });
         });
     }
 
@@ -595,7 +595,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
 
       if (n.type === 'announcement') {
         markAnnouncementAsRead(currentUser.id, n.id);
-        api.markAnnouncementRead(n.id).catch(() => {});
+        api.markAnnouncementRead(n.id).catch(() => { });
       }
     }
 
@@ -633,7 +633,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
       <header className="sticky top-0 z-40 w-full bg-[#05261e] border-b border-[#0c3e35] shadow-md transition-all font-sans pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between min-h-[3.75rem] sm:h-20 py-2 sm:py-0 gap-2">
-            
+
             {/* Logo & Title */}
             <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center p-1.5 shadow-md shrink-0">
@@ -669,11 +669,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   {/* Sound Chimes Toggle Button */}
                   <button
                     onClick={toggleSound}
-                    className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${
-                      soundOn
-                        ? 'bg-[#0c3e35] border-[#d4af37]/30 text-[#d4af37] hover:bg-[#0c4237]'
-                        : 'bg-[#05261e] border-[#5e736e]/40 text-[#8daaa2] hover:text-white'
-                    }`}
+                    className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${soundOn
+                      ? 'bg-[#0c3e35] border-[#d4af37]/30 text-[#d4af37] hover:bg-[#0c4237]'
+                      : 'bg-[#05261e] border-[#5e736e]/40 text-[#8daaa2] hover:text-white'
+                      }`}
                     title={soundOn ? 'نغمات التنبيه الصوتية مفعلة (انقر للكتم)' : 'نغمات التنبيه الصوتية مكتومة (انقر للتفعيل)'}
                     aria-label="تبديل نغمة التنبيه"
                   >
@@ -683,27 +682,25 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                   {/* Real-time Socket Connection Status Badge */}
                   <button
                     onClick={() => setShowStatusModal(true)}
-                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm text-[10px] sm:text-xs font-bold active:scale-95 ${
-                      socketStatus === 'connected'
-                        ? 'bg-[#0c3e35] border-emerald-500/40 text-emerald-300 hover:bg-[#0c4237]'
-                        : socketStatus === 'connecting'
+                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm text-[10px] sm:text-xs font-bold active:scale-95 ${socketStatus === 'connected'
+                      ? 'bg-[#0c3e35] border-emerald-500/40 text-emerald-300 hover:bg-[#0c4237]'
+                      : socketStatus === 'connecting'
                         ? 'bg-amber-950/60 border-amber-500/40 text-amber-300 hover:bg-amber-900/60 animate-pulse'
                         : 'bg-red-950/60 border-red-500/40 text-red-300 hover:bg-red-900/60'
-                    }`}
+                      }`}
                     title="حالة الاتصال المباشر بالسيرفر (انقر للتفاصيل وإعادة الاتصال)"
                     aria-label="حالة الاتصال المباشر"
                   >
                     <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        socketStatus === 'connected'
-                          ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]'
-                          : socketStatus === 'connecting'
+                      className={`w-2 h-2 rounded-full shrink-0 ${socketStatus === 'connected'
+                        ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]'
+                        : socketStatus === 'connecting'
                           ? 'bg-amber-400'
                           : 'bg-red-500'
-                      }`}
+                        }`}
                     />
                     <span className="hidden md:inline">
-                      {socketStatus === 'connected' ? 'بث مباشر متصل' : socketStatus === 'connecting' ? 'جاري الاتصال...' : 'البث غير متصل'}
+                      {socketStatus === 'connected' ? 'متصل' : socketStatus === 'connecting' ? 'جاري الاتصال...' : 'البث غير متصل'}
                     </span>
                   </button>
 
@@ -751,43 +748,6 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                             </button>
                           </div>
                         </div>
-
-                        {/* Test Notification Banner Inside Dropdown */}
-                        <div className="p-2.5 bg-[#f4f3ed] border-b border-[#d2d1c9] flex items-center justify-between gap-2">
-                          <button
-                            onClick={async () => {
-                              setTestNotifSending(true);
-                              try {
-                                await requestNotificationPermissions();
-                                await notifyCircular({
-                                  id: 'test-' + Date.now(),
-                                  title: 'إشعار تجريبي لاختبار الموبايل',
-                                  content: 'تم استقبال هذا التنبيه بنجاح واختبار الصوت والاهتزاز وشريط الإشعارات على هاتفك.',
-                                  authorName: 'المدير العام للموانئ',
-                                  priority: 'HIGH',
-                                  createdAt: new Date().toISOString(),
-                                });
-                                playUrgentAlert();
-                                setTestNotifSuccess(true);
-                                setTimeout(() => setTestNotifSuccess(false), 3000);
-                              } catch (e) {
-                                console.error('Test notification error:', e);
-                              } finally {
-                                setTestNotifSending(false);
-                              }
-                            }}
-                            disabled={testNotifSending}
-                            className={`w-full py-2 px-3 text-xs font-extrabold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-xs active:scale-95 border ${
-                              testNotifSuccess
-                                ? 'bg-emerald-700 text-white border-emerald-600'
-                                : 'bg-[#0c3e35] hover:bg-[#0c4237] text-[#d4af37] border-[#d4af37]/30'
-                            }`}
-                          >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>{testNotifSuccess ? 'تم إرسال الإشعار التجريبي لهاتفك بنجاح!' : testNotifSending ? 'جاري الاختبار...' : '🔔 اختبار إشعار الموبايل الفوري (صوت واهتزاز)'}</span>
-                          </button>
-                        </div>
-
                         <div className="max-h-80 overflow-y-auto p-3 space-y-2">
                           {notifications.length === 0 ? (
                             <div className="text-center py-8 text-xs text-[#5e736e]">
@@ -802,13 +762,12 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                 <div
                                   key={n.id}
                                   onClick={() => isClickable && handleNotificationClick(n)}
-                                  className={`p-3 rounded-2xl border text-xs space-y-1.5 transition ${
-                                    !isRead
-                                      ? 'bg-amber-50/85 border-amber-300 shadow-xs hover:bg-amber-100/80 cursor-pointer'
-                                      : isClickable
+                                  className={`p-3 rounded-2xl border text-xs space-y-1.5 transition ${!isRead
+                                    ? 'bg-amber-50/85 border-amber-300 shadow-xs hover:bg-amber-100/80 cursor-pointer'
+                                    : isClickable
                                       ? 'bg-white border-[#d2d1c9] hover:border-[#0c3e35] hover:bg-[#f4f3ed] cursor-pointer'
                                       : 'bg-white border-[#d2d1c9]'
-                                  }`}
+                                    }`}
                                 >
                                   <div className="flex items-center justify-between">
                                     <span className="font-bold text-[#0c3e35] flex items-center gap-1.5">
@@ -819,7 +778,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                       {n.type === 'announcement' && <Megaphone className="w-3.5 h-3.5 text-[#d4af37]" />}
                                       {n.title}
                                     </span>
-                                    
+
                                     <div className="flex items-center gap-1.5">
                                       {isRead ? (
                                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#edece4] text-[#5e736e]">
@@ -833,7 +792,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                       <span className="text-[10px] text-[#8daaa2] font-medium">{n.time}</span>
                                     </div>
                                   </div>
-                                  
+
                                   <p className="text-xs text-[#0c3e35] leading-relaxed font-medium">
                                     {n.message}
                                   </p>
@@ -885,7 +844,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     {/* User Dropdown */}
                     {showUserMenu && (
                       <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:absolute sm:inset-auto sm:left-0 sm:top-auto sm:mt-3 w-auto sm:w-64 bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right p-2 space-y-1">
-                        
+
                         {/* Option 1: Manage Users (for General Director / Assistant) */}
                         {isGeneralDirector && (
                           <button
@@ -975,16 +934,14 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
             <div className="py-4 space-y-3 text-xs">
               <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[#d2d1c9]">
                 <span className="text-[#5e736e] font-bold">حالة الاتصال اللحظي:</span>
-                <span className={`px-2.5 py-1 rounded-lg font-extrabold flex items-center gap-1.5 ${
-                  socketStatus === 'connected'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : socketStatus === 'connecting'
+                <span className={`px-2.5 py-1 rounded-lg font-extrabold flex items-center gap-1.5 ${socketStatus === 'connected'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : socketStatus === 'connecting'
                     ? 'bg-amber-100 text-amber-800'
                     : 'bg-red-100 text-red-800'
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${
-                    socketStatus === 'connected' ? 'bg-emerald-600' : socketStatus === 'connecting' ? 'bg-amber-600' : 'bg-red-600'
-                  }`} />
+                  }`}>
+                  <span className={`w-2 h-2 rounded-full ${socketStatus === 'connected' ? 'bg-emerald-600' : socketStatus === 'connecting' ? 'bg-amber-600' : 'bg-red-600'
+                    }`} />
                   {socketStatus === 'connected' ? 'متصل بنجاح (Online)' : socketStatus === 'connecting' ? 'جاري محاولة الاتصال...' : 'غير متصل (Disconnected)'}
                 </span>
               </div>
