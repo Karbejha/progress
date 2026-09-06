@@ -32,51 +32,146 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
 
   const catInfo = getCategoryLabel(item.category);
 
+  // 1. Semantic Status Classification
+  const isUrgent = !!item.urgentFlag;
+  const isCompleted =
+    !isUrgent &&
+    (item.hasSummary ||
+      (item.completionRate === 100 &&
+        ((item.tasksCount ?? 0) > 0 || ((item.executiveTasks?.length ?? 0) > 0))));
+  const isInProgress =
+    !isUrgent &&
+    !isCompleted &&
+    (item.hasPlan || ((item.executiveTasks?.length ?? 0) > 0));
+  const isAwaitingPlan = !isUrgent && !isCompleted && !isInProgress;
+
+  // 2. Semantic Themes (Subtle tints, premium borders, and expressive indicators)
+  const getTheme = () => {
+    if (isUrgent) {
+      return {
+        cardBg: 'bg-gradient-to-b from-rose-50/80 via-white to-rose-50/30',
+        cardBorder: 'border-rose-300 hover:border-rose-500 ring-1 ring-rose-200/60 shadow-xs hover:shadow-lg hover:shadow-rose-100/50',
+        topLine: 'bg-gradient-to-r from-red-600 via-rose-500 to-red-600 h-2',
+        iconBox: 'bg-rose-100/80 border-rose-200 text-rose-800 group-hover:bg-rose-600 group-hover:text-white',
+        statusBadge: (
+          <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-red-100/80 border border-red-200 text-red-700 animate-pulse">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            تنبيه عاجل
+          </span>
+        ),
+        progressBar: 'bg-rose-600',
+        footerStatus: (
+          <span className="flex items-center gap-1 text-red-700 font-bold">
+            <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
+            يتطلب توجيه
+          </span>
+        ),
+      };
+    }
+
+    if (isCompleted) {
+      return {
+        cardBg: 'bg-gradient-to-b from-emerald-50/60 via-white to-emerald-50/25',
+        cardBorder: 'border-emerald-200 hover:border-emerald-500 shadow-xs hover:shadow-lg hover:shadow-emerald-100/50',
+        topLine: 'bg-gradient-to-r from-emerald-600 to-teal-500 h-2',
+        iconBox: 'bg-emerald-100/70 border-emerald-200 text-emerald-800 group-hover:bg-emerald-600 group-hover:text-white',
+        statusBadge: (
+          <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-100/80 border border-emerald-200 text-emerald-800">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {item.hasSummary ? 'ملخص منجز' : 'إنجاز 100%'}
+          </span>
+        ),
+        progressBar: 'bg-emerald-600',
+        footerStatus: (
+          <span className="flex items-center gap-1 text-emerald-700 font-bold">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {item.hasSummary ? 'ملخص منجز' : 'تكليفات منجزة'}
+          </span>
+        ),
+      };
+    }
+
+    if (isInProgress) {
+      return {
+        cardBg: 'bg-gradient-to-b from-[#f8faf9] via-white to-white',
+        cardBorder: 'border-[#d2d1c9] hover:border-[#0c3e35] shadow-xs hover:shadow-md',
+        topLine: 'bg-gradient-to-r from-[#0c3e35] to-[#1a5b4f] h-2',
+        iconBox: 'bg-[#edece4] border-[#d2d1c9] text-[#0c3e35] group-hover:bg-[#0c3e35] group-hover:text-white',
+        statusBadge: (
+          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-[#0c3e35]/5 border border-[#0c3e35]/15 text-[#0c3e35]">
+            <Clock className="w-3.5 h-3.5 text-[#0c3e35]" />
+            قيد المتابعة
+          </span>
+        ),
+        progressBar:
+          item.completionRate >= 80
+            ? 'bg-emerald-600'
+            : item.completionRate >= 40
+            ? 'bg-[#0c3e35]'
+            : 'bg-[#d4af37]',
+        footerStatus: (
+          <span className="flex items-center gap-1 text-[#0c3e35] font-bold">
+            <Clock className="w-3.5 h-3.5" />
+            {item.hasPlan ? 'قيد المتابعة' : 'متابعة التكليفات'}
+          </span>
+        ),
+      };
+    }
+
+    // Awaiting Plan (Pending / Dormant state)
+    return {
+      cardBg: 'bg-gradient-to-b from-[#fcfbf9] via-[#f8f7f2] to-[#f4f3ed]',
+      cardBorder: 'border border-dashed border-[#c8c7be] hover:border-[#8daaa2] hover:shadow-xs opacity-[0.98]',
+      topLine: 'bg-gradient-to-r from-amber-400/80 via-amber-300 to-amber-400/80 h-1.5',
+      iconBox: 'bg-[#e7e6dc] border-[#d2d1c9] text-[#718782] group-hover:bg-[#0c3e35] group-hover:text-white',
+      statusBadge: (
+        <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-50/90 border border-amber-200 text-amber-800">
+          <Clock className="w-3.5 h-3.5 text-amber-600" />
+          بانتظار الخطة
+        </span>
+      ),
+      progressBar: 'bg-slate-300',
+      footerStatus: (
+        <span className="flex items-center gap-1 text-amber-800 bg-amber-50/80 border border-amber-200/80 px-2 py-0.5 rounded-md font-bold text-[11px]">
+          <Clock className="w-3 h-3 text-amber-600" />
+          بانتظار الخطة
+        </span>
+      ),
+    };
+  };
+
+  const theme = getTheme();
+
   return (
     <div
       onClick={() => onSelect(item)}
-      className="bg-white border border-[#d2d1c9] rounded-2xl p-5 cursor-pointer relative overflow-hidden transition-all duration-200 hover:shadow-md hover:border-[#0c3e35] group flex flex-col justify-between"
+      className={`${theme.cardBg} ${theme.cardBorder} rounded-2xl p-5 cursor-pointer relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5 group flex flex-col justify-between min-h-[300px]`}
     >
       {/* Top status indicator line */}
-      <div
-        className={`absolute top-0 right-0 left-0 h-1.5 transition-all ${
-          item.urgentFlag
-            ? 'bg-red-500'
-            : item.hasSummary || (item.completionRate === 100 && item.tasksCount > 0)
-            ? 'bg-emerald-600'
-            : item.hasPlan || (item.executiveTasks && item.executiveTasks.length > 0 && item.completionRate > 0)
-            ? 'bg-[#0c3e35]'
-            : 'bg-[#d2d1c9]'
-        }`}
-      />
+      <div className={`absolute top-0 right-0 left-0 transition-all ${theme.topLine}`} />
 
       <div>
-        {/* Directorate Category & Urgent Alert */}
-        <div className="flex items-center justify-between mb-3">
+        {/* Directorate Category & Status Badges */}
+        <div className="flex items-center justify-between gap-2 mb-3">
           <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${catInfo.color}`}>
             {catInfo.label}
           </span>
 
-          {item.urgentFlag && (
-            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-red-50 border border-red-200 text-red-700 animate-pulse">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              تنبيه عاجل
-            </span>
-          )}
+          <div>{theme.statusBadge}</div>
         </div>
 
         {/* Title & Icon */}
         <div className="flex items-start gap-3.5 mb-4">
-          <div className="w-11 h-11 rounded-xl bg-[#edece4] border border-[#d2d1c9] flex items-center justify-center text-[#0c3e35] group-hover:bg-[#0c3e35] group-hover:text-white transition-all shadow-xs shrink-0">
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shadow-xs shrink-0 border ${theme.iconBox}`}>
             <DynamicIcon name={item.icon} className="w-5 h-5" />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h3 className="text-sm font-bold text-[#0c3e35] group-hover:text-[#072923] transition line-clamp-2 leading-snug">
               {item.directorateName}
             </h3>
-            <p className="text-xs text-[#5e736e] mt-1 font-medium">
+            <p className="text-xs text-[#5e736e] mt-1 font-medium truncate">
               المدير المسؤول: {item.director?.fullName?.trim() ? (
-                <strong className="text-[#0c3e35]">{item.director.fullName}</strong>
+                <strong className="text-[#0c3e35] font-bold">{item.director.fullName}</strong>
               ) : (
                 <span className="text-[#8daaa2] font-normal">غير محدد</span>
               )}
@@ -84,7 +179,7 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
           </div>
         </div>
 
-        {/* Daily Focus / Executive Tasks Preview */}
+        {/* Daily Focus / Executive Tasks Preview / Awaiting Notice */}
         {item.generalFocus ? (
           <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
             <span className="text-[#0c3e35] font-bold ml-1">التركيز:</span>
@@ -96,8 +191,14 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             {item.executiveTasks.map((t) => t.title).join(' • ')}
           </div>
         ) : (
-          <div className="p-2.5 rounded-xl bg-[#edece4]/30 border border-[#e5e4dc] mb-4 text-xs text-[#8daaa2] italic">
-            لم تسجل خطة صباحية بعد
+          <div className="p-2.5 rounded-xl bg-amber-50/50 border border-dashed border-amber-200/80 mb-4 text-xs flex items-center justify-between">
+            <span className="text-amber-900/80 font-medium flex items-center gap-1.5 truncate">
+              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              لم تسجل خطة صباحية بعد
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100/80 text-amber-800 border border-amber-200 font-bold shrink-0">
+              متأخر
+            </span>
           </div>
         )}
       </div>
@@ -107,26 +208,18 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
         <div className="space-y-2 mb-4">
           <div className="flex items-center justify-between text-xs">
             <span className="text-[#5e736e] flex items-center gap-1.5 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#0c3e35]" />
-              المهام: <strong className="text-[#0c3e35]">{item.completedTasksCount}</strong> من <strong className="text-[#5e736e]">{item.tasksCount}</strong>
+              <CheckCircle2 className={`w-3.5 h-3.5 ${isCompleted ? 'text-emerald-600' : isUrgent ? 'text-red-500' : 'text-[#0c3e35]'}`} />
+              المهام: <strong className="text-[#0c3e35] font-bold">{item.completedTasksCount}</strong> من <strong className="text-[#5e736e] font-medium">{item.tasksCount}</strong>
             </span>
-            <span className="font-extrabold text-[#0c3e35]">
+            <span className={`font-extrabold ${isCompleted ? 'text-emerald-700' : isUrgent ? 'text-red-700' : 'text-[#0c3e35]'}`}>
               {item.completionRate}% إنجاز
             </span>
           </div>
 
-          {/* Progress Bar */}
-          <div className="w-full h-2 bg-[#edece4] rounded-full overflow-hidden border border-[#d2d1c9]">
+          {/* Progress Bar Track */}
+          <div className="w-full h-2 bg-[#edece4] rounded-full overflow-hidden border border-[#d2d1c9]/70">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                item.completionRate >= 80
-                  ? 'bg-emerald-600'
-                  : item.completionRate >= 40
-                  ? 'bg-[#0c3e35]'
-                  : item.hasPlan || (item.executiveTasks && item.executiveTasks.length > 0)
-                  ? 'bg-[#d4af37]'
-                  : 'bg-slate-300'
-              }`}
+              className={`h-full rounded-full transition-all duration-500 ${theme.progressBar}`}
               style={{ width: `${Math.min(100, Math.max(0, item.completionRate))}%` }}
             />
           </div>
@@ -135,43 +228,17 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
         {/* Footer State & Action Button */}
         <div className="flex items-center justify-between pt-3 border-t border-[#e5e4dc] text-xs">
           <div className="flex items-center gap-1.5">
-            {item.hasSummary ? (
-              <span className="flex items-center gap-1 text-emerald-700 font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                ملخص منجز
-              </span>
-            ) : item.hasPlan ? (
-              <span className="flex items-center gap-1 text-[#0c3e35] font-bold">
-                <Clock className="w-3.5 h-3.5" />
-                قيد المتابعة
-              </span>
-            ) : item.executiveTasks && item.executiveTasks.length > 0 ? (
-              item.completionRate === 100 ? (
-                <span className="flex items-center gap-1 text-emerald-700 font-bold">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  تكليفات منجزة
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-[#0c3e35] font-bold">
-                  <Clock className="w-3.5 h-3.5" />
-                  متابعة التكليفات
-                </span>
-              )
-            ) : (
-              <span className="text-[#8daaa2]">
-                بانتظار الخطة
-              </span>
-            )}
+            {theme.footerStatus}
           </div>
 
           <div className="flex items-center gap-2">
             {item.feedbacks && item.feedbacks.length > 0 && (
-              <span className="flex items-center gap-1 text-[#8a7a52] bg-[#d4af37]/20 border border-[#d4af37]/40 px-2 py-0.5 rounded-md font-bold text-[11px]">
+              <span className="flex items-center gap-1 text-[#8a7a52] bg-[#d4af37]/20 border border-[#d4af37]/40 px-2 py-0.5 rounded-md font-bold text-[11px]" title="ملاحظات وتوجيهات المدير العام">
                 <MessageSquare className="w-3 h-3" />
                 {item.feedbacks.length}
               </span>
             )}
-            <button className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white transition font-bold text-xs shadow-xs cursor-pointer">
+            <button className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white transition font-bold text-xs shadow-xs cursor-pointer active:scale-95">
               <Eye className="w-3.5 h-3.5" />
               <span>مراجعة وتوجيه</span>
             </button>

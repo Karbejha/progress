@@ -44,6 +44,7 @@ interface ExecutiveTasksModalProps {
   currentUser: User;
   initialDirectorateId?: string;
   initialOpenCreate?: boolean;
+  initialSearch?: string;
 }
 
 export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
@@ -52,6 +53,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   currentUser,
   initialDirectorateId,
   initialOpenCreate = false,
+  initialSearch = '',
 }) => {
   const [tasks, setTasks] = useState<ExecutiveTask[]>([]);
   const [directorates, setDirectorates] = useState<Directorate[]>([]);
@@ -62,9 +64,20 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   const [viewMode, setViewMode] = useState<'GROUPED' | 'INDIVIDUAL'>('GROUPED');
 
   // Filter & Search states
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch || '');
   const [selectedDirFilter, setSelectedDirFilter] = useState<string>(initialDirectorateId || 'ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | TaskStatus | 'URGENT' | 'SHARED'>('ALL');
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialSearch) {
+        setSearch(initialSearch);
+      }
+      if (initialDirectorateId) {
+        setSelectedDirFilter(initialDirectorateId);
+      }
+    }
+  }, [isOpen, initialSearch, initialDirectorateId]);
 
   // Mode: list or create
   const [isCreating, setIsCreating] = useState(initialOpenCreate);

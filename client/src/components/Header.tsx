@@ -38,6 +38,7 @@ import {
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
+import { NotificationDetailsModal, NotificationDetailItem } from './NotificationDetailsModal';
 import {
   initNotificationService,
   requestNotificationPermissions,
@@ -87,6 +88,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementModalData | null>(null);
+  const [selectedNotificationDetail, setSelectedNotificationDetail] = useState<NotificationDetailItem | null>(null);
 
   const isGeneralDirector =
     currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
@@ -179,6 +181,20 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
           authorTitle: 'المدير العام',
           priority: detail.priority || 'HIGH',
           createdAt: detail.createdAt || new Date().toISOString(),
+        });
+        setShowNotifications(false);
+      } else {
+        // Handle executive-task, task, plan, summary from native or external clicks
+        setSelectedNotificationDetail({
+          id: detail.id,
+          title: detail.title || 'تحديث تكليف رسمي',
+          message: detail.body || detail.title || '',
+          content: detail.content || detail.description,
+          type: detail.type === 'executive-task' ? 'task' : (detail.type || 'task'),
+          createdAt: detail.createdAt || new Date().toISOString(),
+          authorName: detail.assignedByName,
+          directorateName: detail.directorateName,
+          fullPayload: detail,
         });
         setShowNotifications(false);
       }
@@ -625,6 +641,22 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         createdAt: n.createdAt,
       });
       setShowNotifications(false);
+    } else {
+      // Handles 'task' (executive task updates), 'plan', 'summary', and all other notification types!
+      setSelectedNotificationDetail({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        content: n.content,
+        type: n.type,
+        time: n.time,
+        createdAt: n.createdAt,
+        priority: n.priority,
+        authorName: n.authorName,
+        authorTitle: n.authorTitle,
+        fullPayload: n.fullPayload,
+      });
+      setShowNotifications(false);
     }
   };
 
@@ -755,18 +787,15 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                             </div>
                           ) : (
                             notifications.map((n) => {
-                              const isClickable = n.type === 'announcement' || n.type === 'feedback';
                               const isRead = readNotifIds.includes(n.id);
 
                               return (
                                 <div
                                   key={n.id}
-                                  onClick={() => isClickable && handleNotificationClick(n)}
-                                  className={`p-3 rounded-2xl border text-xs space-y-1.5 transition ${!isRead
-                                    ? 'bg-amber-50/85 border-amber-300 shadow-xs hover:bg-amber-100/80 cursor-pointer'
-                                    : isClickable
-                                      ? 'bg-white border-[#d2d1c9] hover:border-[#0c3e35] hover:bg-[#f4f3ed] cursor-pointer'
-                                      : 'bg-white border-[#d2d1c9]'
+                                  onClick={() => handleNotificationClick(n)}
+                                  className={`p-3 rounded-2xl border text-xs space-y-1.5 transition cursor-pointer active:scale-[0.99] ${!isRead
+                                    ? 'bg-amber-50/90 border-amber-300 shadow-xs hover:bg-amber-100/90 hover:border-amber-400'
+                                    : 'bg-white border-[#d2d1c9] hover:border-[#0c3e35] hover:bg-[#f4f3ed]'
                                     }`}
                                 >
                                   <div className="flex items-center justify-between">
@@ -797,18 +826,22 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                                     {n.message}
                                   </p>
 
-                                  {isClickable && (
-                                    <div className="pt-1 flex items-center justify-between text-[10px] text-[#0c3e35] font-bold border-t border-[#e5e4dc]">
-                                      <span>
-                                        {n.type === 'announcement'
-                                          ? isRead
-                                            ? 'انقر لإعادة قراءة نص وتفاصيل التعميم 📖'
-                                            : 'انقر لقراءة نص وتفاصيل التعميم 📖'
-                                          : 'انقر لعرض تفاصيل التكليف والتوجيه 📖'}
-                                      </span>
-                                      <ChevronLeft className="w-3 h-3 text-[#0c3e35]" />
-                                    </div>
-                                  )}
+                                  <div className="pt-1 flex items-center justify-between text-[10px] text-[#0c3e35] font-bold border-t border-[#e5e4dc]">
+                                    <span>
+                                      {n.type === 'announcement'
+                                        ? isRead
+                                          ? 'انقر لإعادة قراءة نص وتفاصيل التعميم 📖'
+                                          : 'انقر لقراءة نص وتفاصيل التعميم 📖'
+                                        : n.type === 'feedback'
+                                          ? 'انقر لعرض تفاصيل التوجيه والتكليف 📖'
+                                          : n.type === 'task'
+                                            ? 'انقر لعرض تفاصيل التكليف ومتابعة الإنجاز 📖'
+                                            : n.type === 'plan'
+                                              ? 'انقر لعرض تفاصيل الخطة المرفوعة 📖'
+                                              : 'انقر لعرض تفاصيل ملخص الإنجاز 📖'}
+                                    </span>
+                                    <ChevronLeft className="w-3 h-3 text-[#0c3e35]" />
+                                  </div>
                                 </div>
                               );
                             })
@@ -912,6 +945,13 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
         data={selectedAnnouncement}
         currentUser={currentUser}
         onClose={() => setSelectedAnnouncement(null)}
+      />
+
+      {/* Comprehensive Notification Details Dialog (Tasks, Plans, Summaries) */}
+      <NotificationDetailsModal
+        data={selectedNotificationDetail}
+        isOpen={Boolean(selectedNotificationDetail)}
+        onClose={() => setSelectedNotificationDetail(null)}
       />
 
       {/* Socket Status & Troubleshooting Modal */}

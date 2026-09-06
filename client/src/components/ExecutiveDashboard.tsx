@@ -53,12 +53,47 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [showAnnouncementsListModal, setShowAnnouncementsListModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showTasksModal, setShowTasksModal] = useState(false);
+  const [tasksModalSearch, setTasksModalSearch] = useState<string>('');
+  const [tasksModalDirId, setTasksModalDirId] = useState<string | undefined>(undefined);
   const [activeTasksCount, setActiveTasksCount] = useState(0);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementModalData | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '', priority: 'NORMAL' });
   const [submittingAnnouncement, setSubmittingAnnouncement] = useState(false);
   const [liveToast, setLiveToast] = useState<{ title: string; desc: string } | null>(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const handleOpenTasksModal = (e: any) => {
+      const detail = e.detail || {};
+      setTasksModalSearch(detail.searchQuery || detail.taskTitle || '');
+      setTasksModalDirId(detail.directorateId);
+      setShowTasksModal(true);
+    };
+
+    const handleOpenDirectorateDetail = (e: any) => {
+      const dirId = e.detail?.directorateId;
+      if (!dirId) return;
+
+      const found = data?.directorates?.find((d) => d.directorateId === dirId);
+      if (found) {
+        setSelectedDirectorate(found);
+      } else {
+        api.getExecutiveOverview(selectedDate).then((res) => {
+          setData(res);
+          const target = res.directorates?.find((d) => d.directorateId === dirId);
+          if (target) setSelectedDirectorate(target);
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('ports:open_tasks_modal', handleOpenTasksModal);
+    window.addEventListener('ports:open_directorate_detail', handleOpenDirectorateDetail);
+
+    return () => {
+      window.removeEventListener('ports:open_tasks_modal', handleOpenTasksModal);
+      window.removeEventListener('ports:open_directorate_detail', handleOpenDirectorateDetail);
+    };
+  }, [data, selectedDate]);
 
   useEffect(() => {
     setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
@@ -583,69 +618,152 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
 
       </div>
 
-      {/* Category Tabs (Active in Grid mode) */}
+      {/* Category Tabs & Status Legend Bar (Active in Grid mode) */}
       {viewMode === 'GRID' && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-          <button
-            onClick={() => setActiveCategory('ALL')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-              activeCategory === 'ALL'
-                ? 'bg-[#0c3e35] text-white shadow-xs'
-                : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
-            }`}
-          >
-            كافة المديريات ({data?.directorates.length || 20})
-          </button>
-          <button
-            onClick={() => setActiveCategory('OPERATIONAL')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-              activeCategory === 'OPERATIONAL'
-                ? 'bg-[#0c3e35] text-white shadow-xs'
-                : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
-            }`}
-          >
-            التشغيلية والبحرية
-          </button>
-          <button
-            onClick={() => setActiveCategory('ADMINISTRATIVE')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-              activeCategory === 'ADMINISTRATIVE'
-                ? 'bg-[#0c3e35] text-white shadow-xs'
-                : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
-            }`}
-          >
-            الإدارية والتنظيمية
-          </button>
-          <button
-            onClick={() => setActiveCategory('TECHNICAL')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-              activeCategory === 'TECHNICAL'
-                ? 'bg-[#0c3e35] text-white shadow-xs'
-                : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
-            }`}
-          >
-            الفنية والتقنية
-          </button>
-          <button
-            onClick={() => setActiveCategory('AUDIT_LEGAL')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-              activeCategory === 'AUDIT_LEGAL'
-                ? 'bg-[#0c3e35] text-white shadow-xs'
-                : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
-            }`}
-          >
-            الرقابة والشؤون القانونية
-          </button>
-          <button
-            onClick={() => setActiveCategory('LOGISTICS')}
-            className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-              activeCategory === 'LOGISTICS'
-                ? 'bg-[#0c3e35] text-white shadow-xs'
-                : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
-            }`}
-          >
-            الدعم والآليات
-          </button>
+        <div className="space-y-2.5">
+          {/* Main Category Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+            <button
+              onClick={() => setActiveCategory('ALL')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'ALL'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              كافة المديريات ({data?.directorates.length || 20})
+            </button>
+            <button
+              onClick={() => setActiveCategory('OPERATIONAL')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'OPERATIONAL'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              التشغيلية والبحرية
+            </button>
+            <button
+              onClick={() => setActiveCategory('ADMINISTRATIVE')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'ADMINISTRATIVE'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              الإدارية والتنظيمية
+            </button>
+            <button
+              onClick={() => setActiveCategory('TECHNICAL')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'TECHNICAL'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              الفنية والتقنية
+            </button>
+            <button
+              onClick={() => setActiveCategory('AUDIT_LEGAL')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'AUDIT_LEGAL'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              الرقابة والشؤون القانونية
+            </button>
+            <button
+              onClick={() => setActiveCategory('LOGISTICS')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'LOGISTICS'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              الدعم والآليات
+            </button>
+          </div>
+
+          {/* Status Quick Filter & Color Legend */}
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs bg-[#edece4]/70 p-2.5 rounded-xl border border-[#d2d1c9]">
+            <div className="flex items-center gap-1.5 font-bold text-[#0c3e35] text-xs">
+              <span className="text-[#5e736e]">دلالات ألوان البطاقات:</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-[11px] font-medium">
+              <button
+                onClick={() => setActiveCategory(activeCategory === 'SUBMITTED' ? 'ALL' : 'SUBMITTED')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                  activeCategory === 'SUBMITTED'
+                    ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                    : 'bg-emerald-50/90 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                }`}
+                title="تصفية حسب المديريات التي أنجزت ورفعت ملخصها اليومي"
+              >
+                <span className={`w-2 h-2 rounded-full ${activeCategory === 'SUBMITTED' ? 'bg-white' : 'bg-emerald-600'}`}></span>
+                <span>ملخص منجز / مكتملة</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeCategory === 'SUBMITTED' ? 'bg-white/20 text-white' : 'bg-emerald-200/70 text-emerald-900'
+                }`}>
+                  {data?.directorates.filter(d => d.hasSummary).length || 0}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveCategory('ALL')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                  activeCategory === 'ALL'
+                    ? 'bg-[#0c3e35] text-white border-[#0c3e35]'
+                    : 'bg-white border-[#0c3e35]/20 text-[#0c3e35] hover:bg-[#f4f7f6]'
+                }`}
+                title="عرض كافة المديريات النشطة"
+              >
+                <span className={`w-2 h-2 rounded-full ${activeCategory === 'ALL' ? 'bg-[#d4af37]' : 'bg-[#0c3e35]'}`}></span>
+                <span>قيد العمل والمتابعة</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeCategory === 'ALL' ? 'bg-white/20 text-white' : 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                }`}>
+                  {data?.directorates.filter(d => d.hasPlan && !d.hasSummary && !d.urgentFlag).length || 0}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveCategory(activeCategory === 'PENDING' ? 'ALL' : 'PENDING')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                  activeCategory === 'PENDING'
+                    ? 'bg-amber-700 text-white border-amber-700 shadow-xs'
+                    : 'bg-amber-50/90 border-dashed border-amber-300 text-amber-800 hover:bg-amber-100'
+                }`}
+                title="تصفية حسب المديريات التي لم تسجل خطة صباحية بعد"
+              >
+                <span className={`w-2 h-2 rounded-full ${activeCategory === 'PENDING' ? 'bg-white' : 'bg-amber-500'}`}></span>
+                <span>بانتظار الخطة الصباحية</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeCategory === 'PENDING' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-900'
+                }`}>
+                  {data?.directorates.filter(d => !d.hasPlan).length || 0}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveCategory(activeCategory === 'URGENT' ? 'ALL' : 'URGENT')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                  activeCategory === 'URGENT'
+                    ? 'bg-rose-700 text-white border-rose-700 shadow-xs'
+                    : 'bg-rose-50/90 border-rose-200 text-rose-800 hover:bg-rose-100'
+                }`}
+                title="تصفية حسب المديريات التي لديها تنبيه عاجل أو معوقات"
+              >
+                <span className={`w-2 h-2 rounded-full ${activeCategory === 'URGENT' ? 'bg-white' : 'bg-red-500 animate-ping'}`}></span>
+                <span>تنبيه عاجل</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeCategory === 'URGENT' ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-900'
+                }`}>
+                  {data?.directorates.filter(d => d.urgentFlag).length || 0}
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -913,10 +1031,14 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         isOpen={showTasksModal}
         onClose={() => {
           setShowTasksModal(false);
+          setTasksModalSearch('');
+          setTasksModalDirId(undefined);
           loadTasksCount();
           loadOverview();
         }}
         currentUser={currentUser}
+        initialDirectorateId={tasksModalDirId}
+        initialSearch={tasksModalSearch}
       />
 
     </div>

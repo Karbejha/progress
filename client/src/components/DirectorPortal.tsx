@@ -166,6 +166,23 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     return () => window.removeEventListener('announcements:read_updated', handleReadUpdate);
   }, [currentUser.id]);
 
+  useEffect(() => {
+    const handleSwitchTab = (e: any) => {
+      if (e.detail?.tab) {
+        setActiveTab(e.detail.tab);
+      }
+    };
+    const handleOpenTasks = () => {
+      setActiveTab('EXECUTIVE_TASKS');
+    };
+    window.addEventListener('ports:switch_director_tab', handleSwitchTab);
+    window.addEventListener('ports:open_tasks_modal', handleOpenTasks);
+    return () => {
+      window.removeEventListener('ports:switch_director_tab', handleSwitchTab);
+      window.removeEventListener('ports:open_tasks_modal', handleOpenTasks);
+    };
+  }, []);
+
   const todayFormatted = new Date().toLocaleDateString('ar-SY', {
     weekday: 'long',
     year: 'numeric',
