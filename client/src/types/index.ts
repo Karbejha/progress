@@ -292,3 +292,52 @@ export interface ExecutiveOverviewResponse {
   directorates: DirectorateOverviewItem[];
 }
 
+export type TodoCategory = 'GENERAL' | 'MEETING' | 'FOLLOWUP' | 'OFFICIAL' | 'CALL';
+
+export interface UserTodo {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string | null;
+  priority: Priority;
+  dueDate?: string | null;
+  isCompleted: boolean;
+  completedAt?: string | null;
+  category: TodoCategory | string;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TodoStats {
+  total: number;
+  completed: number;
+  pending: number;
+  urgentPending: number;
+  dueTodayPending: number;
+}
+
+export interface TodosResponse {
+  todos: UserTodo[];
+  stats: TodoStats;
+}
+
+export interface CreateTodoDto {
+  title: string;
+  description?: string;
+  priority?: Priority;
+  dueDate?: string;
+  category?: string;
+}
+
+export interface UpdateTodoDto {
+  title?: string;
+  description?: string;
+  priority?: Priority;
+  dueDate?: string | null;
+  isCompleted?: boolean;
+  category?: string;
+  displayOrder?: number;
+}
+
+

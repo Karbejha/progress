@@ -2,31 +2,22 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { User } from '../types';
-import { api } from '../services/api';
-import { Header } from '../components/Header';
-import { LoginForm } from '../components/LoginForm';
-import { ExecutiveDashboard } from '../components/ExecutiveDashboard';
-import { DirectorPortal } from '../components/DirectorPortal';
-import { TodosView } from '../components/TodosView';
-import { initNotificationService, requestNotificationPermissions } from '../lib/notifications';
+import { useRouter } from 'next/navigation';
+import { User } from '../../types';
+import { api } from '../../services/api';
+import { Header } from '../../components/Header';
+import { LoginForm } from '../../components/LoginForm';
+import { TodosView } from '../../components/TodosView';
+import { initNotificationService, requestNotificationPermissions } from '../../lib/notifications';
 
-export default function Home() {
+export default function TodosPage() {
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<'DASHBOARD' | 'TODOS'>('DASHBOARD');
 
   useEffect(() => {
     initNotificationService();
     initAuth();
-
-    const handleNav = (e: any) => {
-      if (e.detail?.view) {
-        setActiveView(e.detail.view);
-      }
-    };
-    window.addEventListener('ports:navigate_view', handleNav);
-    return () => window.removeEventListener('ports:navigate_view', handleNav);
   }, []);
 
   const initAuth = async () => {
@@ -34,15 +25,13 @@ export default function Home() {
       setLoading(true);
       const savedToken = api.getToken();
       const savedUser = api.getCurrentUser();
-      
+
       if (savedToken && savedUser) {
-        // Validate with backend
         try {
           const freshUser = await api.getMe();
           setCurrentUser(freshUser);
           api.setCurrentUser(freshUser);
         } catch {
-          // Token expired
           api.logout();
           setCurrentUser(null);
         }
@@ -50,7 +39,7 @@ export default function Home() {
         setCurrentUser(null);
       }
     } catch (err) {
-      console.error('Authentication check error', err);
+      console.error('Authentication error', err);
       setCurrentUser(null);
     } finally {
       setLoading(false);
@@ -79,46 +68,34 @@ export default function Home() {
             className="object-contain w-auto h-auto"
           />
         </div>
-        <p className="text-sm font-bold text-[#d4af37]">
-          جاري التحقق من جلسة الدخول...
-        </p>
+        <p className="text-sm font-bold text-[#d4af37]">جاري فتح أجندة المهام...</p>
       </div>
     );
   }
 
-  // If not logged in, render the official Login screen
   if (!currentUser) {
     return <LoginForm onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const isExecutive =
-    currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR';
-
   return (
     <div className="min-h-screen flex flex-col bg-[#f4f3ed] text-[#0c3e35] font-sans">
-      
-      {/* Navigation Header */}
       <Header
         currentUser={currentUser}
         onLogout={handleLogout}
-        activeView={activeView}
-        onViewChange={setActiveView}
+        activeView="TODOS"
+        onViewChange={(v) => {
+          if (v === 'DASHBOARD') {
+            router.push('/');
+          }
+        }}
       />
 
-      {/* Main Content View based on Active View and Role */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-8">
-        {activeView === 'TODOS' ? (
-          <TodosView
-            currentUser={currentUser}
-            onBackToDashboard={() => setActiveView('DASHBOARD')}
-          />
-        ) : isExecutive ? (
-          <ExecutiveDashboard currentUser={currentUser} />
-        ) : (
-          <DirectorPortal currentUser={currentUser} />
-        )}
+        <TodosView
+          currentUser={currentUser}
+          onBackToDashboard={() => router.push('/')}
+        />
       </main>
-
     </div>
   );
 }

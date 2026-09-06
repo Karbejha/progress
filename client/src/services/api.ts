@@ -7,6 +7,10 @@ import {
   ExecutiveFeedback,
   Directorate,
   ExecutiveTask,
+  UserTodo,
+  TodosResponse,
+  CreateTodoDto,
+  UpdateTodoDto,
 } from '../types';
 
 export const getApiBaseUrl = (): string => {
@@ -403,6 +407,90 @@ class ApiService {
     const qs = deleteAllInGroup ? '?deleteAllInGroup=true' : '';
     return this.request<{ message: string; taskId?: string; count?: number }>(`/executive-tasks/${id}${qs}`, {
       method: 'DELETE',
+    });
+  }
+
+  // --- TO-DO List APIs ---
+  async getTodos(params?: {
+    isCompleted?: string;
+    priority?: string;
+    category?: string;
+    search?: string;
+  }): Promise<TodosResponse> {
+    const query = new URLSearchParams();
+    if (params?.isCompleted) query.append('isCompleted', params.isCompleted);
+    if (params?.priority && params.priority !== 'ALL') query.append('priority', params.priority);
+    if (params?.category && params.category !== 'ALL') query.append('category', params.category);
+    if (params?.search) query.append('search', params.search);
+
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return this.request<TodosResponse>(`/todos${qs}`);
+  }
+
+  async createTodo(payload: CreateTodoDto): Promise<UserTodo> {
+    return this.request<UserTodo>('/todos', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateTodo(id: string, payload: UpdateTodoDto): Promise<UserTodo> {
+    return this.request<UserTodo>(`/todos/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async toggleTodo(id: string): Promise<UserTodo> {
+    return this.request<UserTodo>(`/todos/${id}/toggle`, {
+      method: 'PATCH',
+    });
+  }
+
+  async deleteTodo(id: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/todos/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async reorderTodos(orderedIds: string[]): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/todos/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+    });
+  }
+
+  async convertTodoToPlanTask(id: string): Promise<{
+    success: boolean;
+    message: string;
+    planTask: any;
+    planId: string;
+  }> {
+    return this.request<{
+      success: boolean;
+      message: string;
+      planTask: any;
+      planId: string;
+    }>(`/todos/${id}/convert-to-plan`, {
+      method: 'POST',
+    });
+  }
+
+  async convertTodoToExecutiveTask(
+    id: string,
+    payload: { directorateIds: string[]; dueDate?: string },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    createdTasks: any[];
+  }> {
+    return this.request<{
+      success: boolean;
+      message: string;
+      createdTasks: any[];
+    }>(`/todos/${id}/convert-to-executive-task`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   }
 }

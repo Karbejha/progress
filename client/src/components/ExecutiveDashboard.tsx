@@ -25,6 +25,7 @@ import {
   Layers,
   Plus,
   Eye,
+  ListTodo,
 } from 'lucide-react';
 
 import { UsersManagementModal } from './UsersManagementModal';
@@ -311,13 +312,22 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
           />
 
           <button
+            onClick={() => window.dispatchEvent(new CustomEvent('ports:navigate_view', { detail: { view: 'TODOS' } }))}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
+            title="فتح أجندة ومفكرة المهام الخاصة"
+          >
+            <ListTodo className="w-4 h-4 text-[#d4af37]" />
+            <span>مفكرتي الخاصة (TO-DO)</span>
+          </button>
+
+          <button
             onClick={() => setShowTasksModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer relative"
           >
             <Layers className="w-4 h-4 text-[#d4af37]" />
             <span>التكليفات والمهام المباشرة</span>
             {activeTasksCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+              <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#d4af37] text-[#031814] text-[11px] font-bold leading-none flex items-center justify-center shadow-xs tabular-nums">
                 {activeTasksCount}
               </span>
             )}

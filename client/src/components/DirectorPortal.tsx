@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Users,
   Building2,
+  ListTodo,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -103,12 +104,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   // Form states initialized with local draft
   const [generalFocus, setGeneralFocus] = useState(() => initPlanDraft?.generalFocus || '');
   const [tasks, setTasks] = useState<
-    { title: string; description: string; priority: Priority; estimatedHours: number }[]
+    { title: string; description: string; priority: Priority; estimatedHours: number; templateId?: string }[]
   >(() =>
     initPlanDraft?.tasks && initPlanDraft.tasks.length > 0
       ? initPlanDraft.tasks
       : [{ title: '', description: '', priority: 'NORMAL', estimatedHours: 2.0 }]
   );
+  const [togglingTemplateIdx, setTogglingTemplateIdx] = useState<number | null>(null);
 
   // Summary wizard states initialized with local draft
   const [summaryText, setSummaryText] = useState(() => initSummaryDraft?.summaryText || '');
@@ -602,6 +604,20 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   };
 
   // Templates Management (Requirement 2)
+  const getMatchingTemplate = (task: { title: string; templateId?: string }) => {
+    const cleanTitle = task.title.trim().toLowerCase();
+    if (!cleanTitle) return null;
+    const byTitle = templates.find((t) => t.title.trim().toLowerCase() === cleanTitle);
+    if (byTitle) return byTitle;
+    if (task.templateId) {
+      const byId = templates.find((t) => t.id === task.templateId);
+      if (byId && byId.title.trim().toLowerCase() === cleanTitle) {
+        return byId;
+      }
+    }
+    return null;
+  };
+
   const handleApplyTemplate = (tpl: TaskTemplate) => {
     setTasks((prev) => [
       ...prev.filter((t) => t.title.trim().length > 0),
@@ -610,6 +626,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         description: tpl.description || '',
         priority: tpl.priority,
         estimatedHours: tpl.estimatedHours,
+        templateId: tpl.id,
       },
     ]);
     showToast(`تم إدراج مهمة: "${tpl.title}" من القالب!`);
@@ -625,34 +642,62 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         description: tpl.description || '',
         priority: tpl.priority,
         estimatedHours: tpl.estimatedHours,
+        templateId: tpl.id,
       })),
     ]);
     showToast(`تم إدراج كافة القوالب (${templates.length} مهام) في الخطة!`);
     setShowTemplatesModal(false);
   };
 
-  const handleSaveSingleTaskAsTemplate = async (task: {
-    title: string;
-    description: string;
-    priority: Priority;
-    estimatedHours: number;
-  }) => {
+  const handleToggleTemplate = async (
+    task: { title: string; description: string; priority: Priority; estimatedHours: number; templateId?: string },
+    idx: number
+  ) => {
     if (!task.title.trim()) {
       alert('يرجى كتابة عنوان للمهمة أولاً لحفظها كقالب');
       return;
     }
+
+    const matchingTpl = getMatchingTemplate(task);
+
     try {
-      await api.createTaskTemplate({
-        title: task.title,
-        description: task.description,
-        priority: task.priority,
-        estimatedHours: task.estimatedHours,
-      });
-      showToast(`تم حفظ "${task.title}" كقالب مهمة متكررة بنجاح!`);
+      setTogglingTemplateIdx(idx);
+      if (matchingTpl) {
+        // Unsave / cancel template
+        await api.deleteTaskTemplate(matchingTpl.id);
+        setTemplates((prev) => prev.filter((t) => t.id !== matchingTpl.id));
+        setTasks((prev) => {
+          const updated = [...prev];
+          if (updated[idx]) {
+            updated[idx] = { ...updated[idx], templateId: undefined };
+          }
+          return updated;
+        });
+        showToast(`تم إلغاء حفظ "${matchingTpl.title}" من القوالب المتكررة`);
+      } else {
+        // Save as template
+        const created = await api.createTaskTemplate({
+          title: task.title.trim(),
+          description: task.description?.trim() || undefined,
+          priority: task.priority,
+          estimatedHours: task.estimatedHours,
+        });
+        setTemplates((prev) => [...prev.filter((t) => t.id !== created.id), created]);
+        setTasks((prev) => {
+          const updated = [...prev];
+          if (updated[idx]) {
+            updated[idx] = { ...updated[idx], templateId: created.id };
+          }
+          return updated;
+        });
+        showToast(`تم حفظ "${task.title}" كقالب مهمة متكررة بنجاح!`);
+      }
       loadTemplates();
     } catch (err) {
-      console.error('Failed to create template', err);
-      alert('حدث خطأ أثناء حفظ القالب');
+      console.error('Failed to toggle template', err);
+      alert(matchingTpl ? 'حدث خطأ أثناء إلغاء حفظ القالب' : 'حدث خطأ أثناء حفظ القالب');
+    } finally {
+      setTogglingTemplateIdx(null);
     }
   };
 
@@ -1263,6 +1308,15 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
           <span>سجل إنجازات المديرية</span>
         </button>
+
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('ports:navigate_view', { detail: { view: 'TODOS' } }))}
+          className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 bg-amber-50/90 text-[#0c3e35] hover:bg-amber-100 border border-amber-300 mr-auto"
+          title="فتح أجندة ومفكرة المهام الخاصة"
+        >
+          <ListTodo className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#d4af37] shrink-0" />
+          <span>مفكرتي الخاصة (TO-DO)</span>
+        </button>
       </div>
 
       {/* Tab 1: Morning Plan Builder */}
@@ -1344,85 +1398,110 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             </div>
 
             <div className="space-y-3">
-              {tasks.map((task, idx) => (
-                <div
-                  key={idx}
-                  className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="w-6 h-6 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      placeholder="عنوان المهمة (مثلاً: تدقيق معاملات تسجيل زوارق النزهة)..."
-                      value={task.title}
-                      onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
-                      className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
-                    />
+              {tasks.map((task, idx) => {
+                const matchingTpl = getMatchingTemplate(task);
+                const isSaved = Boolean(matchingTpl);
+                const isToggling = togglingTemplateIdx === idx;
 
-                    {/* Bookmark Task as Template */}
-                    <button
-                      type="button"
-                      onClick={() => handleSaveSingleTaskAsTemplate(task)}
-                      className="p-2 rounded-xl text-[#5e736e] hover:text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer"
-                      title="حفظ هذه المهمة كقالب مهمة متكررة"
-                    >
-                      <Bookmark className="w-4 h-4 text-[#8daaa2] hover:text-[#d4af37]" />
-                    </button>
-
-                    {tasks.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTask(idx)}
-                        className="p-2 rounded-xl text-red-600 hover:bg-red-50 transition cursor-pointer"
-                        title="حذف المهمة"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
+                return (
+                  <div
+                    key={idx}
+                    className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="w-6 h-6 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
                       <input
                         type="text"
-                        placeholder="تفاصيل إضافية أو النتيجة المتوقعة (اختياري)..."
-                        value={task.description}
-                        onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
-                        className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
+                        required
+                        placeholder="عنوان المهمة (مثلاً: تدقيق معاملات تسجيل زوارق النزهة)..."
+                        value={task.title}
+                        onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
+                        className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
                       />
+
+                      {/* Bookmark Task as Template */}
+                      <button
+                        type="button"
+                        disabled={isToggling}
+                        onClick={() => handleToggleTemplate(task, idx)}
+                        className={`p-2 rounded-xl transition-all duration-200 cursor-pointer active:scale-95 flex items-center justify-center ${
+                          isSaved
+                            ? 'bg-amber-50 border border-amber-300 text-amber-600 hover:bg-amber-100 hover:border-amber-400 shadow-xs ring-1 ring-amber-200/60'
+                            : 'text-[#8daaa2] hover:text-[#0c3e35] hover:bg-[#f4f3ed] border border-transparent hover:border-[#d2d1c9]'
+                        }`}
+                        title={
+                          isSaved
+                            ? `قالب محفوظ: "${matchingTpl?.title}" (انقر لإلغاء الحفظ من القوالب)`
+                            : 'حفظ هذه المهمة كقالب مهمة متكررة'
+                        }
+                      >
+                        {isToggling ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                        ) : (
+                          <Bookmark
+                            className={`w-4 h-4 transition-all duration-200 ${
+                              isSaved
+                                ? 'text-amber-500 fill-amber-400 drop-shadow-xs'
+                                : 'text-[#8daaa2] hover:text-[#d4af37]'
+                            }`}
+                          />
+                        )}
+                      </button>
+
+                      {tasks.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTask(idx)}
+                          className="p-2 rounded-xl text-red-600 hover:bg-red-50 transition cursor-pointer"
+                          title="حذف المهمة"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={task.priority}
-                        onChange={(e) => handleTaskChange(idx, 'priority', e.target.value as Priority)}
-                        className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs focus:outline-none focus:border-[#0c3e35] cursor-pointer font-bold"
-                      >
-                        <option value="URGENT">عاجل جداً</option>
-                        <option value="HIGH">أولوية مرتفعة</option>
-                        <option value="NORMAL">أولوية عادية</option>
-                        <option value="LOW">منخفضة</option>
-                      </select>
-
-                      <div className="flex items-center gap-1 bg-[#f4f3ed] border border-[#d2d1c9] px-2.5 py-2 rounded-xl text-xs text-[#0c3e35] shrink-0 font-bold">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
                         <input
-                          type="number"
-                          min="0.5"
-                          max="12"
-                          step="0.5"
-                          value={task.estimatedHours}
-                          onChange={(e) => handleTaskChange(idx, 'estimatedHours', parseFloat(e.target.value))}
-                          className="w-10 bg-transparent text-center text-[#0c3e35] focus:outline-none font-bold"
+                          type="text"
+                          placeholder="تفاصيل إضافية أو النتيجة المتوقعة (اختياري)..."
+                          value={task.description}
+                          onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
+                          className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
                         />
-                        <span>ساعة</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={task.priority}
+                          onChange={(e) => handleTaskChange(idx, 'priority', e.target.value as Priority)}
+                          className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs focus:outline-none focus:border-[#0c3e35] cursor-pointer font-bold"
+                        >
+                          <option value="URGENT">عاجل جداً</option>
+                          <option value="HIGH">أولوية مرتفعة</option>
+                          <option value="NORMAL">أولوية عادية</option>
+                          <option value="LOW">منخفضة</option>
+                        </select>
+
+                        <div className="flex items-center gap-1 bg-[#f4f3ed] border border-[#d2d1c9] px-2.5 py-2 rounded-xl text-xs text-[#0c3e35] shrink-0 font-bold">
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="12"
+                            step="0.5"
+                            value={task.estimatedHours}
+                            onChange={(e) => handleTaskChange(idx, 'estimatedHours', parseFloat(e.target.value))}
+                            className="w-10 bg-transparent text-center text-[#0c3e35] focus:outline-none font-bold"
+                          />
+                          <span>ساعة</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

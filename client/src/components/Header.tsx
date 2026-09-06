@@ -34,11 +34,13 @@ import {
   WifiOff,
   Activity,
   Info,
+  ListTodo,
 } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { NotificationDetailsModal, NotificationDetailItem } from './NotificationDetailsModal';
+import { QuickTodoDrawer } from './QuickTodoDrawer';
 import {
   initNotificationService,
   requestNotificationPermissions,
@@ -50,6 +52,8 @@ import {
 interface HeaderProps {
   currentUser: User | null;
   onLogout: () => void;
+  activeView?: 'DASHBOARD' | 'TODOS';
+  onViewChange?: (view: 'DASHBOARD' | 'TODOS') => void;
 }
 
 interface LiveNotification {
@@ -66,7 +70,12 @@ interface LiveNotification {
   fullPayload?: any;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({
+  currentUser,
+  onLogout,
+  activeView = 'DASHBOARD',
+  onViewChange,
+}) => {
   const [isConnected, setIsConnected] = useState(false);
   const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>('disconnected');
   const [socketError, setSocketError] = useState<string | null>(null);
@@ -80,6 +89,10 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
   const [soundOn, setSoundOn] = useState<boolean>(true);
+
+  // TO-DO List state
+  const [pendingTodosCount, setPendingTodosCount] = useState(0);
+  const [showQuickTodoDrawer, setShowQuickTodoDrawer] = useState(false);
 
   const notifRef = React.useRef<HTMLDivElement>(null);
   const userMenuRef = React.useRef<HTMLDivElement>(null);
@@ -111,6 +124,26 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
     window.addEventListener('ports_sound_toggled', handleSoundToggle);
     return () => window.removeEventListener('ports_sound_toggled', handleSoundToggle);
   }, []);
+
+  // Fetch and track uncompleted TO-DO items count
+  const loadTodosCount = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await api.getTodos({ isCompleted: 'false' });
+      setPendingTodosCount(res.stats?.pending ?? res.todos?.length ?? 0);
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    loadTodosCount();
+    const handleTodoUpdate = () => {
+      loadTodosCount();
+    };
+    window.addEventListener('ports:todos_updated', handleTodoUpdate);
+    return () => window.removeEventListener('ports:todos_updated', handleTodoUpdate);
+  }, [currentUser]);
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -736,6 +769,45 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     </span>
                   </button>
 
+                  {/* TO-DO Agenda Button */}
+                  <div className="relative flex items-center">
+                    <button
+                      onClick={() => {
+                        if (onViewChange) {
+                          onViewChange(activeView === 'TODOS' ? 'DASHBOARD' : 'TODOS');
+                        } else {
+                          window.location.href = activeView === 'TODOS' ? '/' : '/todos';
+                        }
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 sm:px-3 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-xs active:scale-95 ${
+                        activeView === 'TODOS'
+                          ? 'bg-[#d4af37] text-[#05261e] border-[#d4af37] font-black'
+                          : 'bg-[#0c3e35] text-[#d4af37] border-[#d2d1c9]/20 hover:border-[#d4af37]/40 hover:bg-[#0c4237]'
+                      }`}
+                      title="أجندة المهام اليومية (TO-DO)"
+                      aria-label="أجندة المهام اليومية"
+                    >
+                      <ListTodo className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline text-xs font-extrabold">
+                        {activeView === 'TODOS' ? 'الرئيسية' : 'أجندة المهام'}
+                      </span>
+                      {pendingTodosCount > 0 && activeView !== 'TODOS' && (
+                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#d4af37] text-[#031814] font-bold text-[11px] sm:text-xs leading-none flex items-center justify-center shadow-xs tabular-nums select-none">
+                          {pendingTodosCount > 99 ? '99+' : pendingTodosCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Quick Drawer Icon Trigger */}
+                    <button
+                      onClick={() => setShowQuickTodoDrawer(true)}
+                      className="hidden md:flex items-center justify-center -mr-1.5 w-5 h-5 rounded-full bg-[#05261e] border border-[#d4af37]/40 text-[#d4af37] hover:bg-[#0c3e35] hover:scale-110 transition text-[11px] font-black cursor-pointer shadow-xs z-10"
+                      title="فتح المفكرة السريعة"
+                    >
+                      +
+                    </button>
+                  </div>
+
                   {/* Notifications Bell */}
                   <div ref={notifRef} className="relative">
                     <button
@@ -746,7 +818,7 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                     >
                       <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       {unreadCount > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-4.5 sm:min-w-[20px] sm:h-5 px-1 rounded-full bg-red-600 text-white font-black text-[9px] sm:text-[10px] leading-none flex items-center justify-center border-2 border-[#05261e] shadow-md z-10 pointer-events-none select-none">
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white font-bold text-[10px] sm:text-[11px] leading-none flex items-center justify-center border-2 border-[#05261e] shadow-md z-10 pointer-events-none select-none tabular-nums">
                           {unreadCount > 99 ? '99+' : unreadCount}
                         </span>
                       )}
@@ -892,6 +964,27 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
                           </button>
                         )}
 
+                        {/* Option: Open TO-DO Agenda */}
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            if (onViewChange) {
+                              onViewChange('TODOS');
+                            } else {
+                              window.location.href = '/todos';
+                            }
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
+                        >
+                          <ListTodo className="w-4 h-4 text-[#0c3e35]" />
+                          <span>أجندة المهام اليومية (TO-DO)</span>
+                          {pendingTodosCount > 0 && (
+                            <span className="mr-auto min-w-[20px] h-5 px-1.5 rounded-full bg-[#d4af37] text-[#031814] text-[11px] font-bold leading-none flex items-center justify-center shadow-xs tabular-nums">
+                              {pendingTodosCount}
+                            </span>
+                          )}
+                        </button>
+
                         {/* Option 2: Change Own Password */}
                         <button
                           onClick={() => {
@@ -1023,6 +1116,22 @@ export const Header: React.FC<HeaderProps> = ({ currentUser, onLogout }) => {
             </div>
           </div>
         </div>
+      )}
+      {/* Quick Slide-Over Todo Drawer */}
+      {currentUser && (
+        <QuickTodoDrawer
+          isOpen={showQuickTodoDrawer}
+          onClose={() => setShowQuickTodoDrawer(false)}
+          currentUser={currentUser}
+          onOpenFullView={() => {
+            setShowQuickTodoDrawer(false);
+            if (onViewChange) {
+              onViewChange('TODOS');
+            } else {
+              window.location.href = '/todos';
+            }
+          }}
+        />
       )}
     </>
   );

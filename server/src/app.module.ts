@@ -9,6 +9,7 @@ import { ExecutiveModule } from './executive/executive.module';
 import { ExecutiveTasksModule } from './executive-tasks/executive-tasks.module';
 import { EventsModule } from './events/events.module';
 import { UsersModule } from './users/users.module';
+import { TodosModule } from './todos/todos.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module';
     DailySummariesModule,
     ExecutiveModule,
     ExecutiveTasksModule,
+    TodosModule,
   ],
 })
 export class AppModule {}

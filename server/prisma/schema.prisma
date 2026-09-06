@@ -82,6 +82,7 @@ model User {
   announcementReads AnnouncementRead[]
   assignedExecutiveTasks ExecutiveTask[] @relation("ExecutiveAssignedTasks")
   receivedExecutiveTasks ExecutiveTask[] @relation("AssignedToUserTasks")
+  todos         UserTodo[]
 }
 
 model DailyPlan {
@@ -224,4 +225,22 @@ model ExecutiveTask {
   updatedAt            DateTime      @updatedAt
 
   @@index([sharedGroupId])
+}
+
+model UserTodo {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  priority     Priority  @default(NORMAL)
+  dueDate      DateTime?
+  isCompleted  Boolean   @default(false)
+  completedAt  DateTime?
+  category     String?   @default("GENERAL")
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
 }
