@@ -37,7 +37,7 @@ import {
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { Announcement } from '../types';
 import { getSocket } from '../lib/socket';
-import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
+import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -494,6 +494,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       ]);
       setPlan(currentPlan);
       setAnnouncements(anns);
+      if (anns && anns.length > 0) {
+        const readFromAnns = anns.filter((a: any) => a.isReadByMe).map((a: any) => a.id);
+        if (readFromAnns.length > 0) {
+          syncReadNotificationsFromServer(currentUser.id, readFromAnns);
+          setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
+        }
+      }
 
       if (currentPlan) {
         setGeneralFocus(currentPlan.generalFocus || '');

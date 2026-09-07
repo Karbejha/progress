@@ -9,6 +9,7 @@ import { Header } from '../../components/Header';
 import { LoginForm } from '../../components/LoginForm';
 import { TodosView } from '../../components/TodosView';
 import { initNotificationService, requestNotificationPermissions } from '../../lib/notifications';
+import { initStatusBar } from '../../lib/statusBar';
 
 export default function TodosPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function TodosPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    initStatusBar();
     initNotificationService();
     initAuth();
   }, []);

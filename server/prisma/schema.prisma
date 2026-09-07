@@ -83,6 +83,7 @@ model User {
   assignedExecutiveTasks ExecutiveTask[] @relation("ExecutiveAssignedTasks")
   receivedExecutiveTasks ExecutiveTask[] @relation("AssignedToUserTasks")
   todos         UserTodo[]
+  notificationReads NotificationRead[]
 }
 
 model DailyPlan {
@@ -244,3 +245,15 @@ model UserTodo {
 
   @@index([userId])
 }
+
+model NotificationRead {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationKey String
+  readAt          DateTime @default(now())
+
+  @@unique([userId, notificationKey])
+  @@index([userId])
+}
+

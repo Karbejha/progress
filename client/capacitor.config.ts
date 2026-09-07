@@ -15,14 +15,14 @@ const config: CapacitorConfig = {
   },
   plugins: {
     StatusBar: {
-      backgroundColor: '#0c3e35',
+      backgroundColor: '#05261e',
       style: 'DARK',
       overlaysWebView: false,
     },
     SplashScreen: {
       launchShowDuration: 2200,
       launchAutoHide: true,
-      backgroundColor: '#0c3e35',
+      backgroundColor: '#05261e',
       showSpinner: true,
       androidSpinnerStyle: 'large',
       spinnerColor: '#d4af37',

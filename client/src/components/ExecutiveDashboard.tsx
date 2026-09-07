@@ -33,7 +33,7 @@ import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementD
 import { ExecutiveTasksModal } from './ExecutiveTasksModal';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getSocket } from '../lib/socket';
-import { getReadAnnouncementIds, markAnnouncementAsRead } from '../lib/announcements';
+import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
 
 interface ExecutiveDashboardProps {
   currentUser: User;
@@ -222,6 +222,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
     try {
       const res = await api.getAnnouncements();
       setAnnouncements(res);
+      if (res && res.length > 0) {
+        const readFromAnns = res.filter((a: any) => a.isReadByMe).map((a: any) => a.id);
+        if (readFromAnns.length > 0) {
+          syncReadNotificationsFromServer(currentUser.id, readFromAnns);
+          setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
+        }
+      }
     } catch (err) {
       console.error('Failed to load announcements', err);
     }

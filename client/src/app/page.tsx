@@ -10,6 +10,7 @@ import { ExecutiveDashboard } from '../components/ExecutiveDashboard';
 import { DirectorPortal } from '../components/DirectorPortal';
 import { TodosView } from '../components/TodosView';
 import { initNotificationService, requestNotificationPermissions } from '../lib/notifications';
+import { initStatusBar } from '../lib/statusBar';
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -17,6 +18,7 @@ export default function Home() {
   const [activeView, setActiveView] = useState<'DASHBOARD' | 'TODOS'>('DASHBOARD');
 
   useEffect(() => {
+    initStatusBar();
     initNotificationService();
     initAuth();
 

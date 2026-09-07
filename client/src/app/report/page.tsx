@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { ExecutiveOverviewResponse } from '../../types';
 import { api } from '../../services/api';
 import { Printer, ArrowRight } from 'lucide-react';
+import { initStatusBar } from '../../lib/statusBar';
 
 function ReportContent() {
   const searchParams = useSearchParams();
@@ -14,6 +15,7 @@ function ReportContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    initStatusBar();
     loadReport();
   }, [dateParam]);
 
@@ -48,7 +50,7 @@ function ReportContent() {
   const directorates = data?.directorates || [];
 
   return (
-    <div className="min-h-screen bg-[#f4f3ed] print:bg-white text-[#0c3e35] print:text-black p-4 sm:p-8 print:p-0 print:m-0 font-sans">
+    <div className="min-h-screen bg-[#f4f3ed] print:bg-white text-[#0c3e35] print:text-black p-4 sm:p-8 print:p-0 print:m-0 font-sans pt-[calc(1rem+env(safe-area-inset-top,0px))]">
       
       {/* Top Action Bar (hidden when printing) */}
       <div className="max-w-5xl mx-auto mb-6 flex items-center justify-between no-print bg-[#05261e] p-4 rounded-2xl border border-[#0c3e35] shadow-lg text-white">

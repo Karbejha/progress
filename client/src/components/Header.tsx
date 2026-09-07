@@ -9,6 +9,7 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
   markAnnouncementAsRead,
+  syncReadNotificationsFromServer,
 } from '../lib/announcements';
 import {
   Shield,
@@ -269,7 +270,16 @@ export const Header: React.FC<HeaderProps> = ({
     const fetchInitialNotifications = async () => {
       try {
         const loadedNotifs: LiveNotification[] = [];
-        const currentReads = getReadNotificationIds(currentUser.id);
+
+        // 1. Fetch persistent read keys from server (PostgreSQL database)
+        let serverReadKeys: string[] = [];
+        try {
+          serverReadKeys = await api.getReadNotificationKeys();
+        } catch (e) {
+          console.debug('Could not fetch server read notification keys:', e);
+        }
+
+        const discoveredReadKeys: string[] = [...serverReadKeys];
 
         if (currentUser.role === 'DIRECTOR') {
           // 1. Fetch Announcements
@@ -277,6 +287,9 @@ export const Header: React.FC<HeaderProps> = ({
             const anns = await api.getAnnouncements();
             const targetAnns = anns.filter((a) => a.authorId !== currentUser.id);
             targetAnns.forEach((a) => {
+              if (a.isReadByMe) {
+                discoveredReadKeys.push(a.id);
+              }
               loadedNotifs.push({
                 id: a.id,
                 title: 'تعميم إداري رسمي',
@@ -409,8 +422,12 @@ export const Header: React.FC<HeaderProps> = ({
           return tB - tA;
         });
 
-        // Compute unread count
-        const unreadItems = loadedNotifs.filter((n) => !currentReads.includes(n.id));
+        // Hydrate and sync with localStorage so offline & online are 100% in sync
+        const finalReadKeys = syncReadNotificationsFromServer(currentUser.id, discoveredReadKeys);
+        setReadNotifIds(finalReadKeys);
+
+        // Compute unread count strictly against combined server + local reads
+        const unreadItems = loadedNotifs.filter((n) => !finalReadKeys.includes(n.id));
         setUnreadCount(unreadItems.length);
 
         setNotifications(loadedNotifs);
@@ -625,6 +642,9 @@ export const Header: React.FC<HeaderProps> = ({
       markAllNotificationsAsRead(currentUser.id, allIds);
       setReadNotifIds((prev) => Array.from(new Set([...prev, ...allIds])));
 
+      // Explicitly persist all notification IDs to backend database
+      api.markNotificationsRead(allIds).catch(() => { });
+
       // Also trigger server-side read for announcements
       notifications
         .filter((n) => n.type === 'announcement' && n.id)
@@ -641,6 +661,9 @@ export const Header: React.FC<HeaderProps> = ({
       markNotificationAsRead(currentUser.id, n.id);
       setReadNotifIds((prev) => Array.from(new Set([...prev, n.id])));
       setUnreadCount((c) => Math.max(0, c - 1));
+
+      // Persist to backend database immediately
+      api.markNotificationsRead([n.id]).catch(() => { });
 
       if (n.type === 'announcement') {
         markAnnouncementAsRead(currentUser.id, n.id);

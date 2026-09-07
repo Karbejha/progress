@@ -264,6 +264,32 @@ class ApiService {
     });
   }
 
+  // Persistent Notification Read Synchronization Endpoints
+  async getReadNotificationKeys(): Promise<string[]> {
+    try {
+      const res = await this.request<{ readKeys: string[] }>('/notifications/read');
+      return res.readKeys || [];
+    } catch (err) {
+      console.warn('Failed to fetch read notification keys from server', err);
+      return [];
+    }
+  }
+
+  async markNotificationsRead(keys: string[]): Promise<boolean> {
+    if (!keys || !keys.length) return true;
+    try {
+      await this.request<{ success: boolean }>('/notifications/read', {
+        method: 'POST',
+        body: JSON.stringify({ keys }),
+      });
+      return true;
+    } catch (err) {
+      console.warn('Failed to persist notification read state to server', err);
+      return false;
+    }
+  }
+
+
   // Director endpoints
   async getMyTodayPlan(dateStr?: string): Promise<DailyPlan | null> {
     const query = dateStr ? `?date=${dateStr}` : '';

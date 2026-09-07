@@ -39,7 +39,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0c3e35',
+  themeColor: '#05261e',
 };
 
 export const metadata: Metadata = {
@@ -70,17 +70,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl" className={`${qomraFont.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="ar" dir="rtl" className={`${qomraFont.variable} h-full antialiased bg-[#05261e]`} suppressHydrationWarning>
       <head>
         <link rel="icon" href="/assets/Syrian_logo_icon_gold.svg" type="image/svg+xml" />
         <link rel="icon" href="/assets/Syrian_logo_icon_gold.png" type="image/png" />
         <link rel="apple-touch-icon" href="/assets/Syrian_logo_icon_gold.png" />
         <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#05261e" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#05261e" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#05261e" />
+        <meta name="msapplication-navbutton-color" content="#05261e" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="min-h-full flex flex-col font-sans bg-[#f4f3ed] text-[#0c3e35] pb-safe pt-safe" suppressHydrationWarning>
+      <body className="min-h-full flex flex-col font-sans bg-[#f4f3ed] text-[#0c3e35] pb-safe" suppressHydrationWarning>
         {children}
       </body>
     </html>
