@@ -723,8 +723,8 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center justify-between min-h-[3.75rem] sm:h-20 py-2 sm:py-0 gap-2">
 
             {/* Logo & Title */}
-            <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center p-1.5 shadow-md shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1 sm:flex-initial">
+              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center p-1.5 shadow-md shrink-0">
                 <Image
                   src="/assets/Syrian_logo_icon_gold.svg"
                   alt="شعار الجمهورية العربية السورية - الموانئ"
@@ -736,14 +736,14 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="text-[9.5px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 whitespace-nowrap">
+                  <span className="text-[9px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 whitespace-nowrap leading-none">
                     المديرية العامة للموانئ
                   </span>
                   <span className="text-[10px] text-[#8daaa2] hidden md:inline font-medium">
                     • الجمهورية العربية السورية
                   </span>
                 </div>
-                <h1 className="text-xs sm:text-base md:text-lg font-extrabold text-white tracking-tight mt-0.5 truncate leading-snug">
+                <h1 className="text-xs sm:text-base md:text-lg font-extrabold text-white tracking-tight mt-0.5 whitespace-nowrap leading-snug">
                   <span className="inline sm:hidden">منظومة المتابعة اليومية</span>
                   <span className="hidden sm:inline">منظومة متابعة الخطط والإنجاز اليومي</span>
                 </h1>
@@ -754,10 +754,10 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-1.5 sm:gap-2.5 relative shrink-0">
               {currentUser && (
                 <>
-                  {/* Sound Chimes Toggle Button */}
+                  {/* Sound Chimes Toggle Button (Desktop & Tablet) */}
                   <button
                     onClick={toggleSound}
-                    className={`flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${soundOn
+                    className={`hidden sm:flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm active:scale-95 ${soundOn
                       ? 'bg-[#0c3e35] border-[#d4af37]/30 text-[#d4af37] hover:bg-[#0c4237]'
                       : 'bg-[#05261e] border-[#5e736e]/40 text-[#8daaa2] hover:text-white'
                       }`}
@@ -767,10 +767,10 @@ export const Header: React.FC<HeaderProps> = ({
                     {soundOn ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                   </button>
 
-                  {/* Real-time Socket Connection Status Badge */}
+                  {/* Real-time Socket Connection Status Badge (Desktop & Tablet) */}
                   <button
                     onClick={() => setShowStatusModal(true)}
-                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm text-[10px] sm:text-xs font-bold active:scale-95 ${socketStatus === 'connected'
+                    className={`hidden sm:flex items-center gap-1.5 px-2 sm:px-2.5 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-sm text-[10px] sm:text-xs font-bold active:scale-95 ${socketStatus === 'connected'
                       ? 'bg-[#0c3e35] border-emerald-500/40 text-emerald-300 hover:bg-[#0c4237]'
                       : socketStatus === 'connecting'
                         ? 'bg-amber-950/60 border-amber-500/40 text-amber-300 hover:bg-amber-900/60 animate-pulse'
@@ -802,7 +802,7 @@ export const Header: React.FC<HeaderProps> = ({
                           window.location.href = activeView === 'TODOS' ? '/' : '/todos';
                         }
                       }}
-                      className={`flex items-center gap-1.5 px-2.5 sm:px-3 h-8 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-xs active:scale-95 ${
+                      className={`relative flex items-center justify-center sm:gap-1.5 w-8 h-8 sm:w-auto sm:px-3 sm:h-10 rounded-lg sm:rounded-xl border transition cursor-pointer shadow-xs active:scale-95 ${
                         activeView === 'TODOS'
                           ? 'bg-[#d4af37] text-[#05261e] border-[#d4af37] font-black'
                           : 'bg-[#0c3e35] text-[#d4af37] border-[#d2d1c9]/20 hover:border-[#d4af37]/40 hover:bg-[#0c4237]'
@@ -815,7 +815,7 @@ export const Header: React.FC<HeaderProps> = ({
                         {activeView === 'TODOS' ? 'الرئيسية' : 'أجندة المهام'}
                       </span>
                       {pendingTodosCount > 0 && activeView !== 'TODOS' && (
-                        <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#d4af37] text-[#031814] font-bold text-[11px] sm:text-xs leading-none flex items-center justify-center shadow-xs tabular-nums select-none">
+                        <span className="absolute -top-1 -right-1 sm:static sm:mr-1 min-w-[17px] sm:min-w-[20px] h-4 sm:h-5 px-1 sm:px-1.5 rounded-full bg-[#d4af37] text-[#031814] font-black text-[9.5px] sm:text-xs leading-none flex items-center justify-center border border-[#05261e] sm:border-0 shadow-xs tabular-nums select-none">
                           {pendingTodosCount > 99 ? '99+' : pendingTodosCount}
                         </span>
                       )}
@@ -953,10 +953,20 @@ export const Header: React.FC<HeaderProps> = ({
                         setShowUserMenu(!showUserMenu);
                         setShowNotifications(false);
                       }}
-                      className="flex items-center gap-1.5 sm:gap-2.5 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 hover:border-[#d4af37]/40 rounded-lg sm:rounded-xl px-2 sm:px-2.5 h-8 sm:h-10 transition cursor-pointer shadow-sm"
+                      className="flex items-center gap-1.5 sm:gap-2.5 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 hover:border-[#d4af37]/40 rounded-lg sm:rounded-xl px-2 sm:px-2.5 h-8 sm:h-10 transition cursor-pointer shadow-sm active:scale-95"
                     >
-                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold shrink-0">
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold shrink-0 relative">
                         {isGeneralDirector ? <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#d4af37]" /> : <Ship className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#8daaa2]" />}
+                        {/* Live Socket Status Dot on Mobile */}
+                        <span
+                          className={`sm:hidden absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#05261e] ${
+                            socketStatus === 'connected'
+                              ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]'
+                              : socketStatus === 'connecting'
+                                ? 'bg-amber-400 animate-pulse'
+                                : 'bg-red-500'
+                          }`}
+                        />
                       </div>
                       <div className="hidden md:block text-right">
                         <p className="text-xs font-bold text-white leading-tight">
@@ -971,7 +981,61 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* User Dropdown */}
                     {showUserMenu && (
-                      <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:absolute sm:inset-auto sm:left-0 sm:top-auto sm:mt-3 w-auto sm:w-64 bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right p-2 space-y-1">
+                      <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] sm:absolute sm:inset-auto sm:left-0 sm:top-auto sm:mt-3 w-auto sm:w-72 bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[24px] shadow-2xl overflow-hidden z-50 animate-fadeIn text-right p-2.5 space-y-1.5">
+
+                        {/* Mobile User Info Banner */}
+                        <div className="md:hidden p-3 rounded-xl bg-[#05261e] text-white border border-[#0c3e35]">
+                          <p className="text-xs font-extrabold text-white leading-tight">{currentUser.fullName}</p>
+                          <p className="text-[11px] text-[#d4af37] font-bold mt-0.5 leading-tight">{currentUser.title}</p>
+                          {currentUser.directorate?.name && (
+                            <p className="text-[10px] text-[#8daaa2] font-medium mt-1">
+                              {currentUser.directorate.name}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Mobile: Socket Connection Status Row */}
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            setShowStatusModal(true);
+                          }}
+                          className="sm:hidden w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-[#0c3e35] bg-white/70 hover:bg-white border border-[#d2d1c9]/50 transition cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`w-2.5 h-2.5 rounded-full ${
+                                socketStatus === 'connected'
+                                  ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                                  : socketStatus === 'connecting'
+                                    ? 'bg-amber-500 animate-pulse'
+                                    : 'bg-red-500'
+                              }`}
+                            />
+                            <span>البث المباشر:</span>
+                          </span>
+                          <span className={`text-[11px] font-black ${
+                            socketStatus === 'connected' ? 'text-emerald-700' : socketStatus === 'connecting' ? 'text-amber-700' : 'text-red-600'
+                          }`}>
+                            {socketStatus === 'connected' ? 'متصل لحظياً' : socketStatus === 'connecting' ? 'جاري الاتصال...' : 'غير متصل'}
+                          </span>
+                        </button>
+
+                        {/* Mobile: Sound Chimes Toggle */}
+                        <button
+                          onClick={toggleSound}
+                          className="sm:hidden w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-[#0c3e35] bg-white/70 hover:bg-white border border-[#d2d1c9]/50 transition cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            {soundOn ? <Volume2 className="w-4 h-4 text-[#0c3e35]" /> : <VolumeX className="w-4 h-4 text-[#8daaa2]" />}
+                            <span>نغمات التنبيه الصوتية</span>
+                          </span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            soundOn ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'
+                          }`}>
+                            {soundOn ? 'مفعلة' : 'مكتومة'}
+                          </span>
+                        </button>
 
                         {/* Option 1: Manage Users (for General Director / Assistant) */}
                         {isGeneralDirector && (
@@ -980,7 +1044,7 @@ export const Header: React.FC<HeaderProps> = ({
                               setShowUserMenu(false);
                               setShowUsersModal(true);
                             }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
                           >
                             <Users className="w-4 h-4 text-[#0c3e35]" />
                             <span>إدارة المستخدمين والمدراء</span>
@@ -997,7 +1061,7 @@ export const Header: React.FC<HeaderProps> = ({
                               window.location.href = '/todos';
                             }
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
                         >
                           <ListTodo className="w-4 h-4 text-[#0c3e35]" />
                           <span>أجندة المهام اليومية (TO-DO)</span>
@@ -1014,7 +1078,7 @@ export const Header: React.FC<HeaderProps> = ({
                             setShowUserMenu(false);
                             setShowPasswordModal(true);
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-[#0c3e35] hover:bg-white transition cursor-pointer"
                         >
                           <KeyRound className="w-4 h-4 text-[#0c3e35]" />
                           <span>تغيير كلمة المرور الخاصة</span>
@@ -1028,7 +1092,7 @@ export const Header: React.FC<HeaderProps> = ({
                             setShowUserMenu(false);
                             onLogout();
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold text-red-700 hover:bg-red-50 transition cursor-pointer"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-red-700 hover:bg-red-50 transition cursor-pointer"
                         >
                           <LogOut className="w-4 h-4 text-red-600" />
                           <span>تسجيل الخروج</span>

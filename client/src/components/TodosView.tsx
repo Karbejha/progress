@@ -35,6 +35,9 @@ import {
   ArrowUpDown,
   MoveDown,
   ChevronDown,
+  ChevronUp,
+  ChevronsUp,
+  ChevronsDown,
 } from 'lucide-react';
 
 interface TodosViewProps {
@@ -93,6 +96,19 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const touchStartPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const isTouchDraggingRef = useRef<boolean>(false);
 
+  // Mobile Touch Drag State for Floating Clone
+  const [touchCurrentPos, setTouchCurrentPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [touchGhostTodo, setTouchGhostTodo] = useState<UserTodo | null>(null);
+  const [isTouchDragging, setIsTouchDragging] = useState<boolean>(false);
+
+  // Quick reorder menu popover state
+  const [activeReorderMenuId, setActiveReorderMenuId] = useState<string | null>(null);
+
+  // Inline Title Editing (Microsoft To Do style)
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineTitleValue, setInlineTitleValue] = useState('');
+  const inlineInputRef = useRef<HTMLInputElement | null>(null);
+
   // Quick inline popover states for changing priority / category on the fly
   const [activePriorityDropdownId, setActivePriorityDropdownId] = useState<string | null>(null);
   const [activeCategoryDropdownId, setActiveCategoryDropdownId] = useState<string | null>(null);
@@ -103,15 +119,22 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('.priority-popover') && !target.closest('.category-popover')) {
+      if (
+        !target.closest('.priority-popover') &&
+        !target.closest('.category-popover') &&
+        !target.closest('.reorder-menu-popover')
+      ) {
         setActivePriorityDropdownId(null);
         setActiveCategoryDropdownId(null);
+        setActiveReorderMenuId(null);
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setActivePriorityDropdownId(null);
         setActiveCategoryDropdownId(null);
+        setActiveReorderMenuId(null);
+        setInlineEditingId(null);
       }
     };
     window.addEventListener('click', handleOutsideClick);
@@ -340,7 +363,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     }
   };
 
-  // Unified Reorder Function (Used by both Desktop Drag-and-Drop and Mobile Long-Press)
+  // Unified Reorder Function (Used by Desktop Drag-and-Drop, Touch, and Up/Down Buttons)
   const reorderTodosArray = async (sourceId: string, targetId: string, position: 'top' | 'bottom') => {
     if (!sourceId || !targetId || sourceId === targetId) return;
 
@@ -365,6 +388,160 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     }
   };
 
+  // Move single item up by one slot (Instant One-Click / Keyboard Alt+Up)
+  const handleMoveUp = async (todoId: string) => {
+    setActiveReorderMenuId(null);
+    const currentTodos = [...todosRef.current];
+    const index = currentTodos.findIndex((t) => t.id === todoId);
+    if (index <= 0) return;
+
+    const prevItem = currentTodos[index - 1];
+    if (prevItem.isCompleted) return;
+
+    currentTodos[index - 1] = currentTodos[index];
+    currentTodos[index] = prevItem;
+
+    const finalSorted = sortWithCompletedAtBottom(currentTodos);
+    setTodos(finalSorted);
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(15); } catch (_) {}
+    }
+
+    try {
+      await api.reorderTodos(finalSorted.map((t) => t.id));
+    } catch (err) {
+      console.error('Failed to persist reorder', err);
+    }
+  };
+
+  // Move single item down by one slot (Instant One-Click / Keyboard Alt+Down)
+  const handleMoveDown = async (todoId: string) => {
+    setActiveReorderMenuId(null);
+    const currentTodos = [...todosRef.current];
+    const index = currentTodos.findIndex((t) => t.id === todoId);
+    if (index === -1 || index >= currentTodos.length - 1) return;
+
+    const nextItem = currentTodos[index + 1];
+    if (nextItem.isCompleted) return;
+
+    currentTodos[index + 1] = currentTodos[index];
+    currentTodos[index] = nextItem;
+
+    const finalSorted = sortWithCompletedAtBottom(currentTodos);
+    setTodos(finalSorted);
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate(15); } catch (_) {}
+    }
+
+    try {
+      await api.reorderTodos(finalSorted.map((t) => t.id));
+    } catch (err) {
+      console.error('Failed to persist reorder', err);
+    }
+  };
+
+  // Move item to absolute top of active tasks
+  const handleMoveToTop = async (todoId: string) => {
+    setActiveReorderMenuId(null);
+    const currentTodos = [...todosRef.current];
+    const index = currentTodos.findIndex((t) => t.id === todoId);
+    if (index <= 0) return;
+
+    const [movedItem] = currentTodos.splice(index, 1);
+    currentTodos.unshift(movedItem);
+
+    const finalSorted = sortWithCompletedAtBottom(currentTodos);
+    setTodos(finalSorted);
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([15, 30, 15]); } catch (_) {}
+    }
+
+    showToastMsg('تم الترتيب', `تم نقل "${movedItem.title}" إلى بداية القائمة.`);
+
+    try {
+      await api.reorderTodos(finalSorted.map((t) => t.id));
+    } catch (err) {
+      console.error('Failed to persist reorder', err);
+    }
+  };
+
+  // Move item to bottom of active tasks
+  const handleMoveToBottom = async (todoId: string) => {
+    setActiveReorderMenuId(null);
+    const currentTodos = [...todosRef.current];
+    const index = currentTodos.findIndex((t) => t.id === todoId);
+    if (index === -1) return;
+
+    const [movedItem] = currentTodos.splice(index, 1);
+    const firstCompletedIndex = currentTodos.findIndex((t) => t.isCompleted);
+    if (firstCompletedIndex === -1) {
+      currentTodos.push(movedItem);
+    } else {
+      currentTodos.splice(firstCompletedIndex, 0, movedItem);
+    }
+
+    const finalSorted = sortWithCompletedAtBottom(currentTodos);
+    setTodos(finalSorted);
+
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([15, 30, 15]); } catch (_) {}
+    }
+
+    showToastMsg('تم الترتيب', `تم نقل "${movedItem.title}" إلى نهاية قائمة المهام النشطة.`);
+
+    try {
+      await api.reorderTodos(finalSorted.map((t) => t.id));
+    } catch (err) {
+      console.error('Failed to persist reorder', err);
+    }
+  };
+
+  // Inline Title Editing Handlers (Microsoft To Do style)
+  const handleStartInlineEdit = (todo: UserTodo) => {
+    if (todo.isCompleted) return;
+    setInlineEditingId(todo.id);
+    setInlineTitleValue(todo.title);
+    setTimeout(() => {
+      inlineInputRef.current?.focus();
+      inlineInputRef.current?.select();
+    }, 40);
+  };
+
+  const handleSaveInlineEdit = async (todoId: string) => {
+    const trimmed = inlineTitleValue.trim();
+    if (!trimmed) {
+      setInlineEditingId(null);
+      return;
+    }
+    const currentTodo = todos.find((t) => t.id === todoId);
+    if (currentTodo && currentTodo.title === trimmed) {
+      setInlineEditingId(null);
+      return;
+    }
+
+    // Optimistic update
+    setTodos((prev) =>
+      prev.map((t) => (t.id === todoId ? { ...t, title: trimmed } : t))
+    );
+    setInlineEditingId(null);
+
+    try {
+      await api.updateTodo(todoId, { title: trimmed });
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+    } catch (err) {
+      console.error('Failed to save inline edit', err);
+      loadTodos();
+    }
+  };
+
+  const handleCancelInlineEdit = () => {
+    setInlineEditingId(null);
+    setInlineTitleValue('');
+  };
+
   // Desktop Drag and Drop Handlers
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedId(id);
@@ -381,11 +558,15 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     const rect = e.currentTarget.getBoundingClientRect();
     const offset = e.clientY - rect.top;
     const isTop = offset < rect.height / 2;
+    const newPos = isTop ? 'top' : 'bottom';
 
-    setDragOverId(targetId);
-    setDropPosition(isTop ? 'top' : 'bottom');
-    dragOverIdRef.current = targetId;
-    dropPositionRef.current = isTop ? 'top' : 'bottom';
+    // Only update state when changed to avoid layout re-render loops
+    if (dragOverIdRef.current !== targetId || dropPositionRef.current !== newPos) {
+      setDragOverId(targetId);
+      setDropPosition(newPos);
+      dragOverIdRef.current = targetId;
+      dropPositionRef.current = newPos;
+    }
   };
 
   const handleDrop = async (e: React.DragEvent, targetId: string) => {
@@ -412,7 +593,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     document.body.style.cursor = '';
   };
 
-  // Mobile Touch Long-Press Drag-and-Drop Handlers
+  // Mobile Touch Long-Press Drag-and-Drop Handlers with Floating Clone
   const handleWindowTouchMove = useCallback((e: TouchEvent) => {
     if (!isTouchDraggingRef.current) return;
 
@@ -423,12 +604,14 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     const touch = e.touches[0];
     if (!touch) return;
 
+    setTouchCurrentPos({ x: touch.clientX, y: touch.clientY });
+
     // Edge auto-scroll
-    const edgeMargin = 70;
+    const edgeMargin = 80;
     if (touch.clientY < edgeMargin) {
-      window.scrollBy({ top: -8, behavior: 'auto' });
+      window.scrollBy({ top: -10, behavior: 'auto' });
     } else if (touch.clientY > window.innerHeight - edgeMargin) {
-      window.scrollBy({ top: 8, behavior: 'auto' });
+      window.scrollBy({ top: 10, behavior: 'auto' });
     }
 
     // Find task card element under current finger coordinates
@@ -442,10 +625,16 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
           const rect = card.getBoundingClientRect();
           const isTop = touch.clientY < (rect.top + rect.height / 2);
           const pos = isTop ? 'top' : 'bottom';
-          setDragOverId(targetId);
-          setDropPosition(pos);
-          dragOverIdRef.current = targetId;
-          dropPositionRef.current = pos;
+          
+          if (dragOverIdRef.current !== targetId || dropPositionRef.current !== pos) {
+            if (typeof navigator !== 'undefined' && navigator.vibrate) {
+              try { navigator.vibrate(12); } catch (_) {}
+            }
+            setDragOverId(targetId);
+            setDropPosition(pos);
+            dragOverIdRef.current = targetId;
+            dropPositionRef.current = pos;
+          }
         }
       }
     }
@@ -478,10 +667,12 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     }
 
     isTouchDraggingRef.current = false;
+    setIsTouchDragging(false);
     draggedIdRef.current = null;
     dragOverIdRef.current = null;
     setDraggedId(null);
     setDragOverId(null);
+    setTouchGhostTodo(null);
     document.body.style.userSelect = '';
   }, [handleWindowTouchMove]);
 
@@ -496,6 +687,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       target.closest('a') ||
       target.closest('.priority-popover') ||
       target.closest('.category-popover') ||
+      target.closest('.reorder-menu-popover') ||
       target.closest('[data-no-dnd]')
     ) {
       return;
@@ -510,20 +702,23 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
     longPressTimerRef.current = setTimeout(() => {
       isTouchDraggingRef.current = true;
+      setIsTouchDragging(true);
       draggedIdRef.current = todo.id;
       setDraggedId(todo.id);
+      setTouchGhostTodo(todo);
+      setTouchCurrentPos({ x: touch.clientX, y: touch.clientY });
       document.body.style.userSelect = 'none';
 
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try {
-          navigator.vibrate(40);
+          navigator.vibrate(35);
         } catch (_) {}
       }
 
       window.addEventListener('touchmove', handleWindowTouchMove, { passive: false });
       window.addEventListener('touchend', handleWindowTouchEnd);
       window.addEventListener('touchcancel', handleWindowTouchEnd);
-    }, 280);
+    }, 240);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -1046,8 +1241,12 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         <div className="flex items-center justify-between text-[11px] text-[#5e736e] px-2 font-medium">
           <span className="flex items-center gap-1.5 font-bold text-[#0c3e35]">
             <ArrowUpDown className="w-3.5 h-3.5 text-[#d4af37]" />
-            <span className="hidden sm:inline">يمكنك سحب وإفلات أي مهمة لإعادة ترتيبها للأعلى أو الأسفل</span>
-            <span className="inline sm:hidden">اضغط مطولاً مع السحب لإعادة ترتيب المهمة</span>
+            <span className="hidden sm:inline">
+              يمكنك استخدام أسهم الترتيب (↑/↓) أو السحب والإفلات • انقر نقراً مزدوجاً على العنوان للتحرير السريع
+            </span>
+            <span className="inline sm:hidden">
+              استخدم أسهم (↑/↓) أو اضغط مطولاً للسحب وإعادة الترتيب
+            </span>
           </span>
           <span className="text-[#8daaa2] text-[10px] sm:text-[11px]">
             المهام المنجزة تستقر بالأسفل ⬇️
@@ -1078,6 +1277,11 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
           filteredTodos.map((todo, index) => {
             const priorityBadge = PRIORITY_BADGES[todo.priority] || PRIORITY_BADGES.NORMAL;
             const categoryMeta = CATEGORY_LABELS[todo.category] || CATEGORY_LABELS.GENERAL;
+
+            const pendingTodos = filteredTodos.filter((t) => !t.isCompleted);
+            const pendingIndex = pendingTodos.findIndex((t) => t.id === todo.id);
+            const isFirstPending = pendingIndex === 0;
+            const isLastPending = pendingIndex === pendingTodos.length - 1;
 
             const isDueToday =
               todo.dueDate &&
@@ -1111,7 +1315,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
                 <div
                   data-todo-id={todo.id}
-                  draggable={!todo.isCompleted}
+                  draggable={!todo.isCompleted && inlineEditingId !== todo.id}
                   onDragStart={(e) => handleDragStart(e, todo.id)}
                   onDragOver={(e) => handleDragOver(e, todo.id)}
                   onDrop={(e) => handleDrop(e, todo.id)}
@@ -1120,41 +1324,101 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEndOrCancel}
                   onTouchCancel={handleTouchEndOrCancel}
-                  className={`group rounded-2xl border transition-all duration-200 p-4 relative ${
+                  onKeyDown={(e) => {
+                    if (!todo.isCompleted && inlineEditingId !== todo.id) {
+                      if (e.altKey && e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        handleMoveUp(todo.id);
+                      } else if (e.altKey && e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        handleMoveDown(todo.id);
+                      }
+                    }
+                  }}
+                  className={`group rounded-2xl border transition-all duration-150 p-3.5 sm:p-4 relative ${
                     isDragging
-                      ? 'opacity-70 scale-[1.02] shadow-xl border-2 border-[#d4af37] bg-amber-50/60 z-30 ring-4 ring-[#d4af37]/20 cursor-move'
+                      ? 'opacity-40 scale-[0.99] border-dashed border-2 border-[#d4af37] bg-amber-50/40 z-20 ring-2 ring-[#d4af37]/30'
                       : isDragOver
-                      ? dropPosition === 'top'
-                        ? 'border-t-4 border-t-[#0c3e35] bg-[#0c3e35]/5 ring-2 ring-[#0c3e35]/20 cursor-move'
-                        : 'border-b-4 border-b-[#0c3e35] bg-[#0c3e35]/5 ring-2 ring-[#0c3e35]/20 cursor-move'
+                      ? 'bg-[#0c3e35]/5 shadow-md border-[#0c3e35]/40 ring-1 ring-[#0c3e35]/20'
                       : todo.isCompleted
                       ? 'bg-slate-50/80 border-slate-200 opacity-75'
-                      : 'bg-white border-[#d2d1c9] shadow-xs hover:shadow-md hover:border-[#0c3e35]/40 cursor-grab active:cursor-grabbing'
+                      : 'bg-white border-[#d2d1c9] shadow-xs hover:shadow-md hover:border-[#0c3e35]/40'
                   }`}
                 >
-                  {isDragging && (
-                    <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[#0c3e35] text-[#d4af37] text-[10px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1.5 z-40 animate-pulse pointer-events-none select-none">
-                      <ArrowUpDown className="w-3 h-3" />
-                      <span>اسحب للموضع المطلوب للأعلى أو الأسفل</span>
+                  {/* Dedicated Drop Indicator Line (Zero Layout Shift!) */}
+                  {isDragOver && !isDragging && dropPosition === 'top' && (
+                    <div className="absolute -top-1.5 left-3 right-3 h-1 bg-gradient-to-r from-[#0c3e35] via-[#d4af37] to-[#0c3e35] rounded-full shadow-md z-40 pointer-events-none flex items-center justify-between px-1 animate-in fade-in duration-100">
+                      <span className="size-2 rounded-full bg-[#d4af37] shadow-xs ring-2 ring-white" />
+                      <span className="size-2 rounded-full bg-[#d4af37] shadow-xs ring-2 ring-white" />
+                    </div>
+                  )}
+                  {isDragOver && !isDragging && dropPosition === 'bottom' && (
+                    <div className="absolute -bottom-1.5 left-3 right-3 h-1 bg-gradient-to-r from-[#0c3e35] via-[#d4af37] to-[#0c3e35] rounded-full shadow-md z-40 pointer-events-none flex items-center justify-between px-1 animate-in fade-in duration-100">
+                      <span className="size-2 rounded-full bg-[#d4af37] shadow-xs ring-2 ring-white" />
+                      <span className="size-2 rounded-full bg-[#d4af37] shadow-xs ring-2 ring-white" />
                     </div>
                   )}
 
                   <div className="flex items-start justify-between gap-2 sm:gap-3">
                     
-                    {/* Left: Drag Handle + Checkbox + Title + Metadata */}
+                    {/* Left: Drag Handle & Arrows + Checkbox + Title + Metadata */}
                     <div className="flex items-start gap-2 sm:gap-2.5 flex-1 min-w-0">
                       
-                      {/* Drag / Touch Handle */}
-                      <div
-                        className={`flex items-center mt-1 text-slate-300 transition shrink-0 select-none ${
-                          todo.isCompleted
-                            ? 'opacity-20 cursor-not-allowed'
-                            : 'cursor-grab active:cursor-grabbing group-hover:text-[#0c3e35] hover:scale-110'
-                        }`}
-                        title={todo.isCompleted ? 'المهام المكتملة مستقرة في الأسفل' : 'اسحب أو اضغط مطولاً لإعادة الترتيب'}
-                      >
-                        <GripVertical className="w-4 h-4" />
-                      </div>
+                      {/* Drag Handle & Instant Reorder Arrows */}
+                      {!todo.isCompleted ? (
+                        <div
+                          className="flex flex-col items-center justify-center shrink-0 select-none py-0.5"
+                          data-no-dnd="true"
+                        >
+                          {/* Up Arrow */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveUp(todo.id);
+                            }}
+                            disabled={isFirstPending}
+                            className={`size-5 rounded flex items-center justify-center transition cursor-pointer ${
+                              isFirstPending
+                                ? 'opacity-15 cursor-not-allowed text-slate-300'
+                                : 'text-slate-400 hover:text-[#0c3e35] hover:bg-[#0c3e35]/10 active:scale-90'
+                            }`}
+                            title={isFirstPending ? 'في أعلى القائمة' : 'تحريك للأعلى خطوة واحدة (Alt+↑)'}
+                          >
+                            <ChevronUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+
+                          {/* Grip Handle */}
+                          <div
+                            className="p-0.5 text-slate-300 hover:text-[#0c3e35] transition cursor-grab active:cursor-grabbing hover:scale-110"
+                            title="اسحب أو اضغط مطولاً للترتيب الحر"
+                          >
+                            <GripVertical className="w-3.5 h-3.5" />
+                          </div>
+
+                          {/* Down Arrow */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMoveDown(todo.id);
+                            }}
+                            disabled={isLastPending}
+                            className={`size-5 rounded flex items-center justify-center transition cursor-pointer ${
+                              isLastPending
+                                ? 'opacity-15 cursor-not-allowed text-slate-300'
+                                : 'text-slate-400 hover:text-[#0c3e35] hover:bg-[#0c3e35]/10 active:scale-90'
+                            }`}
+                            title={isLastPending ? 'في أسفل القائمة' : 'تحريك للأسفل خطوة واحدة (Alt+↓)'}
+                          >
+                            <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center mt-1 text-slate-200 shrink-0 select-none" title="المهام المكتملة مستقرة في الأسفل">
+                          <GripVertical className="w-4 h-4 opacity-25 cursor-not-allowed" />
+                        </div>
+                      )}
 
                       {/* Custom Checkbox */}
                       <button
@@ -1171,157 +1435,229 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                       </button>
 
                       <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          
-                          <h4
-                            className={`text-sm font-extrabold leading-snug transition ${
-                              todo.isCompleted
-                                ? 'line-through text-slate-400'
-                                : 'text-[#05261e]'
-                            }`}
-                          >
-                            {todo.title}
-                          </h4>
-
-                          {/* Priority Badge Popover */}
-                          <div className="relative priority-popover">
-                            <button
-                              type="button"
-                              onClick={(e) => handleTogglePriorityDropdown(e, todo.id)}
-                              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${priorityBadge.color}`}
-                              title="انقر لتغيير درجة الأولوية فورياً"
+                        
+                        {/* Inline Edit Form OR Title Display */}
+                        {inlineEditingId === todo.id ? (
+                          <div className="py-0.5" onClick={(e) => e.stopPropagation()}>
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                handleSaveInlineEdit(todo.id);
+                              }}
+                              className="flex items-center gap-1.5 flex-wrap"
                             >
-                              <span>{priorityBadge.label}</span>
-                              <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-                            </button>
-
-                            {activePriorityDropdownId === todo.id && (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className={`absolute z-40 w-36 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
-                                  dropdownAlign === 'left' ? 'left-0' : 'right-0'
-                                } ${
-                                  dropdownPlacement === 'up'
-                                    ? 'bottom-full mb-1.5'
-                                    : 'top-full mt-1.5'
-                                }`}
-                              >
-                                <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
-                                  تغيير الأولوية:
-                                </span>
-                                {(['URGENT', 'HIGH', 'NORMAL', 'LOW'] as Priority[]).map((p) => {
-                                  const badge = PRIORITY_BADGES[p];
-                                  const isSelected = todo.priority === p;
-                                  return (
-                                    <button
-                                      key={p}
-                                      type="button"
-                                      onClick={() => handleQuickChangePriority(todo.id, p)}
-                                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                                        isSelected
-                                          ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
-                                          : 'text-[#05261e] hover:bg-[#f8f9fa]'
-                                      }`}
-                                    >
-                                      <span className={`px-1.5 py-0.2 rounded border ${badge.color}`}>
-                                        {badge.label}
-                                      </span>
-                                      {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Category Badge Popover */}
-                          <div className="relative category-popover">
-                            <button
-                              type="button"
-                              onClick={(e) => handleToggleCategoryDropdown(e, todo.id)}
-                              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${categoryMeta.color}`}
-                              title="انقر لتغيير نوع المهمة فورياً"
-                            >
-                              {categoryMeta.icon}
-                              <span>{categoryMeta.label}</span>
-                              <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-                            </button>
-
-                            {activeCategoryDropdownId === todo.id && (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className={`absolute z-40 w-40 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
-                                  dropdownAlign === 'left' ? 'left-0' : 'right-0'
-                                } ${
-                                  dropdownPlacement === 'up'
-                                    ? 'bottom-full mb-1.5'
-                                    : 'top-full mt-1.5'
-                                }`}
-                              >
-                                <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
-                                  تغيير نوع المهمة:
-                                </span>
-                                {(['GENERAL', 'MEETING', 'FOLLOWUP', 'OFFICIAL', 'CALL'] as const).map((cat) => {
-                                  const meta = CATEGORY_LABELS[cat];
-                                  const isSelected = todo.category === cat;
-                                  return (
-                                    <button
-                                      key={cat}
-                                      type="button"
-                                      onClick={() => handleQuickChangeCategory(todo.id, cat)}
-                                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                                        isSelected
-                                          ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
-                                          : 'text-[#05261e] hover:bg-[#f8f9fa]'
-                                      }`}
-                                    >
-                                      <span className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded border ${meta.color}`}>
-                                        {meta.icon}
-                                        <span>{meta.label}</span>
-                                      </span>
-                                      {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Due Date Indicator - Editable on the fly via system CustomDatePicker */}
-                          {(todo.dueDate || !todo.isCompleted) && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              className="relative inline-flex items-center"
-                            >
-                              <CustomDatePicker
-                                value={todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : ''}
-                                onChange={(newDate) => handleQuickChangeDueDate(todo.id, newDate)}
-                                variant="badge"
-                                badgeStatus={
-                                  isOverdue
-                                    ? 'overdue'
-                                    : isDueToday
-                                    ? 'today'
-                                    : todo.dueDate
-                                    ? 'normal'
-                                    : 'none'
-                                }
-                                placeholder="+ موعد"
-                                allowClear={true}
-                                disabled={todo.isCompleted}
+                              <input
+                                ref={inlineInputRef}
+                                type="text"
+                                value={inlineTitleValue}
+                                onChange={(e) => setInlineTitleValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') {
+                                    e.stopPropagation();
+                                    handleCancelInlineEdit();
+                                  }
+                                }}
+                                className="flex-1 min-w-[200px] px-2.5 py-1 text-sm font-extrabold text-[#05261e] bg-[#f8f9fa] border-2 border-[#0c3e35] rounded-xl focus:outline-hidden focus:bg-white focus:ring-2 focus:ring-[#d4af37]/40 shadow-inner"
+                                placeholder="عنوان المهمة..."
+                                autoFocus
                               />
+                              <button
+                                type="submit"
+                                className="px-2.5 py-1 rounded-xl bg-[#0c3e35] text-[#d4af37] hover:bg-[#05261e] flex items-center gap-1 text-xs font-extrabold shadow-xs transition cursor-pointer shrink-0 active:scale-95"
+                                title="حفظ التعديل (Enter)"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>حفظ</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelInlineEdit}
+                                className="px-2 py-1 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1 text-xs font-bold transition cursor-pointer shrink-0 active:scale-95"
+                                title="إلغاء (Esc)"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>إلغاء</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleCancelInlineEdit();
+                                  handleOpenEdit(todo);
+                                }}
+                                className="px-2 py-1 rounded-xl text-[11px] font-bold text-[#0c3e35] bg-[#0c3e35]/10 hover:bg-[#0c3e35]/20 flex items-center gap-1 transition cursor-pointer shrink-0 whitespace-nowrap"
+                                title="تعديل كافة التفاصيل والملاحظات والتاريخ"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                                <span>خيارات متقدمة</span>
+                              </button>
+                            </form>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4
+                              onDoubleClick={() => !todo.isCompleted && handleStartInlineEdit(todo)}
+                              className={`text-sm font-extrabold leading-snug transition cursor-pointer select-none group/title inline-flex items-center gap-1.5 ${
+                                todo.isCompleted
+                                  ? 'line-through text-slate-400'
+                                  : 'text-[#05261e] hover:text-[#0c3e35]'
+                              }`}
+                              title={!todo.isCompleted ? 'انقر نقراً مزدوجاً للتحرير السريع المباشر' : ''}
+                            >
+                              <span>{todo.title}</span>
+                              {!todo.isCompleted && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartInlineEdit(todo);
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 group-hover/title:opacity-100 p-0.5 text-slate-400 hover:text-[#0c3e35] transition rounded cursor-pointer"
+                                  title="تحرير سريع للعنوان"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </span>
+                              )}
+                            </h4>
+
+                            {/* Priority Badge Popover */}
+                            <div className="relative priority-popover">
+                              <button
+                                type="button"
+                                onClick={(e) => handleTogglePriorityDropdown(e, todo.id)}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${priorityBadge.color}`}
+                                title="انقر لتغيير درجة الأولوية فورياً"
+                              >
+                                <span>{priorityBadge.label}</span>
+                                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                              </button>
+
+                              {activePriorityDropdownId === todo.id && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`absolute z-40 w-36 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
+                                    dropdownAlign === 'left' ? 'left-0' : 'right-0'
+                                  } ${
+                                    dropdownPlacement === 'up'
+                                      ? 'bottom-full mb-1.5'
+                                      : 'top-full mt-1.5'
+                                  }`}
+                                >
+                                  <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
+                                    تغيير الأولوية:
+                                  </span>
+                                  {(['URGENT', 'HIGH', 'NORMAL', 'LOW'] as Priority[]).map((p) => {
+                                    const badge = PRIORITY_BADGES[p];
+                                    const isSelected = todo.priority === p;
+                                    return (
+                                      <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => handleQuickChangePriority(todo.id, p)}
+                                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                                            : 'text-[#05261e] hover:bg-[#f8f9fa]'
+                                        }`}
+                                      >
+                                        <span className={`px-1.5 py-0.2 rounded border ${badge.color}`}>
+                                          {badge.label}
+                                        </span>
+                                        {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          )}
 
-                          {todo.isCompleted && todo.completedAt && (
-                            <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                              <CheckCheck className="w-3 h-3" />
-                              <span>أنجزت {new Date(todo.completedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
-                            </span>
-                          )}
+                            {/* Category Badge Popover */}
+                            <div className="relative category-popover">
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleCategoryDropdown(e, todo.id)}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${categoryMeta.color}`}
+                                title="انقر لتغيير نوع المهمة فورياً"
+                              >
+                                {categoryMeta.icon}
+                                <span>{categoryMeta.label}</span>
+                                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                              </button>
 
-                        </div>
+                              {activeCategoryDropdownId === todo.id && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`absolute z-40 w-40 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
+                                    dropdownAlign === 'left' ? 'left-0' : 'right-0'
+                                  } ${
+                                    dropdownPlacement === 'up'
+                                      ? 'bottom-full mb-1.5'
+                                      : 'top-full mt-1.5'
+                                  }`}
+                                >
+                                  <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
+                                    تغيير نوع المهمة:
+                                  </span>
+                                  {(['GENERAL', 'MEETING', 'FOLLOWUP', 'OFFICIAL', 'CALL'] as const).map((cat) => {
+                                    const meta = CATEGORY_LABELS[cat];
+                                    const isSelected = todo.category === cat;
+                                    return (
+                                      <button
+                                        key={cat}
+                                        type="button"
+                                        onClick={() => handleQuickChangeCategory(todo.id, cat)}
+                                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                                            : 'text-[#05261e] hover:bg-[#f8f9fa]'
+                                        }`}
+                                      >
+                                        <span className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded border ${meta.color}`}>
+                                          {meta.icon}
+                                          <span>{meta.label}</span>
+                                        </span>
+                                        {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Due Date Indicator */}
+                            {(todo.dueDate || !todo.isCompleted) && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                className="relative inline-flex items-center"
+                              >
+                                <CustomDatePicker
+                                  value={todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : ''}
+                                  onChange={(newDate) => handleQuickChangeDueDate(todo.id, newDate)}
+                                  variant="badge"
+                                  badgeStatus={
+                                    isOverdue
+                                      ? 'overdue'
+                                      : isDueToday
+                                      ? 'today'
+                                      : todo.dueDate
+                                      ? 'normal'
+                                      : 'none'
+                                  }
+                                  placeholder="+ موعد"
+                                  allowClear={true}
+                                  disabled={todo.isCompleted}
+                                />
+                              </div>
+                            )}
+
+                            {todo.isCompleted && todo.completedAt && (
+                              <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                                <CheckCheck className="w-3 h-3" />
+                                <span>أنجزت {new Date(todo.completedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </span>
+                            )}
+
+                          </div>
+                        )}
 
                         {/* Description */}
                         {todo.description && (
@@ -1364,12 +1700,117 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                       </button>
                     )}
 
-                    {/* Edit Button */}
+                    {/* Quick Reorder Dropdown Menu (Move to top, Move to bottom) */}
+                    {!todo.isCompleted && (
+                      <div className="relative reorder-menu-popover" data-no-dnd="true">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveReorderMenuId(activeReorderMenuId === todo.id ? null : todo.id);
+                          }}
+                          className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100 transition cursor-pointer min-w-[30px] min-h-[30px] flex items-center justify-center"
+                          title="خيارات نقل وترتيب المهمة"
+                        >
+                          <ArrowUpDown className="w-3.5 h-3.5" />
+                        </button>
+
+                        {activeReorderMenuId === todo.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className={`absolute z-40 w-44 bg-white border border-[#d2d1c9] rounded-2xl shadow-2xl p-1.5 text-right animate-in fade-in zoom-in-95 duration-150 ${
+                              dropdownPlacement === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+                            } left-0`}
+                          >
+                            <span className="block px-2 py-1 text-[10px] font-extrabold text-[#8daaa2] border-b border-[#f4f3ed]">
+                              ترتيب ونقل المهمة:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveToTop(todo.id)}
+                              disabled={isFirstPending}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                isFirstPending
+                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <ChevronsUp className="w-4 h-4 text-[#d4af37]" />
+                                <span>نقل لأعلى القائمة</span>
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveReorderMenuId(null);
+                                handleMoveUp(todo.id);
+                              }}
+                              disabled={isFirstPending}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                isFirstPending
+                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <ChevronUp className="w-4 h-4 text-[#0c3e35]" />
+                                <span>تحريك للأعلى (خطوة)</span>
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveReorderMenuId(null);
+                                handleMoveDown(todo.id);
+                              }}
+                              disabled={isLastPending}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                isLastPending
+                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <ChevronDown className="w-4 h-4 text-[#0c3e35]" />
+                                <span>تحريك للأسفل (خطوة)</span>
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleMoveToBottom(todo.id)}
+                              disabled={isLastPending}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                isLastPending
+                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <ChevronsDown className="w-4 h-4 text-[#5e736e]" />
+                                <span>نقل لأسفل القائمة</span>
+                              </span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Edit Button: Quick Inline Edit or Full Modal */}
                     <button
                       type="button"
-                      onClick={() => handleOpenEdit(todo)}
+                      onClick={() => {
+                        if (!todo.isCompleted) {
+                          handleStartInlineEdit(todo);
+                        } else {
+                          handleOpenEdit(todo);
+                        }
+                      }}
                       className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100 transition cursor-pointer min-w-[30px] min-h-[30px] flex items-center justify-center"
-                      title="تعديل"
+                      title={!todo.isCompleted ? 'تحرير سريع' : 'تعديل'}
                     >
                       <Edit3 className="w-4 h-4" />
                     </button>
@@ -1618,6 +2059,35 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Mobile Touch Drag Floating Preview Clone (Microsoft To Do Style) */}
+      {isTouchDragging && touchGhostTodo && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${touchCurrentPos.x}px`,
+            top: `${touchCurrentPos.y}px`,
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none',
+            zIndex: 9999,
+            width: 'min(88vw, 420px)',
+          }}
+          className="rounded-2xl border-2 border-[#d4af37] bg-white/95 backdrop-blur-md shadow-2xl p-3.5 text-[#05261e] ring-4 ring-[#d4af37]/30 flex items-center justify-between gap-3 animate-in fade-in duration-100"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="size-8 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 shadow-xs">
+              <ArrowUpDown className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-extrabold text-xs text-[#05261e] truncate">{touchGhostTodo.title}</p>
+              <span className="text-[10px] font-bold text-[#8daaa2]">حرّك إصبعك لموضع الإفلات ثم ارفعه</span>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#d4af37] text-[#05261e] shrink-0 shadow-xs">
+            جاري النقل
+          </span>
         </div>
       )}
 

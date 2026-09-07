@@ -1071,19 +1071,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           <div className="absolute -bottom-10 -left-10 w-64 h-64 bg-[#0c3e35]/50 rounded-full blur-2xl pointer-events-none" />
 
           {/* Identity & Directorate Details */}
-          <div className="relative z-10 flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#0c3e35] to-[#07241c] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-md shrink-0 mt-0.5">
-              <DynamicIcon name={currentUser.directorate?.icon} className="w-6 h-6 sm:w-7 sm:h-7" />
+          <div className="relative z-10 flex items-start gap-2.5 sm:gap-4 flex-1 min-w-0">
+            <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#0c3e35] to-[#07241c] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-md shrink-0 mt-0.5">
+              <DynamicIcon name={currentUser.directorate?.icon} className="w-5 h-5 sm:w-7 sm:h-7" />
             </div>
 
             <div className="flex-1 min-w-0 space-y-1 sm:space-y-1.5">
               {/* Directorate Badge & Date Header */}
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[10.5px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 max-w-full shadow-xs">
+                <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 max-w-full shadow-xs">
                   <Building2 className="w-3 h-3 text-[#d4af37] shrink-0" />
                   <span className="truncate">{currentUser.directorate?.name || 'المديرية المعنية'}</span>
                 </span>
-                <span className="text-[11px] sm:text-xs text-[#8daaa2] font-medium flex items-center gap-1 bg-black/25 px-2.5 py-0.5 rounded-full shrink-0">
+                <span className="text-[10px] sm:text-xs text-[#8daaa2] font-medium flex items-center gap-1 bg-black/30 px-2.5 py-0.5 rounded-full shrink-0">
                   <Calendar className="w-3 h-3 text-[#d4af37] shrink-0" />
                   <span>{todayFormatted}</span>
                 </span>
@@ -1105,37 +1105,37 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             </div>
           </div>
 
-          {/* Quick status pill - 2 Column Grid on Mobile, Column on Desktop */}
+          {/* Quick status pill - Sleek Responsive Layout */}
           <div className="relative z-10 w-full md:w-auto shrink-0 pt-2 md:pt-0 border-t border-white/10 md:border-t-0">
-            <div className="grid grid-cols-2 md:flex md:flex-col gap-2 md:gap-1.5 bg-[#0c3e35]/80 backdrop-blur-xs border border-[#d2d1c9]/20 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl text-xs md:min-w-[230px] shadow-sm">
+            <div className="grid grid-cols-2 md:flex md:flex-col gap-2 md:gap-1.5 bg-[#0c3e35]/90 backdrop-blur-xs border border-[#d4af37]/20 p-2 sm:p-3 rounded-xl sm:rounded-2xl text-xs md:min-w-[220px] shadow-sm">
               {/* Plan Status */}
-              <div className="bg-[#05261e]/60 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 text-[#8daaa2]">
-                <span className="text-[10px] sm:text-[11px] md:text-xs font-semibold text-[#8daaa2]">خطة اليوم:</span>
+              <div className="bg-[#05261e]/80 md:bg-transparent p-2 sm:p-2.5 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 border border-white/5 md:border-0 shadow-xs">
+                <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-[#8daaa2]">خطة اليوم:</span>
                 {plan ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                  <span className="text-emerald-400 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="truncate">تم الاعتماد</span>
+                    <span>تم الاعتماد</span>
                   </span>
                 ) : (
-                  <span className="text-amber-400 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                  <span className="text-amber-400 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
                     <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
-                    <span className="truncate">بانتظار الإعداد</span>
+                    <span>بانتظار الإعداد</span>
                   </span>
                 )}
               </div>
 
               {/* Summary Status */}
-              <div className="bg-[#05261e]/60 md:bg-transparent p-2 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 text-[#8daaa2]">
-                <span className="text-[10px] sm:text-[11px] md:text-xs font-semibold text-[#8daaa2]">ملخص الإنجاز:</span>
+              <div className="bg-[#05261e]/80 md:bg-transparent p-2 sm:p-2.5 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 border border-white/5 md:border-0 shadow-xs">
+                <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-[#8daaa2]">ملخص الإنجاز:</span>
                 {plan?.dailySummary ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                  <span className="text-emerald-400 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="truncate">منجز ({plan.dailySummary.overallCompletionRate}%)</span>
+                    <span>منجز ({plan.dailySummary.overallCompletionRate}%)</span>
                   </span>
                 ) : (
-                  <span className="text-slate-300 font-bold flex items-center gap-1 text-[11px] sm:text-xs truncate">
+                  <span className="text-slate-300 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
                     <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">بانتظار الدوام</span>
+                    <span>بانتظار الدوام</span>
                   </span>
                 )}
               </div>
@@ -1230,39 +1230,41 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       )}
 
-      {/* Tabs Navigation - Smooth Scroll on Mobile */}
-      <div className="flex items-center gap-2 sm:gap-3 border-b border-[#d2d1c9] pb-2.5 sm:pb-3 overflow-x-auto scrollbar-none -mx-1 px-1">
+      {/* Tabs Navigation - Smooth Horizontal Scroll on Mobile */}
+      <div className="flex items-center gap-1.5 sm:gap-2.5 border-b border-[#d2d1c9] pb-2 sm:pb-3 overflow-x-auto no-scrollbar scrollbar-none -mx-1 px-1">
         <button
           onClick={() => setActiveTab('PLAN')}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+          className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'PLAN'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
           <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span>1. الخطة الصباحية</span>
-          <span className="hidden sm:inline">(بداية الدوام)</span>
+          <span className="hidden sm:inline">1. </span>
+          <span>الخطة الصباحية</span>
+          <span className="hidden sm:inline text-[10.5px] opacity-80">(بداية الدوام)</span>
         </button>
 
         <button
           onClick={() => setActiveTab('TRACK')}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+          className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'TRACK'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
           <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span>2. متابعة المهام</span>
-          <span className="hidden sm:inline">(خلال الدوام)</span>
+          <span className="hidden sm:inline">2. </span>
+          <span>متابعة المهام</span>
+          <span className="hidden sm:inline text-[10.5px] opacity-80">(خلال الدوام)</span>
           {plan?.tasks && (
-            <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+            <span className="px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-black">
               {plan.tasks.length}
             </span>
           )}
           {modifiedTaskIds.length > 0 && (
-            <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold animate-pulse">
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
               {modifiedTaskIds.length}
             </span>
           )}
@@ -1273,16 +1275,17 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             setActiveTab('EXECUTIVE_TASKS');
             loadExecutiveTasks();
           }}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+          className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'EXECUTIVE_TASKS'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
           <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#d4af37] shrink-0" />
-          <span>3. تكليفات المدير العام</span>
+          <span className="hidden sm:inline">3. </span>
+          <span>تكليفات المدير العام</span>
           {executiveTasks.length > 0 && (
-            <span className="px-1.5 sm:px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-extrabold">
+            <span className="px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-black">
               {executiveTasks.filter((t) => t.status !== 'COMPLETED').length || executiveTasks.length}
             </span>
           )}
@@ -1290,15 +1293,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
         <button
           onClick={() => setActiveTab('SUMMARY')}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+          className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'SUMMARY'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
           }`}
         >
           <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span>4. ملخص الإنجاز</span>
-          <span className="hidden sm:inline">(نهاية الدوام)</span>
+          <span className="hidden sm:inline">4. </span>
+          <span>ملخص الإنجاز</span>
+          <span className="hidden sm:inline text-[10.5px] opacity-80">(نهاية الدوام)</span>
         </button>
 
         <button
@@ -1306,7 +1310,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             setActiveTab('HISTORY');
             loadHistory();
           }}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+          className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'HISTORY'
               ? 'bg-[#0c3e35] text-white shadow-md'
               : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
@@ -1318,11 +1322,12 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('ports:navigate_view', { detail: { view: 'TODOS' } }))}
-          className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 bg-amber-50/90 text-[#0c3e35] hover:bg-amber-100 border border-amber-300 mr-auto"
+          className="flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 bg-amber-50/90 text-[#0c3e35] hover:bg-amber-100 border border-amber-300 mr-auto"
           title="فتح أجندة ومفكرة المهام الخاصة"
         >
           <ListTodo className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#d4af37] shrink-0" />
-          <span>مفكرتي الخاصة (TO-DO)</span>
+          <span className="hidden sm:inline">مفكرتي الخاصة </span>
+          <span>(TO-DO)</span>
         </button>
       </div>
 

@@ -100,6 +100,21 @@ body {
   background: rgba(12, 62, 53, 0.45);
 }
 
+/* Hide scrollbar utility for touch friendly horizontal scrolls */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Brand Cards & Panels */
 .brand-card {
   background: #ffffff;
