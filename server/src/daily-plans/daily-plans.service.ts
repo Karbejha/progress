@@ -12,6 +12,10 @@ export interface CreatePlanDto {
     description?: string;
     priority?: Priority;
     estimatedHours?: number;
+    carriedFromTaskId?: string;
+    completionPercentage?: number;
+    status?: TaskStatus;
+    completionNote?: string;
   }[];
 }
 
@@ -57,6 +61,16 @@ export class DailyPlansService {
         directorate: true,
         tasks: {
           orderBy: { displayOrder: 'asc' },
+          include: {
+            carriedFromTask: {
+              select: {
+                id: true,
+                title: true,
+                completionPercentage: true,
+                dailyPlan: { select: { planDate: true } },
+              },
+            },
+          },
         },
         dailySummary: true,
         feedbacks: {
@@ -105,19 +119,37 @@ export class DailyPlansService {
           status: PlanStatus.SUBMITTED,
           submittedAt: new Date(),
           tasks: {
-            create: dto.tasks.map((t, idx) => ({
-              title: t.title,
-              description: t.description || '',
-              priority: t.priority || Priority.NORMAL,
-              estimatedHours: t.estimatedHours || 1.0,
-              displayOrder: idx + 1,
-              status: TaskStatus.PENDING,
-              completionPercentage: 0,
-            })),
+            create: dto.tasks.map((t, idx) => {
+              const pct = typeof t.completionPercentage === 'number' ? Math.min(100, Math.max(0, t.completionPercentage)) : 0;
+              const status = t.status || (pct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+              return {
+                title: t.title,
+                description: t.description || '',
+                priority: t.priority || Priority.NORMAL,
+                estimatedHours: t.estimatedHours || 1.0,
+                displayOrder: idx + 1,
+                status,
+                completionPercentage: pct,
+                completionNote: t.completionNote || null,
+                carriedFromTaskId: t.carriedFromTaskId || null,
+              };
+            }),
           },
         },
         include: {
-          tasks: { orderBy: { displayOrder: 'asc' } },
+          tasks: {
+            orderBy: { displayOrder: 'asc' },
+            include: {
+              carriedFromTask: {
+                select: {
+                  id: true,
+                  title: true,
+                  completionPercentage: true,
+                  dailyPlan: { select: { planDate: true } },
+                },
+              },
+            },
+          },
           directorate: true,
           dailySummary: true,
         },
@@ -136,19 +168,37 @@ export class DailyPlansService {
         generalFocus: dto.generalFocus,
         submittedAt: new Date(),
         tasks: {
-          create: dto.tasks.map((t, idx) => ({
-            title: t.title,
-            description: t.description || '',
-            priority: t.priority || Priority.NORMAL,
-            estimatedHours: t.estimatedHours || 1.0,
-            displayOrder: idx + 1,
-            status: TaskStatus.PENDING,
-            completionPercentage: 0,
-          })),
+          create: dto.tasks.map((t, idx) => {
+            const pct = typeof t.completionPercentage === 'number' ? Math.min(100, Math.max(0, t.completionPercentage)) : 0;
+            const status = t.status || (pct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+            return {
+              title: t.title,
+              description: t.description || '',
+              priority: t.priority || Priority.NORMAL,
+              estimatedHours: t.estimatedHours || 1.0,
+              displayOrder: idx + 1,
+              status,
+              completionPercentage: pct,
+              completionNote: t.completionNote || null,
+              carriedFromTaskId: t.carriedFromTaskId || null,
+            };
+          }),
         },
       },
       include: {
-        tasks: { orderBy: { displayOrder: 'asc' } },
+        tasks: {
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            carriedFromTask: {
+              select: {
+                id: true,
+                title: true,
+                completionPercentage: true,
+                dailyPlan: { select: { planDate: true } },
+              },
+            },
+          },
+        },
         directorate: true,
         dailySummary: true,
       },
@@ -348,4 +398,378 @@ export class DailyPlansService {
       })),
     };
   }
+
+  async getIncompleteTasks(user: any, excludeDateStr?: string) {
+    if (!user.directorateId) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
+    }
+
+    const targetDate = this.normalizeDate(excludeDateStr);
+
+    // Fetch prior plans before targetDate
+    const priorPlans = await this.prisma.dailyPlan.findMany({
+      where: {
+        directorateId: user.directorateId,
+        planDate: { lt: targetDate },
+      },
+      select: { id: true, planDate: true },
+      orderBy: { planDate: 'desc' },
+    });
+
+    if (priorPlans.length === 0) {
+      return [];
+    }
+
+    const planIds = priorPlans.map((p) => p.id);
+    const planDateMap = new Map(priorPlans.map((p) => [p.id, p.planDate]));
+
+    // Find incomplete tasks in these plans:
+    // completionPercentage < 100, status not COMPLETED/CANCELLED,
+    // and not already continued (continuations: { none: {} })
+    const tasks = await this.prisma.planTask.findMany({
+      where: {
+        dailyPlanId: { in: planIds },
+        completionPercentage: { lt: 100 },
+        status: { notIn: [TaskStatus.COMPLETED, TaskStatus.CANCELLED] },
+        continuations: { none: {} },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Deduplicate by title to ensure only the latest occurrence is shown
+    const seen = new Set<string>();
+    const result = [];
+
+    const now = new Date().getTime();
+    for (const task of tasks) {
+      const normalizedTitle = task.title.trim().toLowerCase();
+      if (!seen.has(normalizedTitle)) {
+        seen.add(normalizedTitle);
+        const planDate = planDateMap.get(task.dailyPlanId);
+        const diffMs = Math.abs(now - (planDate ? new Date(planDate).getTime() : now));
+        const daysAgo = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        result.push({
+          id: task.id,
+          dailyPlanId: task.dailyPlanId,
+          planDate: planDate ? planDate.toISOString() : null,
+          title: task.title,
+          description: task.description || '',
+          priority: task.priority,
+          estimatedHours: task.estimatedHours,
+          status: task.status,
+          completionPercentage: task.completionPercentage,
+          completionNote: task.completionNote || '',
+          daysAgo,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  async getAchievementsReport(
+    user: any,
+    query: {
+      startDate?: string;
+      endDate?: string;
+      month?: string;
+      directorateId?: string;
+      statusFilter?: string;
+      minCompletionRate?: string | number;
+    },
+  ) {
+    let targetDirectorateId: string | null = null;
+
+    if (user.role === Role.DIRECTOR) {
+      if (!user.directorateId) {
+        throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
+      }
+      targetDirectorateId = user.directorateId;
+    } else if (user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR) {
+      targetDirectorateId = query.directorateId || user.directorateId || null;
+      if (!targetDirectorateId) {
+        const firstDir = await this.prisma.directorate.findFirst({ orderBy: { displayOrder: 'asc' } });
+        targetDirectorateId = firstDir ? firstDir.id : null;
+      }
+    } else {
+      throw new ForbiddenException('غير مصرح لك بالوصول لهذا التقرير');
+    }
+
+    if (!targetDirectorateId) {
+      throw new BadRequestException('لم يتم تحديد المديرية المطلوبة');
+    }
+
+    // Determine date boundaries
+    let startDate: Date;
+    let endDate: Date;
+    let periodLabel = '';
+
+    if (query.month && /^\d{4}-\d{2}$/.test(query.month)) {
+      const [yearStr, monthStr] = query.month.split('-');
+      const year = parseInt(yearStr, 10);
+      const monthIndex = parseInt(monthStr, 10) - 1;
+      startDate = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+      endDate = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+      periodLabel = startDate.toLocaleDateString('ar-SY', { month: 'long', year: 'numeric' });
+    } else if (query.startDate && query.endDate) {
+      startDate = new Date(query.startDate);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(query.endDate);
+      endDate.setHours(23, 59, 59, 999);
+      periodLabel = `من ${startDate.toLocaleDateString('ar-SY', { year: 'numeric', month: 'short', day: 'numeric' })} إلى ${endDate.toLocaleDateString('ar-SY', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+    } else {
+      // Default to current month
+      const now = new Date();
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      periodLabel = startDate.toLocaleDateString('ar-SY', { month: 'long', year: 'numeric' });
+    }
+
+    // Fetch Directorate and Director
+    const directorate = await this.prisma.directorate.findUnique({
+      where: { id: targetDirectorateId },
+      include: {
+        users: {
+          where: { role: Role.DIRECTOR },
+          select: { id: true, fullName: true, title: true, email: true, phone: true },
+          take: 1,
+        },
+      },
+    });
+
+    if (!directorate) {
+      throw new NotFoundException('المديرية غير موجودة');
+    }
+
+    const director = directorate.users[0] || null;
+
+    // Fetch daily plans within the range
+    const plans = await this.prisma.dailyPlan.findMany({
+      where: {
+        directorateId: targetDirectorateId,
+        planDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      include: {
+        tasks: {
+          include: {
+            continuations: { select: { id: true } },
+          },
+          orderBy: { displayOrder: 'asc' },
+        },
+        dailySummary: true,
+        feedbacks: {
+          include: { fromUser: { select: { fullName: true, title: true } } },
+        },
+      },
+      orderBy: { planDate: 'asc' },
+    });
+
+    // Fetch executive tasks for this directorate
+    const executiveTasks = await this.prisma.executiveTask.findMany({
+      where: {
+        directorateId: targetDirectorateId,
+        OR: [
+          { createdAt: { gte: startDate, lte: endDate } },
+          { dueDate: { gte: startDate, lte: endDate } },
+          { status: { in: [TaskStatus.COMPLETED, TaskStatus.IN_PROGRESS] } },
+        ],
+      },
+      include: {
+        assignedBy: { select: { fullName: true, title: true } },
+        assignedToUser: { select: { fullName: true, title: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const minNearingRate = query.minCompletionRate ? Number(query.minCompletionRate) : 70;
+
+    const completedTasks: any[] = [];
+    const nearingTasks: any[] = [];
+    const inProgressTasks: any[] = [];
+
+    // Process daily plan tasks
+    for (const plan of plans) {
+      for (const t of plan.tasks) {
+        // Skip tasks that were carried over to another day, to avoid double-counting intermediate states
+        if (t.continuations && t.continuations.length > 0) {
+          continue;
+        }
+
+        const item = {
+          id: t.id,
+          dailyPlanId: plan.id,
+          planDate: plan.planDate ? plan.planDate.toISOString() : null,
+          title: t.title,
+          description: t.description || '',
+          priority: t.priority,
+          estimatedHours: t.estimatedHours || 1.0,
+          status: t.status,
+          completionPercentage: t.completionPercentage,
+          completionNote: t.completionNote || '',
+          source: 'PLAN' as const,
+          sourceLabel: 'خطة يومية',
+        };
+
+        if (t.completionPercentage === 100 || t.status === TaskStatus.COMPLETED) {
+          completedTasks.push(item);
+        } else if (t.completionPercentage >= minNearingRate) {
+          nearingTasks.push(item);
+        } else {
+          inProgressTasks.push(item);
+        }
+      }
+    }
+
+    // Process executive tasks
+    for (const et of executiveTasks) {
+      const item = {
+        id: et.id,
+        dailyPlanId: null,
+        planDate: et.createdAt ? et.createdAt.toISOString() : null,
+        dueDate: et.dueDate ? et.dueDate.toISOString() : null,
+        title: et.title,
+        description: et.description || '',
+        priority: et.priority,
+        estimatedHours: 0,
+        status: et.status,
+        completionPercentage: et.completionPercentage,
+        completionNote: et.completionNote || '',
+        source: 'EXECUTIVE' as const,
+        sourceLabel: 'تكليف مباشر من المدير العام',
+        assignedBy: et.assignedBy?.fullName,
+      };
+
+      if (et.completionPercentage === 100 || et.status === TaskStatus.COMPLETED) {
+        completedTasks.push(item);
+      } else if (et.completionPercentage >= minNearingRate) {
+        nearingTasks.push(item);
+      } else {
+        inProgressTasks.push(item);
+      }
+    }
+
+    // Process summaries and key achievements
+    const achievementsSet = new Set<string>();
+    const challengesList: { date: string; text: string }[] = [];
+    const dailySummariesList: any[] = [];
+    let sumCompletionRate = 0;
+    let summariesWithRateCount = 0;
+
+    for (const plan of plans) {
+      if (plan.dailySummary) {
+        const ds = plan.dailySummary;
+        dailySummariesList.push({
+          id: ds.id,
+          planDate: plan.planDate ? plan.planDate.toISOString() : null,
+          summaryText: ds.summaryText,
+          overallCompletionRate: ds.overallCompletionRate,
+          achievements: ds.achievements || [],
+          challenges: ds.challenges || null,
+          directorNotes: ds.directorNotes || null,
+          urgentFlag: ds.urgentFlag,
+          submittedAt: ds.submittedAt ? ds.submittedAt.toISOString() : null,
+        });
+
+        if (ds.overallCompletionRate != null && ds.overallCompletionRate > 0) {
+          sumCompletionRate += ds.overallCompletionRate;
+          summariesWithRateCount++;
+        }
+
+        if (ds.achievements && Array.isArray(ds.achievements)) {
+          for (const ach of ds.achievements) {
+            if (ach && ach.trim()) {
+              achievementsSet.add(ach.trim());
+            }
+          }
+        }
+
+        if (ds.challenges && ds.challenges.trim()) {
+          challengesList.push({
+            date: plan.planDate ? plan.planDate.toISOString() : '',
+            text: ds.challenges.trim(),
+          });
+        }
+      }
+    }
+
+    const keyAchievements = Array.from(achievementsSet);
+
+    // Calculate aggregated statistics
+    const totalCompletedCount = completedTasks.length;
+    const totalNearingCount = nearingTasks.length;
+    const totalTasksCount = completedTasks.length + nearingTasks.length + inProgressTasks.length;
+
+    let averageCompletionRate = 0;
+    if (summariesWithRateCount > 0) {
+      averageCompletionRate = Math.round((sumCompletionRate / summariesWithRateCount) * 10) / 10;
+    } else if (totalTasksCount > 0) {
+      const all = [...completedTasks, ...nearingTasks, ...inProgressTasks];
+      const sumPct = all.reduce((acc, curr) => acc + (curr.completionPercentage || 0), 0);
+      averageCompletionRate = Math.round((sumPct / totalTasksCount) * 10) / 10;
+    }
+
+    const totalHours = Math.round(
+      [...completedTasks, ...nearingTasks].reduce((acc, curr) => acc + (curr.estimatedHours || 0), 0) * 10,
+    ) / 10;
+
+    return {
+      directorate: {
+        id: directorate.id,
+        name: directorate.name,
+        code: directorate.code,
+        category: directorate.category,
+        description: directorate.description,
+        icon: directorate.icon || 'Ship',
+      },
+      director: director
+        ? {
+            id: director.id,
+            fullName: director.fullName,
+            title: director.title,
+            email: director.email,
+            phone: director.phone,
+          }
+        : null,
+      period: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        label: periodLabel,
+        month: query.month || null,
+      },
+      stats: {
+        totalPlansCount: plans.length,
+        totalSummariesCount: dailySummariesList.length,
+        totalTasksCount,
+        completedTasksCount: totalCompletedCount,
+        nearingTasksCount: totalNearingCount,
+        inProgressTasksCount: inProgressTasks.length,
+        averageCompletionRate,
+        totalHours,
+        executiveTasksCount: executiveTasks.length,
+      },
+      keyAchievements,
+      completedTasks,
+      nearingTasks,
+      inProgressTasks: query.statusFilter === 'ALL' ? inProgressTasks : [],
+      executiveTasks: executiveTasks.map((et) => ({
+        id: et.id,
+        title: et.title,
+        description: et.description,
+        priority: et.priority,
+        status: et.status,
+        completionPercentage: et.completionPercentage,
+        completionNote: et.completionNote,
+        dueDate: et.dueDate ? et.dueDate.toISOString() : null,
+        createdAt: et.createdAt ? et.createdAt.toISOString() : null,
+        assignedBy: et.assignedBy?.fullName,
+      })),
+      challenges: challengesList,
+      dailySummaries: dailySummariesList,
+    };
+  }
 }
+

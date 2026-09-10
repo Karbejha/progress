@@ -19,9 +19,34 @@ export class DailyPlansController {
     return this.dailyPlansService.getDirectorHistory(req.user, take);
   }
 
+  @Get('achievements-report')
+  getAchievementsReport(
+    @Request() req: any,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('month') month?: string,
+    @Query('directorateId') directorateId?: string,
+    @Query('statusFilter') statusFilter?: string,
+    @Query('minCompletionRate') minCompletionRate?: string,
+  ) {
+    return this.dailyPlansService.getAchievementsReport(req.user, {
+      startDate,
+      endDate,
+      month,
+      directorateId,
+      statusFilter,
+      minCompletionRate,
+    });
+  }
+
   @Get('clone-previous')
   clonePreviousPlan(@Request() req: any, @Query('date') dateStr?: string) {
     return this.dailyPlansService.clonePreviousPlan(req.user, dateStr);
+  }
+
+  @Get('incomplete-tasks')
+  getIncompleteTasks(@Request() req: any, @Query('excludeDate') excludeDateStr?: string) {
+    return this.dailyPlansService.getIncompleteTasks(req.user, excludeDateStr);
   }
 
   @Get('templates')

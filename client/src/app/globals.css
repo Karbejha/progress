@@ -248,8 +248,14 @@ html, body {
   overscroll-behavior-y: none;
 }
 
-button, a, select, input {
+button, a, select {
   touch-action: manipulation;
+}
+
+input, textarea {
+  touch-action: auto;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 /* Prevent accidental text highlight on app chrome / navigation elements */

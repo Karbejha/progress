@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Loader2,
   Check,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { DynamicIcon } from './Icons';
 
@@ -383,7 +384,15 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                         {idx + 1}
                       </span>
                       <div>
-                        <p className="font-bold text-[#05261e]">{task.title}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-bold text-[#05261e]">{task.title}</p>
+                          {task.carriedFromTaskId && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                              <ArrowRightLeft className="w-2.5 h-2.5 text-amber-700" />
+                              <span>مهمة مرحّلة من خطة سابقة</span>
+                            </span>
+                          )}
+                        </div>
                         {task.description && (
                           <p className="text-[11px] text-[#5e736e]">{task.description}</p>
                         )}

@@ -11,6 +11,8 @@ import {
   TodosResponse,
   CreateTodoDto,
   UpdateTodoDto,
+  IncompleteTask,
+  AchievementsReportResponse,
 } from '../types';
 
 export const getApiBaseUrl = (): string => {
@@ -309,6 +311,11 @@ class ApiService {
     }>(`/daily-plans/clone-previous${query}`);
   }
 
+  async getIncompleteTasks(excludeDateStr?: string): Promise<IncompleteTask[]> {
+    const query = excludeDateStr ? `?excludeDate=${excludeDateStr}` : '';
+    return this.request<IncompleteTask[]>(`/daily-plans/incomplete-tasks${query}`);
+  }
+
   async getTaskTemplates(): Promise<any[]> {
     return this.request<any[]>('/daily-plans/templates');
   }
@@ -334,7 +341,16 @@ class ApiService {
   async submitPlan(payload: {
     planDate?: string;
     generalFocus?: string;
-    tasks: { title: string; description?: string; priority?: string; estimatedHours?: number }[];
+    tasks: {
+      title: string;
+      description?: string;
+      priority?: string;
+      estimatedHours?: number;
+      carriedFromTaskId?: string;
+      completionPercentage?: number;
+      status?: string;
+      completionNote?: string;
+    }[];
   }): Promise<DailyPlan> {
     return this.request<DailyPlan>('/daily-plans/submit', {
       method: 'POST',
@@ -375,6 +391,26 @@ class ApiService {
 
   async getDirectorHistory(limit = 30): Promise<DailyPlan[]> {
     return this.request<DailyPlan[]>(`/daily-plans/my-history?limit=${limit}`);
+  }
+
+  async getAchievementsReport(params?: {
+    startDate?: string;
+    endDate?: string;
+    month?: string;
+    directorateId?: string;
+    statusFilter?: string;
+    minCompletionRate?: number;
+  }): Promise<AchievementsReportResponse> {
+    const query = new URLSearchParams();
+    if (params?.startDate) query.append('startDate', params.startDate);
+    if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.month) query.append('month', params.month);
+    if (params?.directorateId) query.append('directorateId', params.directorateId);
+    if (params?.statusFilter) query.append('statusFilter', params.statusFilter);
+    if (params?.minCompletionRate !== undefined) query.append('minCompletionRate', String(params.minCompletionRate));
+
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return this.request<AchievementsReportResponse>(`/daily-plans/achievements-report${qs}`);
   }
 
   // Executive Tasks (التكليفات والمهام المباشرة)

@@ -274,7 +274,7 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
                 </span>
               </div>
               <h2 className="text-sm sm:text-base md:text-lg font-extrabold text-white tracking-tight mt-1">
-                {isTaskType && 'تفاصيل إنجاز ومتابعة التكليف الرئاسي'}
+                {isTaskType && 'تفاصيل إنجاز ومتابعة التكليف الإداري'}
                 {isPlanType && 'تفاصيل الخطة الصباحية المعتمدة'}
                 {isSummaryType && 'تفاصيل ملخص الإنجاز ونهاية الدوام'}
                 {!isTaskType && !isPlanType && !isSummaryType && (data.title || 'تفاصيل الإشعار الرسمي')}
@@ -508,7 +508,7 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
               >
                 <Layers className="w-3.5 h-3.5 text-[#d4af37]" />
-                <span>الانتقال إلى جدول التكاليف الرئاسية الكامل</span>
+                <span>الانتقال إلى جدول التكاليف الإدارية الكامل</span>
               </button>
             )}
 

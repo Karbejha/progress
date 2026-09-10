@@ -81,6 +81,7 @@ function ReportContent() {
         <div className="border-b-2 border-[#0c3e35] print:border-black pb-5 print:pb-2 flex items-center justify-between">
           <div className="text-right space-y-0.5 text-xs sm:text-sm print:text-[10px] print:leading-tight font-bold text-[#0c3e35] print:text-black">
             <p>الجمهورية العربية السورية</p>
+            <p>الهيئة العامة للمنافذ والجمارك</p>
             <p>المديرية العامة للموانئ</p>
             <p className="text-[11px] print:text-[9px] text-[#5e736e] print:text-gray-700">مكتب المدير العام</p>
           </div>
@@ -224,7 +225,7 @@ function ReportContent() {
             <div className="p-4 print:p-2 rounded-2xl bg-[#edece4] print:bg-gray-50 border border-[#d2d1c9] print:border-gray-300 space-y-2.5 print:break-inside-avoid">
               <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-1.5">
                 <h3 className="text-xs print:text-[10px] font-extrabold text-[#0c3e35] print:text-black flex items-center gap-1.5">
-                  <span>📌 موقف التكليفات والمهام الرئاسية المشتركة والمنفردة:</span>
+                  <span>📌 موقف التكليفات والمهام الإدارية المشتركة والمنفردة:</span>
                 </h3>
                 <span className="text-[11px] print:text-[8px] text-[#5e736e] print:text-gray-600 font-bold">
                   إجمالي التكليفات: {groups.length}

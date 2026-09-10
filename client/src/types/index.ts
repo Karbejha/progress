@@ -38,6 +38,27 @@ export interface PlanTask {
   completionPercentage: number;
   completionNote?: string;
   displayOrder: number;
+  carriedFromTaskId?: string;
+  carriedFromTask?: {
+    id: string;
+    title: string;
+    completionPercentage: number;
+    dailyPlan?: { planDate: string };
+  };
+}
+
+export interface IncompleteTask {
+  id: string;
+  dailyPlanId: string;
+  planDate: string | null;
+  title: string;
+  description?: string;
+  priority: Priority;
+  estimatedHours: number;
+  status: TaskStatus;
+  completionPercentage: number;
+  completionNote?: string;
+  daysAgo: number;
 }
 
 export interface DailyPlan {
@@ -339,5 +360,88 @@ export interface UpdateTodoDto {
   category?: string;
   displayOrder?: number;
 }
+
+export interface ReportTaskItem {
+  id: string;
+  dailyPlanId?: string | null;
+  planDate?: string | null;
+  dueDate?: string | null;
+  title: string;
+  description?: string;
+  priority: Priority;
+  estimatedHours: number;
+  status: TaskStatus;
+  completionPercentage: number;
+  completionNote?: string;
+  source: 'PLAN' | 'EXECUTIVE';
+  sourceLabel: string;
+  assignedBy?: string;
+}
+
+export interface AchievementsReportStats {
+  totalPlansCount: number;
+  totalSummariesCount: number;
+  totalTasksCount: number;
+  completedTasksCount: number;
+  nearingTasksCount: number;
+  inProgressTasksCount: number;
+  averageCompletionRate: number;
+  totalHours: number;
+  executiveTasksCount: number;
+}
+
+export interface AchievementsReportResponse {
+  directorate: {
+    id: string;
+    name: string;
+    code: string;
+    category: string;
+    description?: string;
+    icon?: string;
+  };
+  director: {
+    id: string;
+    fullName: string;
+    title: string;
+    email: string;
+    phone?: string;
+  } | null;
+  period: {
+    startDate: string;
+    endDate: string;
+    label: string;
+    month?: string | null;
+  };
+  stats: AchievementsReportStats;
+  keyAchievements: string[];
+  completedTasks: ReportTaskItem[];
+  nearingTasks: ReportTaskItem[];
+  inProgressTasks?: ReportTaskItem[];
+  executiveTasks: {
+    id: string;
+    title: string;
+    description?: string;
+    priority: Priority;
+    status: TaskStatus;
+    completionPercentage: number;
+    completionNote?: string;
+    dueDate?: string | null;
+    createdAt?: string | null;
+    assignedBy?: string;
+  }[];
+  challenges: { date: string; text: string }[];
+  dailySummaries: {
+    id: string;
+    planDate: string | null;
+    summaryText: string;
+    overallCompletionRate: number;
+    achievements: string[];
+    challenges?: string | null;
+    directorNotes?: string | null;
+    urgentFlag: boolean;
+    submittedAt: string | null;
+  }[];
+}
+
 
 

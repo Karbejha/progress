@@ -242,15 +242,21 @@ export class TodosService {
       },
     });
 
-    // Mark the todo as completed or updated
+    // Keep the todo active in the user's agenda and tag it
+    const planTag = '[تم إدراجها في الخطة اليومية]';
+    const alreadyTagged = todo.description?.includes('الخطة اليومية');
+    const updatedDesc = alreadyTagged
+      ? todo.description
+      : todo.description
+      ? `${todo.description}\n${planTag}`
+      : planTag;
+
     await this.prisma.userTodo.update({
       where: { id },
       data: {
-        isCompleted: true,
-        completedAt: new Date(),
-        description: todo.description
-          ? `${todo.description}\n[تم تحويلها إلى الخطة اليومية الصباحية]`
-          : '[تم تحويلها إلى الخطة اليومية الصباحية]',
+        isCompleted: false,
+        completedAt: null,
+        description: updatedDesc,
       },
     });
 
@@ -267,7 +273,7 @@ export class TodosService {
 
     return {
       success: true,
-      message: 'تم نقل المهمة بنجاح إلى الخطة اليومية الرسمية للمديرية',
+      message: 'تم إدراج المهمة بنجاح في الخطة اليومية الرسمية للمديرية مع الاحتفاظ بها في الأجندة',
       planTask,
       planId: plan.id,
     };
@@ -342,21 +348,27 @@ export class TodosService {
       createdTasks.push(task);
     }
 
-    // Mark the todo as completed and tagged
+    // Keep the todo active in the user's agenda and tag it
+    const execTag = '[تم تحويلها إلى تكليف تنفيذي رسمي]';
+    const alreadyTagged = todo.description?.includes('تكليف تنفيذي');
+    const updatedDesc = alreadyTagged
+      ? todo.description
+      : todo.description
+      ? `${todo.description}\n${execTag}`
+      : execTag;
+
     await this.prisma.userTodo.update({
       where: { id },
       data: {
-        isCompleted: true,
-        completedAt: new Date(),
-        description: todo.description
-          ? `${todo.description}\n[تم تحويلها إلى تكليف تنفيذي رسمي]`
-          : '[تم تحويلها إلى تكليف تنفيذي رسمي]',
+        isCompleted: false,
+        completedAt: null,
+        description: updatedDesc,
       },
     });
 
     return {
       success: true,
-      message: `تم تحويل المهمة بنجاح إلى تكليف تنفيذي وإسنادها لـ ${createdTasks.length} مديرية`,
+      message: `تم تحويل المهمة بنجاح إلى تكليف تنفيذي وإسنادها لـ ${createdTasks.length} مديرية مع الاحتفاظ بها في الأجندة`,
       createdTasks,
     };
   }

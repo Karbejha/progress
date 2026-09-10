@@ -6,7 +6,6 @@ const config: CapacitorConfig = {
   webDir: 'out',
   android: {
     allowMixedContent: true,
-    captureInput: true,
     webContentsDebuggingEnabled: true,
   },
   server: {

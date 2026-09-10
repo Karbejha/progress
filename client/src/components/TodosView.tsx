@@ -60,6 +60,16 @@ const PRIORITY_BADGES: Record<Priority, { label: string; color: string }> = {
   LOW: { label: 'منخفض', color: 'bg-slate-100 text-slate-600 border-slate-200' },
 };
 
+export const getCleanTodoDescription = (desc?: string | null): string => {
+  if (!desc) return '';
+  return desc
+    .replace(/\[تم تحويلها إلى الخطة اليومية الصباحية\]/g, '')
+    .replace(/\[تم إدراجها في الخطة اليومية\]/g, '')
+    .replace(/\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g, '')
+    .replace(/\[تم إسنادها كتكليف تنفيذي\]/g, '')
+    .trim();
+};
+
 export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashboard }) => {
   const [todos, setTodos] = useState<UserTodo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +145,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         setActiveCategoryDropdownId(null);
         setActiveReorderMenuId(null);
         setInlineEditingId(null);
+        setPlanConversionTodo(null);
+        setDeleteConfirmTodo(null);
       }
     };
     window.addEventListener('click', handleOutsideClick);
@@ -180,6 +192,14 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const [targetDirIds, setTargetDirIds] = useState<string[]>([]);
   const [conversionDueDate, setConversionDueDate] = useState<string>('');
   const [isConvertingExec, setIsConvertingExec] = useState(false);
+
+  // Daily Plan Conversion Modal State (for Directorate Directors)
+  const [planConversionTodo, setPlanConversionTodo] = useState<UserTodo | null>(null);
+  const [isConvertingToPlan, setIsConvertingToPlan] = useState(false);
+
+  // Delete Confirmation Modal State
+  const [deleteConfirmTodo, setDeleteConfirmTodo] = useState<{ id: string; title: string } | null>(null);
+  const [isDeletingTodo, setIsDeletingTodo] = useState(false);
 
   // Toast Notification
   const [toast, setToast] = useState<{ title: string; desc: string; type?: 'success' | 'info' } | null>(null);
@@ -251,7 +271,6 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       setNewDueDate('');
       setShowAdvancedAdd(false);
 
-      showToastMsg('تمت إضافة المهمة بنجاح', `تم إدراج "${created.title}" في أجندتك.`);
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err) {
       console.error('Failed to create todo', err);
@@ -753,18 +772,26 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     };
   }, [handleWindowTouchMove, handleWindowTouchEnd]);
 
-  // Delete Todo
-  const handleDeleteTodo = async (id: string, title: string) => {
-    if (!window.confirm(`هل أنت متأكد من حذف المهمة: "${title}"؟`)) return;
+  // Delete Todo Dialog Trigger
+  const handleDeleteTodo = (id: string, title: string) => {
+    setDeleteConfirmTodo({ id, title });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmTodo) return;
 
     try {
-      setTodos((prev) => prev.filter((t) => t.id !== id));
-      await api.deleteTodo(id);
-      showToastMsg('تم الحذف', `تم حذف "${title}" من الأجندة.`);
+      setIsDeletingTodo(true);
+      const targetId = deleteConfirmTodo.id;
+      setTodos((prev) => prev.filter((t) => t.id !== targetId));
+      await api.deleteTodo(targetId);
+      setDeleteConfirmTodo(null);
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err) {
       console.error('Failed to delete todo', err);
       loadTodos();
+    } finally {
+      setIsDeletingTodo(false);
     }
   };
 
@@ -772,7 +799,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const handleOpenEdit = (todo: UserTodo) => {
     setEditingTodo(todo);
     setEditTitle(todo.title);
-    setEditDesc(todo.description || '');
+    setEditDesc(getCleanTodoDescription(todo.description));
     setEditPriority(todo.priority);
     setEditCategory(todo.category || 'GENERAL');
     setEditDueDate(todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : '');
@@ -785,9 +812,21 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
     try {
       setSavingEdit(true);
+      // Preserve existing system tags if they existed in the original description
+      const rawDesc = editingTodo.description || '';
+      const tags: string[] = [];
+      if (rawDesc.includes('الخطة اليومية')) tags.push('[تم إدراجها في الخطة اليومية]');
+      if (rawDesc.includes('تكليف تنفيذي')) tags.push('[تم تحويلها إلى تكليف تنفيذي رسمي]');
+
+      const cleanDesc = editDesc.trim();
+      let finalDesc: string | undefined = cleanDesc || undefined;
+      if (tags.length > 0) {
+        finalDesc = cleanDesc ? `${cleanDesc}\n${tags.join('\n')}` : tags.join('\n');
+      }
+
       const updated = await api.updateTodo(editingTodo.id, {
         title: editTitle.trim(),
-        description: editDesc.trim() || undefined,
+        description: finalDesc,
         priority: editPriority,
         category: editCategory,
         dueDate: editDueDate || null,
@@ -804,21 +843,27 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     }
   };
 
-  // Convert to Daily Plan Task (For Directorate Directors)
-  const handleConvertToPlan = async (todo: UserTodo) => {
-    if (!window.confirm(`هل تريد إدراج "${todo.title}" رسمياً في الخطة اليومية الصباحية لمديريتك؟`)) {
-      return;
-    }
+  // Open Daily Plan Task Conversion Dialog (For Directorate Directors)
+  const handleConvertToPlan = (todo: UserTodo) => {
+    setPlanConversionTodo(todo);
+  };
+
+  const handleConfirmPlanConversion = async () => {
+    if (!planConversionTodo) return;
 
     try {
-      const res = await api.convertTodoToPlanTask(todo.id);
+      setIsConvertingToPlan(true);
+      const res = await api.convertTodoToPlanTask(planConversionTodo.id);
       showToastMsg('تم الإدراج بالخطة اليومية', res.message);
+      setPlanConversionTodo(null);
       // Reload todos to reflect update
       loadTodos();
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err: any) {
       console.error('Failed to convert to plan task', err);
       alert(err.message || 'تعذر تحويل المهمة إلى الخطة اليومية');
+    } finally {
+      setIsConvertingToPlan(false);
     }
   };
 
@@ -1649,6 +1694,27 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                               </div>
                             )}
 
+                            {/* Badges for Plan / Executive Linking */}
+                            {todo.description?.includes('الخطة اليومية') && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-xs"
+                                title="هذه المهمة مدرجة في الخطة اليومية للمديرية"
+                              >
+                                <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>مدرجة بالخطة اليومية</span>
+                              </span>
+                            )}
+
+                            {todo.description?.includes('تكليف تنفيذي') && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-50 text-amber-900 border border-amber-300 shadow-xs"
+                                title="تم إصدار تكليف تنفيذي رسمي بهذه المهمة"
+                              >
+                                <Layers className="w-3 h-3 text-amber-700 shrink-0" />
+                                <span>مُكلّفة رسمياً</span>
+                              </span>
+                            )}
+
                             {todo.isCompleted && todo.completedAt && (
                               <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
                                 <CheckCheck className="w-3 h-3" />
@@ -1660,11 +1726,11 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                         )}
 
                         {/* Description */}
-                        {todo.description && (
+                        {getCleanTodoDescription(todo.description) && (
                           <p className={`text-xs whitespace-pre-line leading-relaxed ${
                             todo.isCompleted ? 'text-slate-400' : 'text-[#5e736e]'
                           }`}>
-                            {todo.description}
+                            {getCleanTodoDescription(todo.description)}
                           </p>
                         )}
 
@@ -1679,11 +1745,21 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                       <button
                         type="button"
                         onClick={() => handleConvertToPlan(todo)}
-                        className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl bg-[#0c3e35]/10 hover:bg-[#0c3e35] text-[#0c3e35] hover:text-white text-[11px] font-bold transition border border-[#0c3e35]/20 cursor-pointer min-h-[30px]"
-                        title="إدراج هذه المهمة فوراً في الخطة الصباحية الرسمية لليوم"
+                        className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition border cursor-pointer min-h-[30px] ${
+                          todo.description?.includes('الخطة اليومية')
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-xs'
+                            : 'bg-[#0c3e35]/10 hover:bg-[#0c3e35] text-[#0c3e35] hover:text-white border-[#0c3e35]/20'
+                        }`}
+                        title={
+                          todo.description?.includes('الخطة اليومية')
+                            ? 'المهمة مدرجة مسبقاً في الخطة اليومية (انقر لإدراج نسخة إضافية)'
+                            : 'إدراج هذه المهمة في الخطة الصباحية الرسمية لليوم مع الحفاظ عليها في أجندتك'
+                        }
                       >
                         <FileText className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">إدراج بالخطة اليومية</span>
+                        <span className="hidden sm:inline">
+                          {todo.description?.includes('الخطة اليومية') ? 'مدرجة بالخطة ✓' : 'إدراج بالخطة اليومية'}
+                        </span>
                       </button>
                     )}
 
@@ -1692,11 +1768,21 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                       <button
                         type="button"
                         onClick={() => handleOpenExecConversion(todo)}
-                        className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl bg-[#d4af37]/20 hover:bg-[#d4af37] text-[#05261e] text-[11px] font-extrabold transition border border-[#d4af37]/40 cursor-pointer min-h-[30px]"
-                        title="تحويل هذه المهمة إلى تكليف رسمي وإسناده لإحدى مديريات الموانئ"
+                        className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition border cursor-pointer min-h-[30px] ${
+                          todo.description?.includes('تكليف تنفيذي')
+                            ? 'bg-amber-100 text-amber-900 border-amber-400 hover:bg-amber-200 shadow-xs'
+                            : 'bg-[#d4af37]/20 hover:bg-[#d4af37] text-[#05261e] border-[#d4af37]/40'
+                        }`}
+                        title={
+                          todo.description?.includes('تكليف تنفيذي')
+                            ? 'صدر بها أمر تكليف مسبقاً (انقر لتكليف مديريات إضافية)'
+                            : 'تحويل هذه المهمة إلى تكليف رسمي وإسناده لإحدى مديريات الموانئ مع الحفاظ عليها في أجندتك'
+                        }
                       >
                         <Layers className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">تحويل لتكليف تنفيذي</span>
+                        <span className="hidden sm:inline">
+                          {todo.description?.includes('تكليف تنفيذي') ? 'مُكلّفة رسمياً ✓' : 'تحويل لتكليف تنفيذي'}
+                        </span>
                       </button>
                     )}
 
@@ -1955,7 +2041,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                 </span>
                 <div>
                   <h3 className="text-base font-black text-[#05261e]">تحويل إلى تكليف تنفيذي رسمي</h3>
-                  <p className="text-[11px] text-[#5e736e]">إسناد المهمة إلى مديرية أو عدة مديريات كأمر إداري ملزم</p>
+                  <p className="text-[11px] text-[#5e736e]">إسناد المهمة إلى مديرية أو عدة مديريات كأمر إداري ملزم مع الاحتفاظ بها في أجندتك</p>
                 </div>
               </div>
               <button
@@ -2058,6 +2144,160 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dialog: Confirm Convert to Daily Plan (Replaces native browser alert) */}
+      {planConversionTodo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md flex flex-col rounded-2xl sm:rounded-3xl bg-white border border-[#d2d1c9] shadow-2xl p-5 sm:p-6 overflow-hidden animate-in zoom-in-95 duration-200 text-right">
+            
+            {/* Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-[#d2d1c9]/60 shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center rounded-2xl bg-[#0c3e35]/10 text-[#0c3e35] border border-[#0c3e35]/20 shadow-xs">
+                  <FileText className="w-5 h-5 text-[#0c3e35]" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-[#05261e]">إدراج المهمة في الخطة اليومية</h3>
+                  <p className="text-[11px] font-bold text-[#5e736e]">
+                    إضافة المهمة إلى الخطة الصباحية المعتمدة لمديريتك
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPlanConversionTodo(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="py-4 space-y-3">
+              {/* Task Preview Card */}
+              <div className="p-3.5 rounded-2xl bg-[#f4f3ed] border border-[#d2d1c9]/80 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black text-[#8daaa2] uppercase tracking-wider">
+                    المهمة المراد إدراجها:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border ${PRIORITY_BADGES[planConversionTodo.priority]?.color || ''}`}>
+                      {PRIORITY_BADGES[planConversionTodo.priority]?.label || ''}
+                    </span>
+                    {planConversionTodo.category && CATEGORY_LABELS[planConversionTodo.category] && (
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${CATEGORY_LABELS[planConversionTodo.category].color}`}>
+                        {CATEGORY_LABELS[planConversionTodo.category].label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm font-black text-[#05261e] leading-snug">
+                  {planConversionTodo.title}
+                </p>
+                {getCleanTodoDescription(planConversionTodo.description) && (
+                  <p className="text-xs text-[#5e736e] leading-relaxed">
+                    {getCleanTodoDescription(planConversionTodo.description)}
+                  </p>
+                )}
+              </div>
+
+              {/* Info Notice */}
+              <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-start gap-2.5 text-xs text-emerald-900 leading-relaxed font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p>
+                    سيتم إدراج هذه المهمة فوراً في جدول الخطة اليومية الرسمية للمديرية ليتمكن المدير العام من متابعتها ودعمكم.
+                  </p>
+                  <p className="text-[11px] font-bold text-emerald-800 mt-1">
+                    ✓ ستبقى المهمة محفوظة ونشطة في مفكرتك وأجندتك الخاصة كما هي دون أي حذف.
+                  </p>
+                  {planConversionTodo.description?.includes('الخطة اليومية') && (
+                    <p className="text-[11px] font-bold text-amber-800 bg-amber-100/70 p-1.5 rounded-lg mt-2 border border-amber-300/50">
+                      ملاحظة: هذه المهمة مدرجة مسبقاً في الخطة. سيؤدي هذا الإجراء لإدراج نسخة إضافية منها في الخطة اليومية.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#d2d1c9]/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPlanConversionTodo(null)}
+                disabled={isConvertingToPlan}
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-[#d2d1c9] text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPlanConversion}
+                disabled={isConvertingToPlan}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-extrabold rounded-xl bg-[#0c3e35] text-white hover:bg-[#05261e] transition shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+              >
+                {isConvertingToPlan ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
+                    <span>جاري الإدراج...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 text-[#d4af37]" />
+                    <span>تأكيد الإدراج في الخطة</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dialog: Confirm Delete Todo (Replaces native browser confirm) */}
+      {deleteConfirmTodo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-sm flex flex-col rounded-2xl sm:rounded-3xl bg-white border border-[#d2d1c9] shadow-2xl p-5 overflow-hidden animate-in zoom-in-95 duration-200 text-right">
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 items-center justify-center rounded-2xl bg-red-50 text-red-600 border border-red-200 shrink-0 shadow-xs">
+                <Trash2 className="w-5 h-5" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-black text-[#05261e]">حذف المهمة</h3>
+                <p className="text-xs text-[#5e736e] mt-1">
+                  هل أنت متأكد من رغبتك في حذف المهمة من أجندتك؟
+                </p>
+                <p className="text-xs font-black text-red-700 bg-red-50 p-2.5 rounded-xl border border-red-200 mt-2 truncate">
+                  {deleteConfirmTodo.title}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-4 mt-3 border-t border-[#d2d1c9]/60 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTodo(null)}
+                disabled={isDeletingTodo}
+                className="px-4 py-2 text-xs font-bold rounded-xl border border-[#d2d1c9] text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeletingTodo}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl bg-red-600 text-white hover:bg-red-700 transition shadow-xs disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingTodo ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                <span>نعم، احذف المهمة</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -16,7 +16,10 @@ import {
   Loader2,
   Trash2,
   Flame,
+  FileText,
+  Layers,
 } from 'lucide-react';
+import { getCleanTodoDescription } from './TodosView';
 
 interface QuickTodoDrawerProps {
   isOpen: boolean;
@@ -225,15 +228,27 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
                           <p className="text-xs font-extrabold text-[#05261e] leading-snug break-words">
                             {todo.title}
                           </p>
-                          {todo.description && (
+                          {todo.description && getCleanTodoDescription(todo.description) && (
                             <p className="text-[11px] text-[#5e736e] mt-0.5 line-clamp-2">
-                              {todo.description}
+                              {getCleanTodoDescription(todo.description)}
                             </p>
                           )}
-                          <div className="flex items-center gap-1.5 mt-1.5">
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                             {isUrgent && (
                               <span className="px-1.5 py-0.2 rounded-md bg-red-50 text-red-700 text-[9px] font-black border border-red-200">
                                 عاجل
+                              </span>
+                            )}
+                            {todo.description?.includes('الخطة اليومية') && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-800 text-[9px] font-black border border-emerald-200">
+                                <FileText className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>بالخطة اليومية</span>
+                              </span>
+                            )}
+                            {todo.description?.includes('تكليف تنفيذي') && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-900 text-[9px] font-black border border-amber-200">
+                                <Layers className="w-2.5 h-2.5 text-amber-700" />
+                                <span>تكليف رسمي</span>
                               </span>
                             )}
                             {(todo.dueDate || !todo.isCompleted) && (

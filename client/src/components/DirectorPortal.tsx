@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { User, DailyPlan, PlanTask, Priority, TaskStatus, ExecutiveTask, TaskTemplate } from '../types';
+import { User, DailyPlan, PlanTask, Priority, TaskStatus, ExecutiveTask, TaskTemplate, IncompleteTask, AchievementsReportResponse } from '../types';
 import { api } from '../services/api';
 import { DynamicIcon } from './Icons';
 import {
@@ -32,9 +32,16 @@ import {
   Users,
   Building2,
   ListTodo,
+  ArrowRightLeft,
+  Printer,
+  Award,
+  Filter,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
+import { IncompleteTasksModal } from './IncompleteTasksModal';
+import { CustomMonthPicker } from './CustomMonthPicker';
+import { CustomDateRangePicker } from './CustomDateRangePicker';
 import { Announcement } from '../types';
 import { getSocket } from '../lib/socket';
 import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
@@ -104,13 +111,30 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   // Form states initialized with local draft
   const [generalFocus, setGeneralFocus] = useState(() => initPlanDraft?.generalFocus || '');
   const [tasks, setTasks] = useState<
-    { title: string; description: string; priority: Priority; estimatedHours: number; templateId?: string }[]
+    {
+      title: string;
+      description: string;
+      priority: Priority;
+      estimatedHours: number;
+      templateId?: string;
+      carriedFromTaskId?: string;
+      carriedFromDate?: string;
+      initialCompletionPercentage?: number;
+      completionPercentage?: number;
+      status?: TaskStatus;
+      completionNote?: string;
+    }[]
   >(() =>
     initPlanDraft?.tasks && initPlanDraft.tasks.length > 0
       ? initPlanDraft.tasks
       : [{ title: '', description: '', priority: 'NORMAL', estimatedHours: 2.0 }]
   );
   const [togglingTemplateIdx, setTogglingTemplateIdx] = useState<number | null>(null);
+
+  // Incomplete Tasks (Carried-over) State
+  const [incompleteTasks, setIncompleteTasks] = useState<IncompleteTask[]>([]);
+  const [loadingIncompleteTasks, setLoadingIncompleteTasks] = useState(false);
+  const [showIncompleteTasksModal, setShowIncompleteTasksModal] = useState(false);
 
   // Summary wizard states initialized with local draft
   const [summaryText, setSummaryText] = useState(() => initSummaryDraft?.summaryText || '');
@@ -154,6 +178,31 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       isModified?: boolean;
     };
   }>({});
+
+  // Achievements Report Hub State
+  const getCurrentMonthString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  };
+
+  const getPrevMonthString = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  };
+
+  const [reportPeriodMode, setReportPeriodMode] = useState<'MONTH' | 'CUSTOM'>('MONTH');
+  const [reportMonth, setReportMonth] = useState<string>(getCurrentMonthString());
+  const [reportStartDate, setReportStartDate] = useState<string>('');
+  const [reportEndDate, setReportEndDate] = useState<string>('');
+  const [reportStatusFilter, setReportStatusFilter] = useState<'COMPLETED_AND_NEARING' | 'COMPLETED' | 'NEARING' | 'ALL'>('COMPLETED_AND_NEARING');
+  const [reportData, setReportData] = useState<AchievementsReportResponse | null>(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [showInlineReportPreview, setShowInlineReportPreview] = useState(false);
 
   useEffect(() => {
     setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
@@ -488,12 +537,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const loadTodayData = async () => {
     try {
       setLoading(true);
-      const [currentPlan, anns] = await Promise.all([
+      const [currentPlan, anns, incTasks] = await Promise.all([
         api.getMyTodayPlan(),
         api.getAnnouncements().catch(() => []),
+        api.getIncompleteTasks().catch(() => []),
       ]);
       setPlan(currentPlan);
       setAnnouncements(anns);
+      setIncompleteTasks(incTasks || []);
       if (anns && anns.length > 0) {
         const readFromAnns = anns.filter((a: any) => a.isReadByMe).map((a: any) => a.id);
         if (readFromAnns.length > 0) {
@@ -511,6 +562,12 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               description: t.description || '',
               priority: t.priority,
               estimatedHours: t.estimatedHours,
+              carriedFromTaskId: t.carriedFromTaskId,
+              carriedFromDate: t.carriedFromTask?.dailyPlan?.planDate,
+              initialCompletionPercentage: t.carriedFromTask?.completionPercentage ?? t.completionPercentage,
+              completionPercentage: t.completionPercentage,
+              status: t.status,
+              completionNote: t.completionNote,
             }))
           );
         }
@@ -566,6 +623,49 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     }
   };
 
+  const loadAchievementsReport = async () => {
+    try {
+      setLoadingReport(true);
+      const params: any = {
+        statusFilter: reportStatusFilter,
+      };
+      if (reportPeriodMode === 'MONTH') {
+        params.month = reportMonth;
+      } else {
+        if (reportStartDate && reportEndDate) {
+          params.startDate = reportStartDate;
+          params.endDate = reportEndDate;
+        } else {
+          params.month = reportMonth;
+        }
+      }
+      const res = await api.getAchievementsReport(params);
+      setReportData(res);
+    } catch (err) {
+      console.error('Failed to load achievements report', err);
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const handleOpenPrintReport = () => {
+    let url = `/director-report?filter=${reportStatusFilter}`;
+    if (reportPeriodMode === 'MONTH') {
+      url += `&month=${reportMonth}`;
+    } else if (reportStartDate && reportEndDate) {
+      url += `&startDate=${reportStartDate}&endDate=${reportEndDate}`;
+    } else {
+      url += `&month=${reportMonth}`;
+    }
+    window.open(url, '_blank');
+  };
+
+  useEffect(() => {
+    if (activeTab === 'HISTORY') {
+      loadAchievementsReport();
+    }
+  }, [activeTab, reportMonth, reportStartDate, reportEndDate, reportStatusFilter, reportPeriodMode]);
+
   const showToast = (msg: string) => {
     setSuccessToast(msg);
     setTimeout(() => setSuccessToast(null), 3500);
@@ -607,6 +707,90 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       alert(err.message || 'لا توجد خطة سابقة لهذه المديرية لاستيرادها');
     } finally {
       setLoadingPreviousPlan(false);
+    }
+  };
+
+  // Incomplete / Carried-over Tasks Management
+  const fetchIncompleteTasks = async () => {
+    try {
+      setLoadingIncompleteTasks(true);
+      const res = await api.getIncompleteTasks();
+      setIncompleteTasks(res || []);
+    } catch (err) {
+      console.error('Failed to fetch incomplete tasks', err);
+    } finally {
+      setLoadingIncompleteTasks(false);
+    }
+  };
+
+  const handleImportIncompleteTask = (incTask: IncompleteTask) => {
+    const alreadyExists = tasks.some(
+      (t) => t.title.trim().toLowerCase() === incTask.title.trim().toLowerCase()
+    );
+    if (alreadyExists) {
+      showToast(`المهمة "${incTask.title}" موجودة بالفعل في قائمة مهام اليوم`);
+      return;
+    }
+
+    const newTask = {
+      title: incTask.title,
+      description: incTask.description || '',
+      priority: incTask.priority,
+      estimatedHours: incTask.estimatedHours || 1.5,
+      carriedFromTaskId: incTask.id,
+      carriedFromDate: incTask.planDate || undefined,
+      initialCompletionPercentage: incTask.completionPercentage,
+      completionPercentage: incTask.completionPercentage,
+      status: (incTask.completionPercentage > 0 ? 'IN_PROGRESS' : 'PENDING') as TaskStatus,
+      completionNote: incTask.completionNote || '',
+    };
+
+    setTasks((prev) => {
+      const clean = prev.filter((t) => t.title.trim().length > 0);
+      return [...clean, newTask];
+    });
+
+    showToast(`تم إدراج مهمة: "${incTask.title}" بنسبة إنجاز سابقة ${incTask.completionPercentage}%!`);
+  };
+
+  const handleImportAllIncompleteTasks = (tasksToImport: IncompleteTask[]) => {
+    const currentTitles = new Set(tasks.map((t) => t.title.trim().toLowerCase()));
+    const newItems = tasksToImport
+      .filter((t) => !currentTitles.has(t.title.trim().toLowerCase()))
+      .map((incTask) => ({
+        title: incTask.title,
+        description: incTask.description || '',
+        priority: incTask.priority,
+        estimatedHours: incTask.estimatedHours || 1.5,
+        carriedFromTaskId: incTask.id,
+        carriedFromDate: incTask.planDate || undefined,
+        initialCompletionPercentage: incTask.completionPercentage,
+        completionPercentage: incTask.completionPercentage,
+        status: (incTask.completionPercentage > 0 ? 'IN_PROGRESS' : 'PENDING') as TaskStatus,
+        completionNote: incTask.completionNote || '',
+      }));
+
+    if (newItems.length === 0) {
+      showToast('كافة المهام المحددة مدرجة بالفعل في خطة اليوم');
+      return;
+    }
+
+    setTasks((prev) => {
+      const clean = prev.filter((t) => t.title.trim().length > 0);
+      return [...clean, ...newItems];
+    });
+
+    showToast(`تم ترحيل ${newItems.length} مهام معلقة بنجاح إلى خطة اليوم!`);
+    setShowIncompleteTasksModal(false);
+  };
+
+  const handleDismissIncompleteTask = async (taskId: string) => {
+    try {
+      await api.updateTaskStatus(taskId, { status: 'CANCELLED' });
+      setIncompleteTasks((prev) => prev.filter((t) => t.id !== taskId));
+      showToast('تم إغلاق المهمة واستبعادها من قائمة المتابعة');
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء إغلاق المهمة');
     }
   };
 
@@ -1309,6 +1493,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           onClick={() => {
             setActiveTab('HISTORY');
             loadHistory();
+            loadAchievementsReport();
           }}
           className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
             activeTab === 'HISTORY'
@@ -1317,7 +1502,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           }`}
         >
           <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-          <span>سجل إنجازات المديرية</span>
+          <span>سجل الإنجازات والطباعة</span>
+          <span className="px-1.5 py-0.5 rounded-md bg-[#d4af37] text-[#05261e] text-[9.5px] font-black flex items-center gap-0.5">
+            <Printer className="w-2.5 h-2.5" />
+            PDF
+          </span>
         </button>
 
         <button
@@ -1370,6 +1559,25 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               </label>
 
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Incomplete Tasks Modal Trigger Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchIncompleteTasks();
+                    setShowIncompleteTasksModal(true);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer shadow-xs active:scale-95 relative"
+                  title="استعراض وترحيل المهام السابقة غير المكتملة بنسبتها التراكمية"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>المهام غير المكتملة</span>
+                  {incompleteTasks.length > 0 && (
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] shrink-0">
+                      {incompleteTasks.length}
+                    </span>
+                  )}
+                </button>
+
                 {/* Clone Previous Plan Button */}
                 <button
                   type="button"
@@ -1420,6 +1628,21 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     key={idx}
                     className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
                   >
+                    {task.carriedFromTaskId && (
+                      <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
+                        <div className="flex items-center gap-1.5">
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                          <span>مهمة مرحّلة من خطة سابقة</span>
+                          {typeof task.initialCompletionPercentage === 'number' && (
+                            <span className="text-amber-800 font-extrabold">(الإنجاز السابق: {task.initialCompletionPercentage}%)</span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md font-semibold">
+                          تراكمي مستمر
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between gap-3">
                       <span className="w-6 h-6 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0">
                         {idx + 1}
@@ -1587,7 +1810,15 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                           {idx + 1}
                         </span>
                         <div>
-                          <h4 className="text-sm font-bold text-[#0c3e35] leading-tight">{task.title}</h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-[#0c3e35] leading-tight">{task.title}</h4>
+                            {task.carriedFromTaskId && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                <ArrowRightLeft className="w-3 h-3 text-amber-700" />
+                                <span>مهمة مرحّلة من خطة سابقة</span>
+                              </span>
+                            )}
+                          </div>
                           {task.description && (
                             <p className="text-xs text-[#5e736e] mt-1">{task.description}</p>
                           )}
@@ -2204,66 +2435,313 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         </div>
       )}
 
-      {/* Tab 5: History */}
+      {/* Tab 5: History & Achievements Print Report */}
       {activeTab === 'HISTORY' && (
-        <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
-          <div className="border-b border-[#d2d1c9] pb-4">
-            <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
-              <History className="w-5 h-5 text-[#0c3e35]" />
-              سجل الخطط والإنجازات السابقة لمديرية {currentUser.directorate?.name}
-            </h3>
-            <p className="text-xs text-[#5e736e] mt-1 font-medium">
-              أرشيف الأيام السابقة خاص بمديريتكم حصراً.
-            </p>
-          </div>
-
-          {history.length === 0 ? (
-            <div className="text-center py-12 text-[#5e736e] text-xs">
-              لا توجد تقارير سابقة مسجلة حتى الآن
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {history.map((h) => (
-                <div
-                  key={h.id}
-                  className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-[#0c3e35]" />
-                      {new Date(h.planDate).toLocaleDateString('ar-SY', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                      })}
-                    </span>
-                    <span className="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">
-                      نسبة الإنجاز: {h.dailySummary?.overallCompletionRate || 0}%
+        <div className="space-y-6">
+          {/* Executive Achievements & Print Report Hub Card - Visible on Desktop/Computers only */}
+          <div className="hidden md:block bg-[#05261e] text-white p-6 sm:p-7 rounded-[28px] border border-[#0c3e35] shadow-xl space-y-6">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-5">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 text-[#d4af37] flex items-center justify-center shadow-md shrink-0">
+                  <Printer className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-white">
+                      مركز طباعة تقارير الإنجازات والمهام المنجزة
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] text-[10px] font-black">
+                      رسمي / PDF
                     </span>
                   </div>
-
-                  {h.generalFocus && (
-                    <p className="text-xs text-[#0c3e35]">
-                      <strong>التركيز:</strong> {h.generalFocus}
-                    </p>
-                  )}
-
-                  {h.dailySummary?.summaryText && (
-                    <div className="p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-xs text-[#0c3e35]">
-                      <strong>ملخص الإنجاز:</strong> {h.dailySummary.summaryText}
-                    </div>
-                  )}
-
-                  {h.feedbacks && h.feedbacks.length > 0 && (
-                    <div className="p-3 rounded-xl bg-[#05261e] text-white text-xs border border-[#d4af37]/40">
-                      <strong className="text-[#d4af37]">توجيه المدير العام:</strong> {h.feedbacks[0].feedbackText}
-                    </div>
-                  )}
+                  <p className="text-xs text-[#d4af37]/90 mt-0.5 font-medium">
+                    استخراج وطباعة تقرير رسمي موثق لمديرية {currentUser.directorate?.name} عن الشهر أو أي فترة يحددها المدير
+                  </p>
                 </div>
-              ))}
+              </div>
+
+              {/* Print CTA Button */}
+              <button
+                onClick={handleOpenPrintReport}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#d4af37] hover:bg-[#c5a059] text-[#05261e] text-xs sm:text-sm font-extrabold shadow-lg transition cursor-pointer hover:scale-[1.02] active:scale-[0.98] mr-auto"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة التقرير الرسمي (PDF)</span>
+              </button>
             </div>
-          )}
+
+            {/* Filter and Period Controls */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 text-xs">
+              {/* Period Mode and Buttons */}
+              <div className="lg:col-span-8 flex flex-wrap items-center gap-2">
+                <span className="text-gray-300 font-bold flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>الفترة:</span>
+                </span>
+
+                <button
+                  onClick={() => {
+                    setReportPeriodMode('MONTH');
+                    setReportMonth(getCurrentMonthString());
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                    reportPeriodMode === 'MONTH' && reportMonth === getCurrentMonthString()
+                      ? 'bg-[#d4af37] text-[#05261e]'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  الشهر الحالي
+                </button>
+
+                <button
+                  onClick={() => {
+                    setReportPeriodMode('MONTH');
+                    setReportMonth(getPrevMonthString());
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                    reportPeriodMode === 'MONTH' && reportMonth === getPrevMonthString()
+                      ? 'bg-[#d4af37] text-[#05261e]'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  الشهر السابق
+                </button>
+
+                {reportPeriodMode === 'MONTH' && (
+                  <CustomMonthPicker
+                    value={reportMonth}
+                    onChange={(m) => setReportMonth(m)}
+                  />
+                )}
+
+                <button
+                  onClick={() => setReportPeriodMode(reportPeriodMode === 'CUSTOM' ? 'MONTH' : 'CUSTOM')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer border ${
+                    reportPeriodMode === 'CUSTOM'
+                      ? 'bg-[#d4af37] text-[#05261e] border-[#d4af37]'
+                      : 'bg-white/10 text-white hover:bg-white/20 border-white/20'
+                  }`}
+                >
+                  {reportPeriodMode === 'CUSTOM' ? 'إلغاء المخصص' : 'فترة مخصصة (من - إلى)'}
+                </button>
+
+                {reportPeriodMode === 'CUSTOM' && (
+                  <CustomDateRangePicker
+                    startDate={reportStartDate}
+                    endDate={reportEndDate}
+                    onChange={(start, end) => {
+                      setReportStartDate(start);
+                      setReportEndDate(end);
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Status Filter */}
+              <div className="lg:col-span-4 flex items-center justify-start lg:justify-end gap-2">
+                <span className="text-gray-300 font-bold flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>تصفية:</span>
+                </span>
+                <select
+                  value={reportStatusFilter}
+                  onChange={(e) => setReportStatusFilter(e.target.value as any)}
+                  className="px-3 py-1.5 rounded-xl bg-white/15 text-white border border-white/20 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
+                >
+                  <option value="COMPLETED_AND_NEARING" className="bg-[#05261e] text-white">المنجزة والمقتربة من الإنجاز</option>
+                  <option value="COMPLETED" className="bg-[#05261e] text-white">المنجزة بالكامل فقط (100%)</option>
+                  <option value="NEARING" className="bg-[#05261e] text-white">المقتربة من الإنجاز (70% - 99%)</option>
+                  <option value="ALL" className="bg-[#05261e] text-white">كافة المهام</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Quick KPI Stats Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="text-gray-300 text-[11px] block mb-1">معدل الإنجاز للفترة</span>
+                <strong className="text-lg sm:text-xl font-black text-[#d4af37]">
+                  {loadingReport ? '...' : `${reportData?.stats.averageCompletionRate || 0}%`}
+                </strong>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="text-gray-300 text-[11px] block mb-1">مهام منجزة بالكامل</span>
+                <strong className="text-lg sm:text-xl font-black text-emerald-400">
+                  {loadingReport ? '...' : `${reportData?.stats.completedTasksCount || 0} مهمة`}
+                </strong>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="text-gray-300 text-[11px] block mb-1">مهام مقتربة من الإنجاز</span>
+                <strong className="text-lg sm:text-xl font-black text-amber-300">
+                  {loadingReport ? '...' : `${reportData?.stats.nearingTasksCount || 0} مهمة`}
+                </strong>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="text-gray-300 text-[11px] block mb-1">إجمالي ساعات العمل</span>
+                <strong className="text-lg sm:text-xl font-black text-white">
+                  {loadingReport ? '...' : `${reportData?.stats.totalHours || 0} س`}
+                </strong>
+              </div>
+            </div>
+
+            {/* Expand / Collapse In-Portal Preview */}
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <button
+                onClick={() => setShowInlineReportPreview(!showInlineReportPreview)}
+                className="text-xs font-bold text-[#d4af37] hover:underline flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>{showInlineReportPreview ? '▲ إخفاء المعاينة السريعة' : '▼ معاينة تفاصيل المهام والإنجازات هنا'}</span>
+                <span className="text-gray-400 font-normal">
+                  ({reportData ? `${reportData.completedTasks.length + reportData.nearingTasks.length} مهمة` : ''})
+                </span>
+              </button>
+
+              <button
+                onClick={handleOpenPrintReport}
+                className="text-xs font-bold text-white hover:text-[#d4af37] flex items-center gap-1 cursor-pointer"
+              >
+                <span>معاينة الطباعة الرسمية A4</span>
+                <Printer className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Expandable Preview Body */}
+            {showInlineReportPreview && reportData && (
+              <div className="bg-white text-[#0c3e35] p-5 rounded-2xl border border-white/20 space-y-4 animate-fadeIn">
+                {/* Key achievements */}
+                {reportData.keyAchievements && reportData.keyAchievements.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                      <Award className="w-4 h-4 text-[#d4af37]" />
+                      <span>أبرز الإنجازات النوعية الموثقة:</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {reportData.keyAchievements.map((ach, idx) => (
+                        <div key={idx} className="p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-xs font-semibold flex items-center gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                          <span>{ach}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed tasks preview */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                    <CheckCheck className="w-4 h-4 text-emerald-700" />
+                    <span>المهام المكتملة (100%) - [{reportData.completedTasks.length}]:</span>
+                  </h4>
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 text-xs pr-1">
+                    {reportData.completedTasks.length === 0 ? (
+                      <p className="text-gray-500 py-2 text-center">لا توجد مهام مكتملة في هذه الفترة</p>
+                    ) : (
+                      reportData.completedTasks.map((t) => (
+                        <div key={t.id} className="p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-bold text-[#0c3e35]">{t.title}</p>
+                            {t.completionNote && <p className="text-[11px] text-[#5e736e] mt-0.5">{t.completionNote}</p>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] text-gray-500">{t.planDate ? new Date(t.planDate).toLocaleDateString('ar-SY') : ''}</span>
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-extrabold text-[10px]">100%</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Nearing tasks preview */}
+                {reportData.nearingTasks.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      <span>المهام المقتربة من الإنجاز (70% - 99%) - [{reportData.nearingTasks.length}]:</span>
+                    </h4>
+                    <div className="max-h-60 overflow-y-auto space-y-1.5 text-xs pr-1">
+                      {reportData.nearingTasks.map((t) => (
+                        <div key={t.id} className="p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-bold text-[#0c3e35]">{t.title}</p>
+                            {t.completionNote && <p className="text-[11px] text-[#5e736e] mt-0.5">{t.completionNote}</p>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] text-gray-500">{t.planDate ? new Date(t.planDate).toLocaleDateString('ar-SY') : ''}</span>
+                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-extrabold text-[10px]">{t.completionPercentage}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Daily Records History List */}
+          <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
+            <div className="border-b border-[#d2d1c9] pb-4">
+              <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
+                <History className="w-5 h-5 text-[#0c3e35]" />
+                أرشيف الخطط والإنجازات السابقة لمديرية {currentUser.directorate?.name}
+              </h3>
+              <p className="text-xs text-[#5e736e] mt-1 font-medium">
+                أرشيف الأيام السابقة خاص بمديريتكم حصراً.
+              </p>
+            </div>
+
+            {history.length === 0 ? (
+              <div className="text-center py-12 text-[#5e736e] text-xs">
+                لا توجد تقارير سابقة مسجلة حتى الآن
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {history.map((h) => (
+                  <div
+                    key={h.id}
+                    className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-[#0c3e35]" />
+                        {new Date(h.planDate).toLocaleDateString('ar-SY', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        })}
+                      </span>
+                      <span className="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">
+                        نسبة الإنجاز: {h.dailySummary?.overallCompletionRate || 0}%
+                      </span>
+                    </div>
+
+                    {h.generalFocus && (
+                      <p className="text-xs text-[#0c3e35]">
+                        <strong>التركيز:</strong> {h.generalFocus}
+                      </p>
+                    )}
+
+                    {h.dailySummary?.summaryText && (
+                      <div className="p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-xs text-[#0c3e35]">
+                        <strong>ملخص الإنجاز:</strong> {h.dailySummary.summaryText}
+                      </div>
+                    )}
+
+                    {h.feedbacks && h.feedbacks.length > 0 && (
+                      <div className="p-3 rounded-xl bg-[#05261e] text-white text-xs border border-[#d4af37]/40">
+                        <strong className="text-[#d4af37]">توجيه المدير العام:</strong> {h.feedbacks[0].feedbackText}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2441,6 +2919,18 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         data={selectedAnnouncement}
         currentUser={currentUser}
         onClose={() => setSelectedAnnouncement(null)}
+      />
+
+      {/* Incomplete / Carried-over Tasks Modal */}
+      <IncompleteTasksModal
+        isOpen={showIncompleteTasksModal}
+        onClose={() => setShowIncompleteTasksModal(false)}
+        tasks={incompleteTasks}
+        loading={loadingIncompleteTasks}
+        onSelectTask={handleImportIncompleteTask}
+        onSelectAll={handleImportAllIncompleteTasks}
+        onDismissTask={handleDismissIncompleteTask}
+        alreadyAddedTitles={tasks.map((t) => t.title)}
       />
 
     </div>
