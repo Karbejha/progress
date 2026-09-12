@@ -65,7 +65,6 @@ export const joinUserRooms = (user: User | null) => {
       role: user.role,
       directorateId: user.directorateId,
     });
-    console.log(`🔐 Socket room joined for ${user.fullName} (Role: ${user.role}) on socket ${s.id}`);
   } else {
     // If socket isn't connected yet, ensure connection attempt is active
     s.connect();
@@ -89,7 +88,6 @@ export const getSocket = (): Socket => {
 
   // If the server URL in settings changed, recreate socket connection to the new URL
   if (socket && cachedTargetUrl && cachedTargetUrl !== targetSocketUrl) {
-    console.log(`🔄 Server API URL changed from "${cachedTargetUrl}" to "${targetSocketUrl}". Reconnecting socket...`);
     try {
       socket.disconnect();
     } catch {}
@@ -100,7 +98,6 @@ export const getSocket = (): Socket => {
     cachedTargetUrl = targetSocketUrl;
     notifyStatusChange('connecting');
 
-    console.log(`🔌 Initializing Ports Real-Time Gateway to: ${targetSocketUrl}`);
     socket = io(targetSocketUrl, {
       path: '/socket.io',
       transports: ['polling', 'websocket'],
@@ -115,7 +112,6 @@ export const getSocket = (): Socket => {
     });
 
     socket.on('connect', () => {
-      console.log(`⚡ Connected to Ports Real-Time Gateway! ID: ${socket?.id} (URL: ${cachedTargetUrl})`);
       notifyStatusChange('connected');
 
       // Immediately join rooms for current user upon connection
@@ -125,16 +121,10 @@ export const getSocket = (): Socket => {
           role: currentJoinedUser.role,
           directorateId: currentJoinedUser.directorateId,
         });
-        console.log(`🔐 Auto-joined socket rooms for ${currentJoinedUser.fullName}`);
       }
     });
 
-    socket.io.engine.on('upgrade', (transport) => {
-      console.log('⬆️ Socket.IO transport upgraded to:', transport.name);
-    });
-
     socket.on('disconnect', (reason) => {
-      console.log('🔌 Disconnected from Real-Time Gateway:', reason);
       notifyStatusChange('disconnected', reason);
 
       if (reason === 'io server disconnect' || reason === 'transport close' || reason === 'ping timeout') {
@@ -145,21 +135,18 @@ export const getSocket = (): Socket => {
     });
 
     socket.on('connect_error', (error) => {
-      console.error('❌ Socket.IO connection error:', error.message);
       notifyStatusChange('error', error.message);
     });
 
     // Reconnect automatically when app returns from background / network reconnects
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && socket && !socket.connected) {
-        console.log('📱 App resumed from background - reconnecting real-time socket...');
         notifyStatusChange('connecting');
         socket.connect();
       }
     });
 
     window.addEventListener('online', () => {
-      console.log('🌐 Network online detected - reconnecting real-time socket...');
       if (socket && !socket.connected) {
         notifyStatusChange('connecting');
         socket.connect();

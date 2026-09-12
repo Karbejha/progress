@@ -86,7 +86,6 @@ export async function initNotificationService(): Promise<void> {
       await LocalNotifications.addListener(
         'localNotificationActionPerformed',
         (notificationAction) => {
-          console.log('📱 Notification tapped on Android:', notificationAction);
           const extra = notificationAction.notification.extra;
           if (extra) {
             window.dispatchEvent(
@@ -171,7 +170,6 @@ export async function notifyCircular(payload: AnnouncementNotificationPayload): 
           },
         ],
       });
-      console.log(`✅ Native Android notification scheduled for circular: ${payload.title}`);
     } else if ('Notification' in window && Notification.permission === 'granted') {
       const webNotif = new Notification(notifTitle, {
         body: bodyText,
