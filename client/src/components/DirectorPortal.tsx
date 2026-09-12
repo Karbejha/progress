@@ -43,6 +43,7 @@ import { IncompleteTasksModal } from './IncompleteTasksModal';
 import { CustomMonthPicker } from './CustomMonthPicker';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
 import { Announcement } from '../types';
+import { Capacitor } from '@capacitor/core';
 import { getSocket } from '../lib/socket';
 import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
 
@@ -203,6 +204,21 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [reportData, setReportData] = useState<AchievementsReportResponse | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [showInlineReportPreview, setShowInlineReportPreview] = useState(false);
+
+  // Detect mobile device (native Capacitor mobile app or small screen viewport)
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+
+  useEffect(() => {
+    const checkIsMobile = () => {
+      const isNative = typeof window !== 'undefined' && Capacitor.isNativePlatform();
+      const isSmall = typeof window !== 'undefined' && window.innerWidth < 768;
+      const isMobileUA = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      setIsMobileDevice(isNative || isSmall || isMobileUA);
+    };
+    checkIsMobile();
+    window.addEventListener('resize', checkIsMobile);
+    return () => window.removeEventListener('resize', checkIsMobile);
+  }, []);
 
   useEffect(() => {
     setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
@@ -2439,7 +2455,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       {activeTab === 'HISTORY' && (
         <div className="space-y-6">
           {/* Executive Achievements & Print Report Hub Card - Visible on Desktop/Computers only */}
-          <div className="hidden md:block bg-[#05261e] text-white p-6 sm:p-7 rounded-[28px] border border-[#0c3e35] shadow-xl space-y-6">
+          {!isMobileDevice && (
+            <div className="hidden md:block bg-[#05261e] text-white p-6 sm:p-7 rounded-[28px] border border-[#0c3e35] shadow-xl space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 pb-5">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 text-[#d4af37] flex items-center justify-center shadow-md shrink-0">
@@ -2680,7 +2697,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 )}
               </div>
             )}
-          </div>
+            </div>
+          )}
 
           {/* Daily Records History List */}
           <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
