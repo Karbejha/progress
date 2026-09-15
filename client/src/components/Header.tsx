@@ -607,6 +607,11 @@ export const Header: React.FC<HeaderProps> = ({
       }
     };
 
+    const handleTodoUpdated = () => {
+      loadTodosCount();
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+    };
+
     socket.on('connect', handleConnect);
     socket.on('plan:submitted', handlePlanSubmitted);
     socket.on('task:updated', handleTaskUpdated);
@@ -615,6 +620,7 @@ export const Header: React.FC<HeaderProps> = ({
     socket.on('announcement:created', handleAnnouncementCreated);
     socket.on('executive-task:created', handleExecutiveTaskCreated);
     socket.on('executive-task:updated', handleExecutiveTaskUpdated);
+    socket.on('todo:updated', handleTodoUpdated);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -625,6 +631,7 @@ export const Header: React.FC<HeaderProps> = ({
       socket.off('announcement:created', handleAnnouncementCreated);
       socket.off('executive-task:created', handleExecutiveTaskCreated);
       socket.off('executive-task:updated', handleExecutiveTaskUpdated);
+      socket.off('todo:updated', handleTodoUpdated);
     };
   }, [currentUser]);
 

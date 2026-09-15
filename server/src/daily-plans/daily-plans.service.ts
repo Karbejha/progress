@@ -8,6 +8,7 @@ export interface CreatePlanDto {
   planDate?: string;
   generalFocus?: string;
   tasks: {
+    id?: string;
     title: string;
     description?: string;
     priority?: Priority;
@@ -107,10 +108,100 @@ export class DailyPlansService {
     });
 
     if (existing) {
-      // Update general focus and recreate tasks
-      await this.prisma.planTask.deleteMany({
-        where: { dailyPlanId: existing.id },
-      });
+      const existingTasks = existing.tasks || [];
+      const existingMapById = new Map<string, (typeof existingTasks)[0]>();
+      existingTasks.forEach((t) => existingMapById.set(t.id, t));
+
+      const matchedExistingIds = new Set<string>();
+
+      for (let idx = 0; idx < dto.tasks.length; idx++) {
+        const t = dto.tasks[idx];
+        let existingTask: (typeof existingTasks)[0] | undefined;
+
+        if (t.id && existingMapById.has(t.id)) {
+          existingTask = existingMapById.get(t.id);
+        } else {
+          // Match by title among unmatched existing tasks
+          const normalizedTitle = t.title.trim().toLowerCase();
+          existingTask = existingTasks.find(
+            (et) => !matchedExistingIds.has(et.id) && et.title.trim().toLowerCase() === normalizedTitle
+          );
+        }
+
+        if (existingTask) {
+          matchedExistingIds.add(existingTask.id);
+
+          // Preserve completion info from existingTask unless explicitly provided with a positive value
+          const existingPct = existingTask.completionPercentage ?? 0;
+          const pct =
+            typeof t.completionPercentage === 'number' && t.completionPercentage > 0
+              ? Math.min(100, Math.max(0, t.completionPercentage))
+              : existingPct;
+
+          const status =
+            t.status && t.status !== TaskStatus.PENDING
+              ? t.status
+              : existingTask.status !== TaskStatus.PENDING
+              ? existingTask.status
+              : pct > 0
+              ? TaskStatus.IN_PROGRESS
+              : TaskStatus.PENDING;
+
+          const completionNote =
+            t.completionNote !== undefined && t.completionNote !== null && t.completionNote.trim().length > 0
+              ? t.completionNote
+              : existingTask.completionNote;
+
+          await this.prisma.planTask.update({
+            where: { id: existingTask.id },
+            data: {
+              title: t.title.trim(),
+              description: t.description !== undefined ? t.description : existingTask.description,
+              priority: t.priority || existingTask.priority,
+              estimatedHours: t.estimatedHours !== undefined ? t.estimatedHours : existingTask.estimatedHours,
+              displayOrder: idx + 1,
+              status,
+              completionPercentage: pct,
+              completionNote,
+              carriedFromTaskId: t.carriedFromTaskId || existingTask.carriedFromTaskId,
+            },
+          });
+        } else {
+          // New task added by director
+          const pct =
+            typeof t.completionPercentage === 'number' ? Math.min(100, Math.max(0, t.completionPercentage)) : 0;
+          const status = t.status || (pct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+
+          await this.prisma.planTask.create({
+            data: {
+              dailyPlanId: existing.id,
+              title: t.title.trim(),
+              description: t.description || '',
+              priority: t.priority || Priority.NORMAL,
+              estimatedHours: t.estimatedHours || 1.0,
+              displayOrder: idx + 1,
+              status,
+              completionPercentage: pct,
+              completionNote: t.completionNote || null,
+              carriedFromTaskId: t.carriedFromTaskId || null,
+            },
+          });
+        }
+      }
+
+      // Delete tasks that were explicitly removed by the director in the form
+      const idsToDelete = existingTasks
+        .map((t) => t.id)
+        .filter((id) => !matchedExistingIds.has(id));
+
+      if (idsToDelete.length > 0) {
+        await this.prisma.planTask.deleteMany({
+          where: {
+            id: { in: idsToDelete },
+            dailyPlanId: existing.id,
+          },
+        });
+      }
 
       const updated = await this.prisma.dailyPlan.update({
         where: { id: existing.id },
@@ -118,23 +209,6 @@ export class DailyPlansService {
           generalFocus: dto.generalFocus,
           status: PlanStatus.SUBMITTED,
           submittedAt: new Date(),
-          tasks: {
-            create: dto.tasks.map((t, idx) => {
-              const pct = typeof t.completionPercentage === 'number' ? Math.min(100, Math.max(0, t.completionPercentage)) : 0;
-              const status = t.status || (pct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
-              return {
-                title: t.title,
-                description: t.description || '',
-                priority: t.priority || Priority.NORMAL,
-                estimatedHours: t.estimatedHours || 1.0,
-                displayOrder: idx + 1,
-                status,
-                completionPercentage: pct,
-                completionNote: t.completionNote || null,
-                carriedFromTaskId: t.carriedFromTaskId || null,
-              };
-            }),
-          },
         },
         include: {
           tasks: {
@@ -153,6 +227,37 @@ export class DailyPlansService {
           directorate: true,
           dailySummary: true,
         },
+      });
+
+      // If summary exists, recalculate overall completion rate
+      if (updated.dailySummary) {
+        const allPlanTasks = await this.prisma.planTask.findMany({
+          where: { dailyPlanId: existing.id },
+        });
+        const allExecTasks = await this.prisma.executiveTask.findMany({
+          where: { directorateId },
+        });
+
+        const allPcts = [
+          ...allPlanTasks.map((t) => t.completionPercentage),
+          ...allExecTasks.map((t) => t.completionPercentage),
+        ];
+
+        if (allPcts.length > 0) {
+          const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
+          await this.prisma.dailySummary.update({
+            where: { id: updated.dailySummary.id },
+            data: { overallCompletionRate: Math.round(avg * 10) / 10 },
+          });
+        }
+      }
+
+      this.eventsGateway.emitPlanSubmitted({
+        directorateId: updated.directorateId,
+        directorateName: updated.directorate.name,
+        directorName: user.fullName,
+        tasksCount: updated.tasks.length,
+        planDate: updated.planDate.toISOString(),
       });
 
       return updated;
@@ -288,7 +393,93 @@ export class DailyPlansService {
       });
     }
 
+    // Sync task completion state to Director's personal agenda (UserTodo)
+    const isCompleted = updatedTask.status === TaskStatus.COMPLETED || updatedTask.completionPercentage === 100;
+    const targetUserId = task.dailyPlan.userId || user.id;
+    await this.syncPlanTaskToUserTodo(
+      targetUserId,
+      updatedTask.id,
+      updatedTask.title,
+      isCompleted,
+      updatedTask.priority,
+      updatedTask.description,
+    );
+    if (user.id && user.id !== targetUserId) {
+      await this.syncPlanTaskToUserTodo(
+        user.id,
+        updatedTask.id,
+        updatedTask.title,
+        isCompleted,
+        updatedTask.priority,
+        updatedTask.description,
+      );
+    }
+
     return updatedTask;
+  }
+
+  /**
+   * Synchronize completion of a daily plan task with the director's personal agenda (UserTodo)
+   */
+  async syncPlanTaskToUserTodo(
+    userId: string,
+    taskId: string,
+    title: string,
+    isCompleted: boolean,
+    priority: Priority,
+    description?: string | null,
+  ) {
+    try {
+      const cleanTitle = title.trim();
+      const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${taskId}]`;
+
+      // Find existing todo by taskId in description or by title (case-insensitive)
+      const existingTodos = await this.prisma.userTodo.findMany({
+        where: {
+          userId,
+          OR: [
+            { description: { contains: taskId } },
+            { title: { equals: cleanTitle, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (existingTodos.length > 0) {
+        for (const todo of existingTodos) {
+          const alreadyHasTag = todo.description?.includes(taskId);
+          let newDesc = todo.description || '';
+          if (!alreadyHasTag) {
+            newDesc = newDesc ? `${newDesc}\n${planTag}` : planTag;
+          }
+          await this.prisma.userTodo.update({
+            where: { id: todo.id },
+            data: {
+              isCompleted,
+              completedAt: isCompleted ? (todo.completedAt || new Date()) : null,
+              description: newDesc,
+            },
+          });
+        }
+      } else if (isCompleted) {
+        // If not in agenda and marked completed in DirectorPortal, create it as a completed todo
+        const desc = description?.trim() ? `${description.trim()}\n${planTag}` : planTag;
+        await this.prisma.userTodo.create({
+          data: {
+            userId,
+            title: cleanTitle,
+            description: desc,
+            priority: priority || Priority.NORMAL,
+            category: 'OFFICIAL',
+            isCompleted: true,
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      this.eventsGateway.emitTodoUpdated(userId);
+    } catch (err) {
+      console.error('Failed to sync plan task to user todo:', err);
+    }
   }
 
   async getDirectorHistory(user: any, limit = 30) {

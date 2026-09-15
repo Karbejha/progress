@@ -144,6 +144,11 @@ export class TodosService {
       data,
     });
 
+    if (dto.isCompleted !== undefined) {
+      await this.syncLinkedEntities(updated, updated.isCompleted);
+    }
+
+    this.eventsGateway.emitTodoUpdated(user.id);
     return updated;
   }
 
@@ -159,6 +164,8 @@ export class TodosService {
       },
     });
 
+    await this.syncLinkedEntities(updated, nextCompleted);
+    this.eventsGateway.emitTodoUpdated(user.id);
     return updated;
   }
 
@@ -243,10 +250,12 @@ export class TodosService {
     });
 
     // Keep the todo active in the user's agenda and tag it
-    const planTag = '[تم إدراجها في الخطة اليومية]';
+    const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${planTask.id}]`;
     const alreadyTagged = todo.description?.includes('الخطة اليومية');
     const updatedDesc = alreadyTagged
-      ? todo.description
+      ? todo.description.includes(planTask.id)
+        ? todo.description
+        : `${todo.description} [معرف المهمة: ${planTask.id}]`
       : todo.description
       ? `${todo.description}\n${planTag}`
       : planTag;
@@ -349,10 +358,11 @@ export class TodosService {
     }
 
     // Keep the todo active in the user's agenda and tag it
-    const execTag = '[تم تحويلها إلى تكليف تنفيذي رسمي]';
+    const taskIdsTag = createdTasks.map((t) => `[معرف التكليف: ${t.id}]`).join(' ');
+    const execTag = `[تم تحويلها إلى تكليف تنفيذي رسمي] ${taskIdsTag}`;
     const alreadyTagged = todo.description?.includes('تكليف تنفيذي');
     const updatedDesc = alreadyTagged
-      ? todo.description
+      ? `${todo.description} ${taskIdsTag}`
       : todo.description
       ? `${todo.description}\n${execTag}`
       : execTag;
@@ -366,10 +376,79 @@ export class TodosService {
       },
     });
 
+    this.eventsGateway.emitTodoUpdated(user.id);
+
     return {
       success: true,
       message: `تم تحويل المهمة بنجاح إلى تكليف تنفيذي وإسنادها لـ ${createdTasks.length} مديرية مع الاحتفاظ بها في الأجندة`,
       createdTasks,
     };
+  }
+
+  /**
+   * Sync completion of linked PlanTask or ExecutiveTask when todo completion is changed
+   */
+  private async syncLinkedEntities(todo: any, isCompleted: boolean) {
+    try {
+      // 1. Check if linked to a PlanTask
+      const planMatch = todo.description?.match(/\[معرف المهمة:\s*([^\]]+)\]/);
+      if (planMatch && planMatch[1]) {
+        const planTaskId = planMatch[1].trim();
+        const planTask = await this.prisma.planTask.findUnique({
+          where: { id: planTaskId },
+          include: { dailyPlan: { include: { directorate: true } } },
+        });
+        if (planTask) {
+          const nextStatus = isCompleted ? TaskStatus.COMPLETED : TaskStatus.IN_PROGRESS;
+          const nextPercentage = isCompleted ? 100 : 50;
+          await this.prisma.planTask.update({
+            where: { id: planTaskId },
+            data: {
+              status: nextStatus,
+              completionPercentage: nextPercentage,
+            },
+          });
+          this.eventsGateway.emitTaskUpdated({
+            directorateId: planTask.dailyPlan.directorateId,
+            directorateName: planTask.dailyPlan.directorate.name,
+            taskId: planTask.id,
+            taskTitle: planTask.title,
+            status: nextStatus,
+            completionPercentage: nextPercentage,
+          });
+        }
+      }
+
+      // 2. Check if linked to ExecutiveTask(s)
+      const execMatches = [...(todo.description?.matchAll(/\[معرف التكليف:\s*([^\]]+)\]/g) || [])];
+      for (const m of execMatches) {
+        if (m[1]) {
+          const execTaskId = m[1].trim();
+          const execTask = await this.prisma.executiveTask.findUnique({
+            where: { id: execTaskId },
+            include: { directorate: true },
+          });
+          if (execTask) {
+            const nextStatus = isCompleted ? TaskStatus.COMPLETED : TaskStatus.IN_PROGRESS;
+            const nextPercentage = isCompleted ? 100 : 50;
+            const updated = await this.prisma.executiveTask.update({
+              where: { id: execTaskId },
+              data: {
+                status: nextStatus,
+                completionPercentage: nextPercentage,
+              },
+            });
+            this.eventsGateway.emitExecutiveTaskUpdated({
+              task: updated,
+              directorateId: execTask.directorateId,
+              directorateName: execTask.directorate.name,
+              updatedByRole: 'DIRECTOR',
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to sync linked entities from todo:', err);
+    }
   }
 }

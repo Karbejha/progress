@@ -1,6 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Role, SummaryStatus, TaskStatus } from '@prisma/client';
+import { Role, SummaryStatus, TaskStatus, Priority } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
 
@@ -137,6 +137,21 @@ export class DailySummariesService {
       },
     });
 
+    // Synchronize all completed plan tasks and executive tasks to the director's agenda (UserTodo)
+    const completedPlanTasks = tasks.filter(
+      (t) => t.status === TaskStatus.COMPLETED || t.completionPercentage === 100,
+    );
+    for (const ct of completedPlanTasks) {
+      await this.syncTaskToUserTodo(user.id, ct.id, ct.title, true, ct.priority, ct.description, 'PLAN');
+    }
+
+    const completedExecTasks = execTasks.filter(
+      (t) => t.status === TaskStatus.COMPLETED || t.completionPercentage === 100,
+    );
+    for (const et of completedExecTasks) {
+      await this.syncTaskToUserTodo(user.id, et.id, et.title, true, et.priority, et.description, 'EXECUTIVE');
+    }
+
     this.eventsGateway.emitSummarySubmitted({
       directorateId: summary.directorateId,
       directorateName: summary.directorate.name,
@@ -147,6 +162,71 @@ export class DailySummariesService {
     });
 
     return summary;
+  }
+
+  /**
+   * Synchronize completion of a task with director's personal agenda (UserTodo)
+   */
+  async syncTaskToUserTodo(
+    userId: string,
+    taskId: string,
+    title: string,
+    isCompleted: boolean,
+    priority: Priority,
+    description?: string | null,
+    type: 'PLAN' | 'EXECUTIVE' = 'PLAN',
+  ) {
+    try {
+      const cleanTitle = title.trim();
+      const tag = type === 'PLAN'
+        ? `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${taskId}]`
+        : `[تم إسنادها كتكليف تنفيذي] [معرف التكليف: ${taskId}]`;
+
+      const existingTodos = await this.prisma.userTodo.findMany({
+        where: {
+          userId,
+          OR: [
+            { description: { contains: taskId } },
+            { title: { equals: cleanTitle, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (existingTodos.length > 0) {
+        for (const todo of existingTodos) {
+          const alreadyHasTag = todo.description?.includes(taskId);
+          let newDesc = todo.description || '';
+          if (!alreadyHasTag) {
+            newDesc = newDesc ? `${newDesc}\n${tag}` : tag;
+          }
+          await this.prisma.userTodo.update({
+            where: { id: todo.id },
+            data: {
+              isCompleted,
+              completedAt: isCompleted ? (todo.completedAt || new Date()) : null,
+              description: newDesc,
+            },
+          });
+        }
+      } else if (isCompleted) {
+        const desc = description?.trim() ? `${description.trim()}\n${tag}` : tag;
+        await this.prisma.userTodo.create({
+          data: {
+            userId,
+            title: cleanTitle,
+            description: desc,
+            priority: priority || Priority.NORMAL,
+            category: type === 'PLAN' ? 'OFFICIAL' : 'FOLLOWUP',
+            isCompleted: true,
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      this.eventsGateway.emitTodoUpdated(userId);
+    } catch (err) {
+      console.error('Failed to sync summary task to user todo:', err);
+    }
   }
 
   async getMySummary(user: any, dateStr?: string) {

@@ -113,6 +113,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [generalFocus, setGeneralFocus] = useState(() => initPlanDraft?.generalFocus || '');
   const [tasks, setTasks] = useState<
     {
+      id?: string;
       title: string;
       description: string;
       priority: Priority;
@@ -531,7 +532,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         completionPercentage: local.completionPercentage,
         completionNote: local.completionNote,
       });
-      showToast('تم إرسال تقرير إنجاز التكليف للمدير العام بنجاح!');
+      showToast('تم إرسال تقرير إنجاز التكليف وتحديثه في أجندة المهام اليومية بنجاح!');
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
       setTaskLocalState((prev) => ({
         ...prev,
         [taskId]: { ...prev[taskId], isModified: false },
@@ -574,6 +576,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         if (currentPlan.tasks && currentPlan.tasks.length > 0) {
           setTasks(
             currentPlan.tasks.map((t) => ({
+              id: t.id,
               title: t.title,
               description: t.description || '',
               priority: t.priority,
@@ -963,6 +966,23 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         tasks: validTasks,
       });
       setPlan(res);
+      if (res?.tasks && res.tasks.length > 0) {
+        setTasks(
+          res.tasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description || '',
+            priority: t.priority,
+            estimatedHours: t.estimatedHours,
+            carriedFromTaskId: t.carriedFromTaskId,
+            carriedFromDate: t.carriedFromTask?.dailyPlan?.planDate,
+            initialCompletionPercentage: t.carriedFromTask?.completionPercentage ?? t.completionPercentage,
+            completionPercentage: t.completionPercentage,
+            status: t.status,
+            completionNote: t.completionNote,
+          }))
+        );
+      }
       // Clear plan draft
       localStorage.removeItem(planDraftKey);
       setPlanDraftSavedTime(null);
@@ -1109,12 +1129,32 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         });
       }
 
+      // Keep tasks state in sync so returning to PLAN tab retains progress
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: taskState.status,
+                completionPercentage: taskState.completionPercentage,
+                completionNote: taskState.completionNote,
+              }
+            : t
+        )
+      );
+
       setTrackedTasks((prev) => ({
         ...prev,
         [taskId]: { ...prev[taskId], isModified: false, isSaving: false },
       }));
 
-      showToast('تم حفظ حالة المهمة بنجاح وإشعار المدير العام');
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+
+      showToast(
+        taskState.status === 'COMPLETED' || taskState.completionPercentage === 100
+          ? 'تم توثيق إنجاز المهمة بنجاح وتحديثها كـ مكتملة في أجندة المهام اليومية'
+          : 'تم حفظ حالة المهمة بنجاح وإشعار المدير العام'
+      );
     } catch (err) {
       console.error('Failed to update task', err);
       alert('حدث خطأ أثناء حفظ حالة المهمة');
@@ -1160,6 +1200,21 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         });
       }
 
+      // Keep tasks state in sync so returning to PLAN tab retains progress
+      setTasks((prev) =>
+        prev.map((t) => {
+          const mod = t.id ? trackedTasks[t.id] : undefined;
+          return mod && mod.isModified
+            ? {
+                ...t,
+                status: mod.status,
+                completionPercentage: mod.completionPercentage,
+                completionNote: mod.completionNote,
+              }
+            : t;
+        })
+      );
+
       setTrackedTasks((prev) => {
         const updated = { ...prev };
         modifiedTaskIds.forEach((id) => {
@@ -1170,7 +1225,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         return updated;
       });
 
-      showToast(`تم حفظ تحديثات ${modifiedTaskIds.length} مهام بنجاح!`);
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      showToast(`تم حفظ تحديثات ${modifiedTaskIds.length} مهام بنجاح ومزامنتها مع الأجندة!`);
     } catch (err) {
       console.error('Failed to save all tasks', err);
       alert('حدث خطأ أثناء حفظ تعديلات المهام');
@@ -1230,6 +1286,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         ? cleanAchievements
         : completedTasks.map((t) => t.title);
 
+      const taskUpdates = planTasksList.map((t) => {
+        const mod = trackedTasks[t.id];
+        return {
+          taskId: t.id,
+          status: (mod?.status ?? t.status) as any,
+          completionPercentage: mod?.completionPercentage ?? t.completionPercentage,
+          completionNote: mod?.completionNote ?? t.completionNote,
+        };
+      });
+
       await api.submitDailySummary({
         summaryText: finalSummaryText,
         achievements: finalAchievements,
@@ -1237,14 +1303,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         directorNotes: directorNotes.trim() && directorNotes.trim() !== challenges.trim() ? directorNotes.trim() : undefined,
         urgentFlag,
         tomorrowPlanPreview: tomorrowPlanPreview.trim() || undefined,
+        taskUpdates,
       });
 
       // Clear local summary draft
       localStorage.removeItem(summaryDraftKey);
       setSummaryDraftSavedTime(null);
 
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
       loadTodayData();
-      showToast(hasSummary ? 'تم حفظ وتحديث ملخص الإنجاز بنجاح!' : 'تم إرسال ملخص الإنجاز المسائي للمدير العام بنجاح!');
+      showToast(hasSummary ? 'تم حفظ وتحديث ملخص الإنجاز وتأكيد الإنجاز في الأجندة بنجاح!' : 'تم إرسال ملخص الإنجاز المسائي وتوثيق كافة المهام المنجزة في الأجندة بنجاح!');
     } catch (err) {
       console.error('Failed to submit summary', err);
       alert('حدث خطأ أثناء إرسال ملخص الإنجاز');
@@ -1655,6 +1723,22 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                         </div>
                         <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md font-semibold">
                           تراكمي مستمر
+                        </span>
+                      </div>
+                    )}
+
+                    {typeof task.completionPercentage === 'number' && task.completionPercentage > 0 && (
+                      <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>نسبة الإنجاز المحققة اليوم:</span>
+                          <span className="text-emerald-700 font-extrabold">{task.completionPercentage}%</span>
+                          {task.status === 'COMPLETED' && (
+                            <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold">مكتملة</span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md font-semibold">
+                          محفوظة ومستمرة
                         </span>
                       </div>
                     )}

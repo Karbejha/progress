@@ -157,6 +157,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.logger.log(`Broadcasting executive-task:deleted for task ${payload.taskId} to targeted rooms`);
     this.server.to(`room:directorate_${payload.directorateId}`).to('room:executive').emit('executive-task:deleted', payload);
   }
+
+  emitTodoUpdated(userId: string) {
+    this.logger.log(`Broadcasting todo:updated for user ${userId}`);
+    this.server.to(`room:user_${userId}`).emit('todo:updated', { userId });
+  }
 }
 
 

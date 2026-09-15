@@ -342,6 +342,7 @@ class ApiService {
     planDate?: string;
     generalFocus?: string;
     tasks: {
+      id?: string;
       title: string;
       description?: string;
       priority?: string;

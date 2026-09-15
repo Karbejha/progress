@@ -346,8 +346,93 @@ export class ExecutiveTasksService {
       });
     }
 
+    // Sync task completion state to Director's personal agenda (UserTodo)
+    const isCompleted = updated.status === TaskStatus.COMPLETED || updated.completionPercentage === 100;
+    const targetUserIds = new Set<string>();
+    if (user.id) targetUserIds.add(user.id);
+    if (updated.assignedToUserId) targetUserIds.add(updated.assignedToUserId);
+
+    // Also find director of this directorate
+    const dirDirector = await this.prisma.user.findFirst({
+      where: { directorateId: updated.directorateId, role: Role.DIRECTOR },
+    });
+    if (dirDirector) targetUserIds.add(dirDirector.id);
+
+    for (const uId of targetUserIds) {
+      await this.syncExecutiveTaskToUserTodo(
+        uId,
+        updated.id,
+        updated.title,
+        isCompleted,
+        updated.priority,
+        updated.description,
+      );
+    }
+
     const [enriched] = await this.enrichTasksWithCoTasks([updated]);
     return enriched;
+  }
+
+  /**
+   * Synchronize completion of an executive task with director's personal agenda (UserTodo)
+   */
+  async syncExecutiveTaskToUserTodo(
+    userId: string,
+    taskId: string,
+    title: string,
+    isCompleted: boolean,
+    priority: Priority,
+    description?: string | null,
+  ) {
+    try {
+      const cleanTitle = title.trim();
+      const execTag = `[تم إسنادها كتكليف تنفيذي] [معرف التكليف: ${taskId}]`;
+
+      const existingTodos = await this.prisma.userTodo.findMany({
+        where: {
+          userId,
+          OR: [
+            { description: { contains: taskId } },
+            { title: { equals: cleanTitle, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (existingTodos.length > 0) {
+        for (const todo of existingTodos) {
+          const alreadyHasTag = todo.description?.includes(taskId);
+          let newDesc = todo.description || '';
+          if (!alreadyHasTag) {
+            newDesc = newDesc ? `${newDesc}\n${execTag}` : execTag;
+          }
+          await this.prisma.userTodo.update({
+            where: { id: todo.id },
+            data: {
+              isCompleted,
+              completedAt: isCompleted ? (todo.completedAt || new Date()) : null,
+              description: newDesc,
+            },
+          });
+        }
+      } else if (isCompleted) {
+        const desc = description?.trim() ? `${description.trim()}\n${execTag}` : execTag;
+        await this.prisma.userTodo.create({
+          data: {
+            userId,
+            title: cleanTitle,
+            description: desc,
+            priority: priority || Priority.NORMAL,
+            category: 'FOLLOWUP',
+            isCompleted: true,
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      this.eventsGateway.emitTodoUpdated(userId);
+    } catch (err) {
+      console.error('Failed to sync executive task to user todo:', err);
+    }
   }
 
   async deleteTask(user: any, id: string, query?: { deleteAllInGroup?: boolean | string }) {

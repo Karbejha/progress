@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { User, UserTodo, Priority, TodoCategory, Directorate } from '../types';
 import { api } from '../services/api';
+import { getSocket } from '../lib/socket';
 import { CustomDatePicker } from './CustomDatePicker';
 import {
   CheckCircle2,
@@ -67,6 +68,8 @@ export const getCleanTodoDescription = (desc?: string | null): string => {
     .replace(/\[تم إدراجها في الخطة اليومية\]/g, '')
     .replace(/\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g, '')
     .replace(/\[تم إسنادها كتكليف تنفيذي\]/g, '')
+    .replace(/\[معرف المهمة:\s*[^\]]+\]/g, '')
+    .replace(/\[معرف التكليف:\s*[^\]]+\]/g, '')
     .trim();
 };
 
@@ -212,6 +215,23 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     if (isGeneralDirector) {
       loadDirectorates();
     }
+
+    const handleTodosUpdated = () => {
+      loadTodos();
+    };
+
+    window.addEventListener('ports:todos_updated', handleTodosUpdated);
+    const s = getSocket();
+    if (s) {
+      s.on('todo:updated', handleTodosUpdated);
+    }
+
+    return () => {
+      window.removeEventListener('ports:todos_updated', handleTodosUpdated);
+      if (s) {
+        s.off('todo:updated', handleTodosUpdated);
+      }
+    };
   }, []);
 
   const loadDirectorates = async () => {
@@ -817,6 +837,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       const tags: string[] = [];
       if (rawDesc.includes('الخطة اليومية')) tags.push('[تم إدراجها في الخطة اليومية]');
       if (rawDesc.includes('تكليف تنفيذي')) tags.push('[تم تحويلها إلى تكليف تنفيذي رسمي]');
+      const matchPlan = rawDesc.match(/\[معرف المهمة:\s*[^\]]+\]/);
+      if (matchPlan) tags.push(matchPlan[0]);
+      const matchExecs = rawDesc.match(/\[معرف التكليف:\s*[^\]]+\]/g);
+      if (matchExecs) tags.push(...matchExecs);
 
       const cleanDesc = editDesc.trim();
       let finalDesc: string | undefined = cleanDesc || undefined;
@@ -1697,21 +1721,37 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                             {/* Badges for Plan / Executive Linking */}
                             {todo.description?.includes('الخطة اليومية') && (
                               <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-xs"
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
+                                  todo.isCompleted
+                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                }`}
                                 title="هذه المهمة مدرجة في الخطة اليومية للمديرية"
                               >
-                                <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
-                                <span>مدرجة بالخطة اليومية</span>
+                                {todo.isCompleted ? (
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-700 shrink-0" />
+                                ) : (
+                                  <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
+                                )}
+                                <span>{todo.isCompleted ? 'مكتملة بالخطة اليومية' : 'مدرجة بالخطة اليومية'}</span>
                               </span>
                             )}
 
                             {todo.description?.includes('تكليف تنفيذي') && (
                               <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-50 text-amber-900 border border-amber-300 shadow-xs"
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
+                                  todo.isCompleted
+                                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                    : 'bg-amber-50 text-amber-900 border-amber-300'
+                                }`}
                                 title="تم إصدار تكليف تنفيذي رسمي بهذه المهمة"
                               >
-                                <Layers className="w-3 h-3 text-amber-700 shrink-0" />
-                                <span>مُكلّفة رسمياً</span>
+                                {todo.isCompleted ? (
+                                  <CheckCircle2 className="w-3 h-3 text-amber-700 shrink-0" />
+                                ) : (
+                                  <Layers className="w-3 h-3 text-amber-700 shrink-0" />
+                                )}
+                                <span>{todo.isCompleted ? 'مكتملة كتكليف تنفيذي' : 'مُكلّفة رسمياً'}</span>
                               </span>
                             )}
 
