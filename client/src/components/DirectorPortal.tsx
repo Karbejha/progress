@@ -40,6 +40,7 @@ import {
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { IncompleteTasksModal } from './IncompleteTasksModal';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { CustomMonthPicker } from './CustomMonthPicker';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
 import { Announcement } from '../types';
@@ -696,7 +697,90 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   };
 
   const handleRemoveTask = (index: number) => {
-    setTasks(tasks.filter((_, idx) => idx !== index));
+    setTasks((prev) => {
+      const remaining = prev.filter((_, idx) => idx !== index);
+      return remaining.length > 0
+        ? remaining
+        : [{ title: '', description: '', priority: 'NORMAL', estimatedHours: 1.5 }];
+    });
+  };
+
+  // Delete Plan Task Confirmation Modal State & Handlers
+  const [deleteConfirmTask, setDeleteConfirmTask] = useState<{
+    index: number;
+    id?: string;
+    title: string;
+    isSavedOnServer: boolean;
+  } | null>(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
+
+  const handleDeleteTaskClick = (index: number) => {
+    const task = tasks[index];
+    if (!task) return;
+
+    // Check if this task is already saved on server in plan
+    const isSavedOnServer = Boolean(task.id && plan?.tasks?.some((t) => t.id === task.id));
+
+    // If it's an unsaved blank row, remove immediately without modal
+    if (!task.title.trim() && !isSavedOnServer) {
+      handleRemoveTask(index);
+      return;
+    }
+
+    setDeleteConfirmTask({
+      index,
+      id: task.id,
+      title: task.title.trim() || 'مهمة بدون عنوان',
+      isSavedOnServer,
+    });
+  };
+
+  const handleConfirmDeleteTask = async () => {
+    if (!deleteConfirmTask) return;
+    const { index, id, title, isSavedOnServer } = deleteConfirmTask;
+
+    try {
+      setIsDeletingTask(true);
+
+      if (isSavedOnServer && id) {
+        await api.deletePlanTask(id);
+
+        // Update in-memory plan
+        if (plan) {
+          setPlan({
+            ...plan,
+            tasks: plan.tasks.filter((t) => t.id !== id),
+          });
+        }
+
+        // Clean up trackedTasks
+        setTrackedTasks((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+
+        window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+        showToast(`تم حذف المهمة "${title}" نهائياً من خطة اليوم وتحديث السجل!`);
+      } else {
+        showToast(`تمت إزالة المهمة "${title}" من المسودة`);
+      }
+
+      // Remove from tasks list; if it was the last task, leave an empty row
+      setTasks((prev) => {
+        const remaining = prev.filter((_, idx) => idx !== index);
+        return remaining.length > 0
+          ? remaining
+          : [{ title: '', description: '', priority: 'NORMAL', estimatedHours: 1.5 }];
+      });
+
+      setDeleteConfirmTask(null);
+    } catch (err: any) {
+      console.error('Failed to delete task', err);
+      alert(err?.message || 'حدث خطأ أثناء حذف المهمة');
+    } finally {
+      setIsDeletingTask(false);
+    }
   };
 
   const handleTaskChange = (index: number, field: string, value: any) => {
@@ -1635,6 +1719,20 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             )}
           </div>
 
+          {/* Daily General Focus (Optional) */}
+          <div>
+            <label className="block text-xs font-bold text-[#0c3e35] mb-1.5">
+              الهدف أو التركيز العام لليوم (اختياري):
+            </label>
+            <input
+              type="text"
+              value={generalFocus}
+              onChange={(e) => setGeneralFocus(e.target.value)}
+              placeholder="مثال: متابعة التفتيش البحري الدوري وصيانة التجهيزات الفنية..."
+              className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium shadow-xs"
+            />
+          </div>
+
           {/* Dynamic Tasks List */}
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1785,10 +1883,10 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                         )}
                       </button>
 
-                      {tasks.length > 1 && (
+                      {(tasks.length > 1 || task.title.trim().length > 0 || Boolean(task.id)) && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveTask(idx)}
+                          onClick={() => handleDeleteTaskClick(idx)}
                           className="p-2 rounded-xl text-red-600 hover:bg-red-50 transition cursor-pointer"
                           title="حذف المهمة"
                         >
@@ -1847,7 +1945,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <Send className="w-4 h-4" />
-              <span>{saving ? 'جاري الحفظ والإرسال...' : 'اعتماد وإرسال الخطة الصباحية للمدير العام'}</span>
+              <span>{saving ? 'جاري الحفظ والإرسال...' : (plan ? 'حفظ وتحديث الخطة الصباحية' : 'اعتماد وإرسال الخطة الصباحية للمدير العام')}</span>
             </button>
           </div>
         </form>
@@ -3033,6 +3131,24 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         onSelectAll={handleImportAllIncompleteTasks}
         onDismissTask={handleDismissIncompleteTask}
         alreadyAddedTitles={tasks.map((t) => t.title)}
+      />
+
+      {/* Modal Dialog: Confirm Delete Plan Task (Reusable & Mobile-Optimized) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(deleteConfirmTask)}
+        onClose={() => setDeleteConfirmTask(null)}
+        onConfirm={handleConfirmDeleteTask}
+        title="حذف المهمة من الخطة"
+        description={
+          deleteConfirmTask?.isSavedOnServer
+            ? 'سيتم حذف هذه المهمة نهائياً من خطة اليوم المعتمدة وتحديث السجل فوراً لدى الإدارة العامة.'
+            : 'هل أنت متأكد من حذف هذه المهمة من مسودة الخطة اليومية؟'
+        }
+        itemName={deleteConfirmTask?.title}
+        itemBadge={deleteConfirmTask?.isSavedOnServer ? 'مهمة معتمدة في الخطة اليومية' : undefined}
+        confirmText="تأكيد الحذف المباشر"
+        cancelText="إلغاء"
+        isLoading={isDeletingTask}
       />
 
     </div>

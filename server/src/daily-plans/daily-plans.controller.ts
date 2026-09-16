@@ -80,4 +80,12 @@ export class DailyPlansController {
   ) {
     return this.dailyPlansService.updateTaskStatus(req.user, taskId, dto);
   }
+
+  @Delete('tasks/:taskId')
+  deletePlanTask(
+    @Request() req: any,
+    @Param('taskId') taskId: string,
+  ) {
+    return this.dailyPlansService.deletePlanTask(req.user, taskId);
+  }
 }

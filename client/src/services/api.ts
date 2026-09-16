@@ -369,6 +369,12 @@ class ApiService {
     });
   }
 
+  async deletePlanTask(taskId: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/daily-plans/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async getMyTodaySummary(dateStr?: string): Promise<DailySummary | null> {
     const query = dateStr ? `?date=${dateStr}` : '';
     return this.request<DailySummary | null>(`/daily-summaries/my-today${query}`);

@@ -5,6 +5,7 @@ import { User, UserTodo, Priority, TodoCategory, Directorate } from '../types';
 import { api } from '../services/api';
 import { getSocket } from '../lib/socket';
 import { CustomDatePicker } from './CustomDatePicker';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import {
   CheckCircle2,
   Clock,
@@ -2297,50 +2298,18 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         </div>
       )}
 
-      {/* Modal Dialog: Confirm Delete Todo (Replaces native browser confirm) */}
-      {deleteConfirmTodo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-sm flex flex-col rounded-2xl sm:rounded-3xl bg-white border border-[#d2d1c9] shadow-2xl p-5 overflow-hidden animate-in zoom-in-95 duration-200 text-right">
-            <div className="flex items-start gap-3">
-              <span className="flex size-10 items-center justify-center rounded-2xl bg-red-50 text-red-600 border border-red-200 shrink-0 shadow-xs">
-                <Trash2 className="w-5 h-5" />
-              </span>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-black text-[#05261e]">حذف المهمة</h3>
-                <p className="text-xs text-[#5e736e] mt-1">
-                  هل أنت متأكد من رغبتك في حذف المهمة من أجندتك؟
-                </p>
-                <p className="text-xs font-black text-red-700 bg-red-50 p-2.5 rounded-xl border border-red-200 mt-2 truncate">
-                  {deleteConfirmTodo.title}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-4 mt-3 border-t border-[#d2d1c9]/60 shrink-0">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmTodo(null)}
-                disabled={isDeletingTodo}
-                className="px-4 py-2 text-xs font-bold rounded-xl border border-[#d2d1c9] text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={isDeletingTodo}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-extrabold rounded-xl bg-red-600 text-white hover:bg-red-700 transition shadow-xs disabled:opacity-50 cursor-pointer"
-              >
-                {isDeletingTodo ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-                <span>نعم، احذف المهمة</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Dialog: Confirm Delete Todo (Reusable & Mobile-Optimized) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(deleteConfirmTodo)}
+        onClose={() => setDeleteConfirmTodo(null)}
+        onConfirm={handleConfirmDelete}
+        title="حذف المهمة من الأجندة"
+        description="هل أنت متأكد من رغبتك في حذف هذه المهمة من أجندتك الخاصة؟"
+        itemName={deleteConfirmTodo?.title}
+        confirmText="نعم، احذف المهمة"
+        cancelText="إلغاء"
+        isLoading={isDeletingTodo}
+      />
 
       {/* Mobile Touch Drag Floating Preview Clone (Microsoft To Do Style) */}
       {isTouchDragging && touchGhostTodo && (

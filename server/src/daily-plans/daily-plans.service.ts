@@ -482,6 +482,62 @@ export class DailyPlansService {
     }
   }
 
+  async deletePlanTask(user: any, taskId: string) {
+    const task = await this.prisma.planTask.findUnique({
+      where: { id: taskId },
+      include: { dailyPlan: { include: { directorate: true } } },
+    });
+
+    if (!task) {
+      throw new NotFoundException('المهمة غير موجودة');
+    }
+
+    if (user.role === Role.DIRECTOR && task.dailyPlan.directorateId !== user.directorateId) {
+      throw new ForbiddenException('غير مصرح لك بحذف مهام مديرية أخرى');
+    }
+
+    await this.prisma.planTask.delete({
+      where: { id: taskId },
+    });
+
+    // Recalculate summary completion rate if summary exists
+    const allPlanTasks = await this.prisma.planTask.findMany({
+      where: { dailyPlanId: task.dailyPlanId },
+    });
+    const allExecTasks = await this.prisma.executiveTask.findMany({
+      where: { directorateId: task.dailyPlan.directorateId },
+    });
+
+    const allPcts = [
+      ...allPlanTasks.map((t) => t.completionPercentage),
+      ...allExecTasks.map((t) => t.completionPercentage),
+    ];
+
+    if (allPcts.length > 0) {
+      const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
+      const summary = await this.prisma.dailySummary.findUnique({
+        where: { dailyPlanId: task.dailyPlanId },
+      });
+      if (summary) {
+        await this.prisma.dailySummary.update({
+          where: { id: summary.id },
+          data: { overallCompletionRate: Math.round(avg * 10) / 10 },
+        });
+      }
+    }
+
+    this.eventsGateway.emitTaskUpdated({
+      directorateId: task.dailyPlan.directorateId,
+      directorateName: task.dailyPlan.directorate.name,
+      taskId: task.id,
+      taskTitle: task.title,
+      status: TaskStatus.CANCELLED,
+      completionPercentage: 0,
+    });
+
+    return { success: true, message: 'تم حذف المهمة من الخطة بنجاح' };
+  }
+
   async getDirectorHistory(user: any, limit = 30) {
     if (!user.directorateId) {
       throw new ForbiddenException('المستخدم غير مرتبط بمديرية');

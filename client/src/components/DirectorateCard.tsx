@@ -179,16 +179,36 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
           </div>
         </div>
 
-        {/* Daily Focus / Executive Tasks Preview / Awaiting Notice */}
+        {/* Daily Focus / Tasks / Executive Tasks Preview / Awaiting Notice */}
         {item.generalFocus ? (
           <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
             <span className="text-[#0c3e35] font-bold ml-1">التركيز:</span>
             {item.generalFocus}
           </div>
-        ) : item.executiveTasks && item.executiveTasks.length > 0 ? (
+        ) : (item.tasks && item.tasks.length > 0) || (item.executiveTasks && item.executiveTasks.length > 0) ? (
           <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
-            <span className="text-[#0c3e35] font-bold ml-1">التكليفات:</span>
-            {item.executiveTasks.map((t) => t.title).join(' • ')}
+            {item.executiveTasks && item.executiveTasks.length > 0 ? (
+              <>
+                <span className="text-[#0c3e35] font-bold ml-1">التكليفات:</span>
+                {item.executiveTasks.map((t) => t.title).join(' • ')}
+                {item.tasks && item.tasks.length > 0 && ` • ${item.tasks.map((t) => t.title).join(' • ')}`}
+              </>
+            ) : (
+              <>
+                <span className="text-[#0c3e35] font-bold ml-1">المهام:</span>
+                {item.tasks!.map((t) => t.title).join(' • ')}
+              </>
+            )}
+          </div>
+        ) : item.hasPlan ? (
+          <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>تم تسجيل واعتماد الخطة الصباحية</span>
+          </div>
+        ) : item.hasSummary ? (
+          <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
+            <span className="text-[#0c3e35] font-bold ml-1">ملخص الإنجاز:</span>
+            {item.summaryText || 'تم توثيق الإنجاز اليومي'}
           </div>
         ) : (
           <div className="p-2.5 rounded-xl bg-amber-50/50 border border-dashed border-amber-200/80 mb-4 text-xs flex items-center justify-between">

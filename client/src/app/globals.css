@@ -242,17 +242,37 @@ body {
 }
 
 /* Mobile Touch & Native App Polish */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Elegant brand text selection across entire app */
+::selection {
+  background-color: rgba(212, 175, 55, 0.3) !important;
+  color: inherit !important;
+}
+
+::-moz-selection {
+  background-color: rgba(212, 175, 55, 0.3) !important;
+  color: inherit !important;
+}
+
 html, body {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   overscroll-behavior-y: none;
 }
 
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 button, a, select {
   touch-action: manipulation;
 }
 
-input, textarea {
+input, textarea, [contenteditable="true"], .selectable {
   touch-action: auto;
   -webkit-user-select: text !important;
   user-select: text !important;
@@ -263,5 +283,6 @@ header, nav, button, .no-select {
   -webkit-user-select: none;
   user-select: none;
 }
+
 
 
