@@ -19,6 +19,7 @@ import {
   Phone,
   Mail,
   UserCheck,
+  Eye,
 } from 'lucide-react';
 
 interface UsersManagementModalProps {
@@ -349,7 +350,13 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                         <td className="p-3.5 font-bold text-[#0c3e35]">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-lg bg-[#edece4] text-[#0c3e35] flex items-center justify-center font-bold">
-                              {isExec ? <Shield className="w-4 h-4 text-[#d4af37]" /> : <Ship className="w-4 h-4 text-[#0c3e35]" />}
+                              {isExec ? (
+                                <Shield className="w-4 h-4 text-[#d4af37]" />
+                              ) : u.role === 'OBSERVER' ? (
+                                <Eye className="w-4 h-4 text-[#0c3e35]" />
+                              ) : (
+                                <Ship className="w-4 h-4 text-[#0c3e35]" />
+                              )}
                             </div>
                             <div>
                               <div>
@@ -394,6 +401,8 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                             className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                               isExec
                                 ? 'bg-[#d4af37]/20 text-[#8a7a52] border-[#d4af37]/40'
+                                : u.role === 'OBSERVER'
+                                ? 'bg-cyan-50 text-cyan-800 border-cyan-300'
                                 : 'bg-[#0c3e35]/10 text-[#0c3e35] border-[#0c3e35]/20'
                             }`}
                           >
@@ -401,6 +410,8 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                               ? 'مدير عام'
                               : u.role === 'ASSISTANT_DIRECTOR'
                               ? 'معاون مدير عام'
+                              : u.role === 'OBSERVER'
+                              ? 'مراقب'
                               : 'مدير مديرية'}
                           </span>
                         </td>
@@ -567,6 +578,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                     <option value="DIRECTOR">مدير مديرية / مكتب</option>
                     <option value="ASSISTANT_DIRECTOR">معاون المدير العام</option>
                     <option value="GENERAL_DIRECTOR">مدير عام</option>
+                    <option value="OBSERVER">مراقب (اطلاع ومراقبة فقط)</option>
                   </select>
                 </div>
                 {form.role === 'DIRECTOR' && (

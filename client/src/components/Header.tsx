@@ -36,6 +36,7 @@ import {
   Activity,
   Info,
   ListTodo,
+  Eye,
 } from 'lucide-react';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { UsersManagementModal } from './UsersManagementModal';
@@ -106,6 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const isGeneralDirector =
     currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+  const isObserver = currentUser?.role === 'OBSERVER';
 
   // Real-time socket status listener
   useEffect(() => {
@@ -350,7 +352,7 @@ export const Header: React.FC<HeaderProps> = ({
               console.debug('Failed to load executive tasks in header', err);
             }
           }
-        } else if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR') {
+        } else if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR' || currentUser.role === 'OBSERVER') {
           // 1. Fetch Executive Overview (Today's submitted plans and summaries)
           try {
             const overview = await api.getExecutiveOverview();
@@ -470,7 +472,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handlePlanSubmitted = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (!isExec) return;
 
       addNotif({
@@ -484,7 +486,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleTaskUpdated = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (!isExec) return;
 
       addNotif({
@@ -497,7 +499,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleSummarySubmitted = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (!isExec) return;
 
       addNotif({
@@ -594,7 +596,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleExecutiveTaskUpdated = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
+      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (isExec && data.updatedByRole === 'DIRECTOR') {
         addNotif({
           id: `exec-task-update-${data.task?.id || Math.random()}-${new Date().getTime()}`,
@@ -963,7 +965,13 @@ export const Header: React.FC<HeaderProps> = ({
                       className="flex items-center gap-1.5 sm:gap-2.5 bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d2d1c9]/20 hover:border-[#d4af37]/40 rounded-lg sm:rounded-xl px-2 sm:px-2.5 h-8 sm:h-10 transition cursor-pointer shadow-sm active:scale-95"
                     >
                       <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg bg-[#05261e] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] font-bold shrink-0 relative">
-                        {isGeneralDirector ? <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#d4af37]" /> : <Ship className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#8daaa2]" />}
+                        {isGeneralDirector ? (
+                          <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#d4af37]" />
+                        ) : isObserver ? (
+                          <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#d4af37]" />
+                        ) : (
+                          <Ship className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#8daaa2]" />
+                        )}
                         {/* Live Socket Status Dot on Mobile */}
                         <span
                           className={`sm:hidden absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#05261e] ${

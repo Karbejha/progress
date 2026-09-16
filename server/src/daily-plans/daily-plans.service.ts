@@ -330,6 +330,10 @@ export class DailyPlansService {
       throw new NotFoundException('المهمة غير موجودة');
     }
 
+    if (user.role === Role.OBSERVER) {
+      throw new ForbiddenException('حساب المراقب مخصص للاطلاع فقط ولا يمتلك صلاحية تعديل المهام');
+    }
+
     // Check ownership
     if (user.role === Role.DIRECTOR && task.dailyPlan.directorateId !== user.directorateId) {
       throw new ForbiddenException('غير مصرح لك بتعديل مهام مديرية أخرى');
@@ -490,6 +494,10 @@ export class DailyPlansService {
 
     if (!task) {
       throw new NotFoundException('المهمة غير موجودة');
+    }
+
+    if (user.role === Role.OBSERVER) {
+      throw new ForbiddenException('حساب المراقب مخصص للاطلاع فقط ولا يمتلك صلاحية حذف المهام');
     }
 
     if (user.role === Role.DIRECTOR && task.dailyPlan.directorateId !== user.directorateId) {
@@ -733,7 +741,7 @@ export class DailyPlansService {
         throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
       }
       targetDirectorateId = user.directorateId;
-    } else if (user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR) {
+    } else if (user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR || user.role === Role.OBSERVER) {
       targetDirectorateId = query.directorateId || user.directorateId || null;
       if (!targetDirectorateId) {
         const firstDir = await this.prisma.directorate.findFirst({ orderBy: { displayOrder: 'asc' } });

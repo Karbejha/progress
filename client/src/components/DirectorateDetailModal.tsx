@@ -22,19 +22,24 @@ import {
   Check,
   ArrowRightLeft,
 } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { DynamicIcon } from './Icons';
+import { User } from '../types';
 
 interface DirectorateDetailModalProps {
   item: DirectorateOverviewItem | null;
+  currentUser?: User;
   onClose: () => void;
   onFeedbackSent: () => void;
 }
 
 export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
   item,
+  currentUser,
   onClose,
   onFeedbackSent,
 }) => {
+  const isObserver = currentUser?.role === 'OBSERVER';
   const [feedbackText, setFeedbackText] = useState('');
   const [rating, setRating] = useState<number>(5);
   const [submitting, setSubmitting] = useState(false);
@@ -200,6 +205,12 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                     تنبيه عاجل
                   </span>
                 )}
+                {isObserver && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#0c3e35] border border-[#d4af37]/40 text-[#d4af37] flex items-center gap-1">
+                    <Eye className="w-3.5 h-3.5 text-[#d4af37]" />
+                    مراقبة واطلاع فقط
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[#8daaa2] mt-0.5 font-medium">
                 المدير المسؤول: <strong className="text-[#d4af37]">{item.director?.fullName || 'غير محدد'}</strong> {item.director?.phone ? `(${item.director.phone})` : ''}
@@ -226,14 +237,16 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                   تكليفات وتوجيهات المدير العام للمديرية ({executiveTasks.length})
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowAssignTaskForm(!showAssignTaskForm)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#0c4237] transition cursor-pointer shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5 text-[#d4af37]" />
-                <span>{showAssignTaskForm ? 'إخفاء النموذج' : 'إسناد تكليف فوري'}</span>
-              </button>
+              {!isObserver && (
+                <button
+                  type="button"
+                  onClick={() => setShowAssignTaskForm(!showAssignTaskForm)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#0c4237] transition cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>{showAssignTaskForm ? 'إخفاء النموذج' : 'إسناد تكليف فوري'}</span>
+                </button>
+              )}
             </div>
 
             {/* Quick Task Creation Form */}
@@ -493,63 +506,70 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
           )}
 
           {/* Section 4: Direct General Director Feedback Form */}
-          <div className="p-5 rounded-[22px] bg-white border border-[#d2d1c9] space-y-3 shadow-xs">
-            <h3 className="text-sm font-bold text-[#0c3e35] flex items-center gap-2">
-              <Send className="w-4 h-4 text-[#0c3e35]" />
-              إرسال توجيهات / ملاحظات المدير العام لمدير المديرية
-            </h3>
+          {!isObserver ? (
+            <div className="p-5 rounded-[22px] bg-white border border-[#d2d1c9] space-y-3 shadow-xs">
+              <h3 className="text-sm font-bold text-[#0c3e35] flex items-center gap-2">
+                <Send className="w-4 h-4 text-[#0c3e35]" />
+                إرسال توجيهات / ملاحظات المدير العام لمدير المديرية
+              </h3>
 
-            <div>
-              <textarea
-                value={feedbackText}
-                onChange={(e) => setFeedbackText(e.target.value)}
-                placeholder="اكتب التوجيه، الملاحظات، أو الإشادة بجهود المديرية..."
-                rows={3}
-                className="w-full p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
-              />
-            </div>
+              <div>
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder="اكتب التوجيه، الملاحظات، أو الإشادة بجهود المديرية..."
+                  rows={3}
+                  className="w-full p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
+                />
+              </div>
 
-            <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-              <div className="flex items-center gap-2 text-xs text-[#5e736e] font-bold">
-                <span>التقييم:</span>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRating(star)}
-                      className="p-1 hover:scale-125 transition cursor-pointer"
-                    >
-                      <Star
-                        className={`w-4 h-4 ${
-                          star <= rating
-                            ? 'fill-[#d4af37] text-[#d4af37]'
-                            : 'text-slate-300'
-                        }`}
-                      />
-                    </button>
-                  ))}
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                <div className="flex items-center gap-2 text-xs text-[#5e736e] font-bold">
+                  <span>التقييم:</span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRating(star)}
+                        className="p-1 hover:scale-125 transition cursor-pointer"
+                      >
+                        <Star
+                          className={`w-4 h-4 ${
+                            star <= rating
+                              ? 'fill-[#d4af37] text-[#d4af37]'
+                              : 'text-slate-300'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {successMessage && (
+                    <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" />
+                      تم إرسال التوجيه بنجاح!
+                    </span>
+                  )}
+                  <button
+                    onClick={handleSendFeedback}
+                    disabled={submitting || !feedbackText.trim()}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{submitting ? 'جاري الإرسال...' : 'إرسال التوجيه فوراً'}</span>
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                {successMessage && (
-                  <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" />
-                    تم إرسال التوجيه بنجاح!
-                  </span>
-                )}
-                <button
-                  onClick={handleSendFeedback}
-                  disabled={submitting || !feedbackText.trim()}
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{submitting ? 'جاري الإرسال...' : 'إرسال التوجيه فوراً'}</span>
-                </button>
-              </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-[#edece4] border border-[#d2d1c9] text-center text-xs text-[#5e736e] font-semibold flex items-center justify-center gap-2">
+              <Eye className="w-4 h-4 text-[#0c3e35]" />
+              <span>وضع المراقبة والاطلاع: هذا الحساب مخصص للمتابعة وقراءة التقارير فقط دون صلاحيات إرسال التوجيهات أو التعديل.</span>
+            </div>
+          )}
 
         </div>
 

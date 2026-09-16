@@ -126,9 +126,10 @@ export class ExecutiveTasksService {
 
   async getTasks(user: any, query?: { directorateId?: string; status?: TaskStatus; priority?: Priority }) {
     const isExecutive = user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR;
+    const canViewAll = isExecutive || user.role === Role.OBSERVER;
     const where: any = {};
 
-    if (!isExecutive) {
+    if (!canViewAll) {
       if (!user.directorateId) {
         throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
       }
@@ -188,7 +189,8 @@ export class ExecutiveTasksService {
     }
 
     const isExecutive = user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR;
-    if (!isExecutive && task.directorateId !== user.directorateId) {
+    const canViewAll = isExecutive || user.role === Role.OBSERVER;
+    if (!canViewAll && task.directorateId !== user.directorateId) {
       throw new ForbiddenException('غير مصرح لك بالاطلاع على هذا التكليف');
     }
 
@@ -257,6 +259,10 @@ export class ExecutiveTasksService {
   }
 
   async updateTask(user: any, id: string, dto: UpdateExecutiveTaskDto) {
+    if (user.role === Role.OBSERVER) {
+      throw new ForbiddenException('حساب المراقب مخصص للاطلاع والمتابعة فقط ولا يمتلك صلاحية التعديل');
+    }
+
     const existingTask = await this.prisma.executiveTask.findUnique({
       where: { id },
       include: { directorate: true },

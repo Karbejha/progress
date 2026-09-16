@@ -93,8 +93,10 @@ export default function Home() {
     return <LoginForm onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const isExecutive =
-    currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR';
+  const isExecutiveOrObserver =
+    currentUser.role === 'GENERAL_DIRECTOR' ||
+    currentUser.role === 'ASSISTANT_DIRECTOR' ||
+    currentUser.role === 'OBSERVER';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f4f3ed] text-[#0c3e35] font-sans">
@@ -114,7 +116,7 @@ export default function Home() {
             currentUser={currentUser}
             onBackToDashboard={() => setActiveView('DASHBOARD')}
           />
-        ) : isExecutive ? (
+        ) : isExecutiveOrObserver ? (
           <ExecutiveDashboard currentUser={currentUser} />
         ) : (
           <DirectorPortal currentUser={currentUser} />

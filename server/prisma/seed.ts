@@ -225,6 +225,20 @@ async function main() {
     },
   });
 
+  // Central Observer (Read-only System Observer)
+  const observerPassword = await bcrypt.hash('observer123', 10);
+  await prisma.user.create({
+    data: {
+      email: 'observer@ports.gov.sy',
+      username: 'observer',
+      password: observerPassword,
+      fullName: 'مراقب مركزي',
+      title: 'مراقب',
+      role: Role.OBSERVER,
+      phone: '0944000333',
+    },
+  });
+
   // Create directors for each directorate
   const directorsConfig = [
     { code: 'DG_OFFICE', username: 'dir_office', title: 'مدير مكتب المدير العام', email: 'office@ports.gov.sy' },

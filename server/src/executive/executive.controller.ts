@@ -10,13 +10,13 @@ import { Role } from '@prisma/client';
 export class ExecutiveController {
   constructor(private readonly executiveService: ExecutiveService) {}
 
-  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)
+  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER)
   @Get('overview')
   getDailyOverview(@Query('date') dateStr?: string) {
     return this.executiveService.getDailyOverview(dateStr);
   }
 
-  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)
+  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER)
   @Get('directorates/:id')
   getDirectorateDetails(@Param('id') id: string, @Query('date') dateStr?: string) {
     return this.executiveService.getDirectorateDetails(id, dateStr);
@@ -38,7 +38,7 @@ export class ExecutiveController {
     return this.executiveService.markAnnouncementAsRead(req.user, id);
   }
 
-  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)
+  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER)
   @Get('announcements/:id/readers')
   getAnnouncementReaders(@Request() req: any, @Param('id') id: string) {
     return this.executiveService.getAnnouncementReaders(req.user, id);

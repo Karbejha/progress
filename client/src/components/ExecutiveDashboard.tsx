@@ -40,6 +40,7 @@ interface ExecutiveDashboardProps {
 }
 
 export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentUser }) => {
+  const isObserver = currentUser.role === 'OBSERVER';
   const [data, setData] = useState<ExecutiveOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -298,16 +299,25 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       <div className="p-4 sm:p-7 rounded-2xl sm:rounded-[28px] bg-[#05261e] border border-[#0c3e35] shadow-brand-card relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 text-white">
         <div className="relative z-10 space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" />
-              لوحة الإشراف المركزي
-            </span>
+            {isObserver ? (
+              <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5 shadow-xs">
+                <Eye className="w-3.5 h-3.5 text-[#d4af37]" />
+                منظومة المراقبة المركزية (اطلاع ومتابعة)
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5 shadow-xs">
+                <Shield className="w-3.5 h-3.5" />
+                لوحة الإشراف المركزي
+              </span>
+            )}
           </div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-            متابعة إنجاز المديريات
+            {isObserver ? 'مراقبة تقارير ومهام المديريات' : 'متابعة إنجاز المديريات'}
           </h2>
           <p className="text-xs sm:text-sm text-[#8daaa2] font-medium">
-            متابعة لحظية ومباشرة للخطط اليومية ونسب التنفيذ
+            {isObserver
+              ? 'اطلاع ومراقبة شاملة ومباشرة للخطط اليومية ونسب الإنجاز دون تعديل'
+              : 'متابعة لحظية ومباشرة للخطط اليومية ونسب التنفيذ'}
           </p>
         </div>
 
@@ -340,13 +350,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
             )}
           </button>
 
-          <button
-            onClick={() => setShowUsersModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
-          >
-            <Users className="w-4 h-4" />
-            <span>إدارة الحسابات</span>
-          </button>
+          {!isObserver && (
+            <button
+              onClick={() => setShowUsersModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
+            >
+              <Users className="w-4 h-4" />
+              <span>إدارة الحسابات</span>
+            </button>
+          )}
 
           <button
             onClick={() => window.open(`/report?date=${selectedDate}`, '_blank')}
@@ -372,13 +384,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
             )}
           </button>
 
-          <button
-            onClick={() => setShowAnnouncementModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4 text-[#d4af37]" />
-            <span>إصدار تعميم جديد</span>
-          </button>
+          {!isObserver && (
+            <button
+              onClick={() => setShowAnnouncementModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-[#d4af37]" />
+              <span>إصدار تعميم جديد</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -824,6 +838,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       {/* Directorate Drilldown Modal & Direct Feedback */}
       <DirectorateDetailModal
         item={selectedDirectorate}
+        currentUser={currentUser}
         onClose={() => setSelectedDirectorate(null)}
         onFeedbackSent={() => {
           setSelectedDirectorate(null);
@@ -1012,17 +1027,19 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
             </div>
 
             <div className="p-4 border-t border-[#d2d1c9] bg-white flex justify-between items-center shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAnnouncementsListModal(false);
-                  setShowAnnouncementModal(true);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إصدار تعميم جديد</span>
-              </button>
+              {!isObserver && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAnnouncementsListModal(false);
+                    setShowAnnouncementModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إصدار تعميم جديد</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowAnnouncementsListModal(false)}

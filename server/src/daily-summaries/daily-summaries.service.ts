@@ -34,6 +34,9 @@ export class DailySummariesService {
   }
 
   async submitSummary(user: any, dto: SubmitSummaryDto) {
+    if (user.role === Role.OBSERVER) {
+      throw new ForbiddenException('حساب المراقب مخصص للاطلاع فقط ولا يمكنه إرسال ملخصات الإنجاز');
+    }
     if (!user.directorateId) {
       throw new ForbiddenException('فقط مدراء المديريات يمكنهم إرسال ملخص الإنجاز');
     }

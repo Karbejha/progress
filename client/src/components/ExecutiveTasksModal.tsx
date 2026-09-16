@@ -36,6 +36,7 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  Eye,
 } from 'lucide-react';
 
 interface ExecutiveTasksModalProps {
@@ -55,6 +56,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   initialOpenCreate = false,
   initialSearch = '',
 }) => {
+  const isObserver = currentUser.role === 'OBSERVER';
   const [tasks, setTasks] = useState<ExecutiveTask[]>([]);
   const [directorates, setDirectorates] = useState<Directorate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   }, [isOpen, initialSearch, initialDirectorateId]);
 
   // Mode: list or create
-  const [isCreating, setIsCreating] = useState(initialOpenCreate);
+  const [isCreating, setIsCreating] = useState(!isObserver && initialOpenCreate);
   const [submitting, setSubmitting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -564,21 +566,30 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-extrabold text-white">
-                  التكليفات والتوجيهات المباشرة للمديريات
+                <h2 className="text-base sm:text-lg font-extrabold text-white">
+                  التكليفات والمهام المركزية
                 </h2>
-                <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40">
-                  تكليف ومتابعة مباشرة
-                </span>
+                {isObserver ? (
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 flex items-center gap-1 shadow-xs">
+                    <Eye className="w-3 h-3 text-[#d4af37]" />
+                    مراقبة واطلاع
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40">
+                    تكليف ومتابعة مباشرة
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[#8daaa2] mt-0.5">
-                إسناد مهام مشتركة أو منفردة للمدراء ومتابعة نسب الإنجاز التراكمية والتفصيلية لحظياً
+                {isObserver
+                  ? 'اطلاع ومراقبة كافة التكليفات ونسب الإنجاز التراكمية والتفصيلية دون تعديل'
+                  : 'إسناد مهام مشتركة أو منفردة للمدراء ومتابعة نسب الإنجاز التراكمية والتفصيلية لحظياً'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {!isCreating && (
+            {!isCreating && !isObserver && (
               <button
                 onClick={() => setIsCreating(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#d4af37] text-[#05261e] hover:bg-[#c5a059] transition shadow-md active:scale-95 cursor-pointer"
@@ -908,13 +919,15 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                       ? 'جرّب تعديل خيارات التصفية أو البحث'
                       : 'لم يتم إسناد أي مهام بعد، اضغط على "إسناد تكليف جديد" للبدء'}
                   </p>
-                  <button
-                    onClick={() => setIsCreating(true)}
-                    className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#0c4237] transition cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>إسناد تكليف الآن</span>
-                  </button>
+                  {!isObserver && (
+                    <button
+                      onClick={() => setIsCreating(true)}
+                      className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#0c4237] transition cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>إسناد تكليف الآن</span>
+                    </button>
+                  )}
                 </div>
               ) : viewMode === 'GROUPED' ? (
                 /* GROUPED SMART VIEW */
@@ -1066,7 +1079,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                                       <span className="text-[10px] text-[#5e736e]">
                                         {st.status === 'COMPLETED' ? 'مكتملة' : st.status === 'IN_PROGRESS' ? 'قيد العمل' : 'انتظار'}
                                       </span>
-                                      {originalTask && (
+                                      {originalTask && !isObserver && (
                                         <button
                                           onClick={() => openEditModal(originalTask)}
                                           className="text-[10px] font-bold text-[#0c3e35] hover:text-[#d4af37] underline cursor-pointer"
@@ -1088,52 +1101,58 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                             بواسطة: <strong className="text-[#0c3e35]">{group.assignedBy?.fullName}</strong> ({group.assignedBy?.title})
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            {/* If single task, allow toggle status */}
-                            {!group.isShared && group.subTasks[0] && (
-                              <button
-                                onClick={() => {
-                                  const originalTask = tasks.find((t) => t.id === group.subTasks[0].taskId);
-                                  if (originalTask) handleToggleStatus(originalTask);
-                                }}
-                                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs ${
-                                  isCompleted
-                                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                                    : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                }`}
-                              >
-                                <CheckCheck className="w-3.5 h-3.5" />
-                                <span>{isCompleted ? 'إعادة للعمل' : 'اعتماد كمنجز'}</span>
-                              </button>
-                            )}
+                          {!isObserver ? (
+                            <div className="flex items-center gap-2">
+                              {/* If single task, allow toggle status */}
+                              {!group.isShared && group.subTasks[0] && (
+                                <button
+                                  onClick={() => {
+                                    const originalTask = tasks.find((t) => t.id === group.subTasks[0].taskId);
+                                    if (originalTask) handleToggleStatus(originalTask);
+                                  }}
+                                  className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs ${
+                                    isCompleted
+                                      ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                      : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                  }`}
+                                >
+                                  <CheckCheck className="w-3.5 h-3.5" />
+                                  <span>{isCompleted ? 'إعادة للعمل' : 'اعتماد كمنجز'}</span>
+                                </button>
+                              )}
 
-                            {/* Edit Modal trigger */}
-                            {group.subTasks[0] && (
-                              <button
-                                onClick={() => {
-                                  const originalTask = tasks.find((t) => t.id === group.subTasks[0].taskId);
-                                  if (originalTask) openEditModal(originalTask);
-                                }}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[#0c3e35] hover:bg-[#edece4] border border-[#d2d1c9] transition cursor-pointer font-bold text-xs"
-                                title="تعديل"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                                <span>تعديل</span>
-                              </button>
-                            )}
+                              {/* Edit Modal trigger */}
+                              {group.subTasks[0] && (
+                                <button
+                                  onClick={() => {
+                                    const originalTask = tasks.find((t) => t.id === group.subTasks[0].taskId);
+                                    if (originalTask) openEditModal(originalTask);
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[#0c3e35] hover:bg-[#edece4] border border-[#d2d1c9] transition cursor-pointer font-bold text-xs"
+                                  title="تعديل"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <span>تعديل</span>
+                                </button>
+                              )}
 
-                            {/* Delete trigger */}
-                            {group.subTasks[0] && (
-                              <button
-                                onClick={() => handleDeleteTask(group.subTasks[0].taskId, group.isShared, group.subTasks.length, group.title)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer font-bold text-xs"
-                                title="حذف التكليف"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>حذف</span>
-                              </button>
-                            )}
-                          </div>
+                              {/* Delete trigger */}
+                              {group.subTasks[0] && (
+                                <button
+                                  onClick={() => handleDeleteTask(group.subTasks[0].taskId, group.isShared, group.subTasks.length, group.title)}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer font-bold text-xs"
+                                  title="حذف التكليف"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>حذف</span>
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-bold text-[#5e736e] bg-[#f4f3ed] px-2.5 py-1 rounded-lg border border-[#d2d1c9]">
+                              وضع الاطلاع فقط
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1274,35 +1293,41 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                             بواسطة: <strong className="text-[#0c3e35]">{task.assignedBy?.fullName}</strong> ({task.assignedBy?.title})
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleToggleStatus(task)}
-                              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs ${
-                                isCompleted
-                                  ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                                  : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                              }`}
-                            >
-                              <CheckCheck className="w-3.5 h-3.5" />
-                              <span>{isCompleted ? 'إعادة للعمل' : 'اعتماد كمنجز'}</span>
-                            </button>
+                          {!isObserver ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleToggleStatus(task)}
+                                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer text-xs ${
+                                  isCompleted
+                                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                    : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                }`}
+                              >
+                                <CheckCheck className="w-3.5 h-3.5" />
+                                <span>{isCompleted ? 'إعادة للعمل' : 'اعتماد كمنجز'}</span>
+                              </button>
 
-                            <button
-                              onClick={() => openEditModal(task)}
-                              className="p-1.5 rounded-xl text-[#0c3e35] hover:bg-[#edece4] border border-[#d2d1c9] transition cursor-pointer"
-                              title="تعديل التكليف"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
+                              <button
+                                onClick={() => openEditModal(task)}
+                                className="p-1.5 rounded-xl text-[#0c3e35] hover:bg-[#edece4] border border-[#d2d1c9] transition cursor-pointer"
+                                title="تعديل التكليف"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
 
-                            <button
-                              onClick={() => handleDeleteTask(task.id, task.isShared, task.sharedDirectoratesCount, task.title)}
-                              className="p-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer"
-                              title="حذف التكليف"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                              <button
+                                onClick={() => handleDeleteTask(task.id, task.isShared, task.sharedDirectoratesCount, task.title)}
+                                className="p-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer"
+                                title="حذف التكليف"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-bold text-[#5e736e] bg-[#f4f3ed] px-2.5 py-1 rounded-lg border border-[#d2d1c9]">
+                              وضع الاطلاع فقط
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

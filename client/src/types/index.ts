@@ -1,4 +1,4 @@
-export type Role = 'GENERAL_DIRECTOR' | 'ASSISTANT_DIRECTOR' | 'DIRECTOR';
+export type Role = 'GENERAL_DIRECTOR' | 'ASSISTANT_DIRECTOR' | 'DIRECTOR' | 'OBSERVER';
 export type Priority = 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW';
 export type PlanStatus = 'DRAFT' | 'SUBMITTED' | 'REVIEWED';
 export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED' | 'CANCELLED';

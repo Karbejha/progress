@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { User } from '../types';
 import { api } from '../services/api';
-import { Shield, Search, X, Check, UserCircle2, ArrowRight } from 'lucide-react';
+import { Shield, Search, X, Check, UserCircle2, ArrowRight, Eye } from 'lucide-react';
 import { DynamicIcon } from './Icons';
 
 interface QuickUserSwitcherProps {
@@ -95,7 +95,7 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
     if (!matchesSearch) return false;
 
     if (activeTab === 'EXECUTIVE') {
-      return u.role === 'GENERAL_DIRECTOR' || u.role === 'ASSISTANT_DIRECTOR';
+      return u.role === 'GENERAL_DIRECTOR' || u.role === 'ASSISTANT_DIRECTOR' || u.role === 'OBSERVER';
     }
     if (activeTab === 'OPERATIONAL') {
       return u.directorate?.category === 'OPERATIONAL';
@@ -216,6 +216,7 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
             filteredUsers.map((u) => {
               const isCurrent = currentUser?.id === u.id;
               const isExec = u.role === 'GENERAL_DIRECTOR' || u.role === 'ASSISTANT_DIRECTOR';
+              const isObserver = u.role === 'OBSERVER';
 
               return (
                 <div
@@ -226,6 +227,8 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
                       ? 'bg-[#0c3e35] text-white border-[#0c3e35] shadow-md'
                       : isExec
                       ? 'bg-white border-[#d4af37] hover:border-[#0c3e35] shadow-xs'
+                      : isObserver
+                      ? 'bg-white border-cyan-300 hover:border-[#0c3e35] shadow-xs'
                       : 'bg-white border-[#d2d1c9] hover:border-[#0c3e35] shadow-xs'
                   }`}
                 >
@@ -236,11 +239,15 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
                           ? 'bg-white/10 text-[#d4af37]'
                           : isExec
                           ? 'bg-[#05261e] text-[#d4af37]'
+                          : isObserver
+                          ? 'bg-cyan-50 text-cyan-800'
                           : 'bg-[#edece4] text-[#0c3e35]'
                       }`}
                     >
                       {isExec ? (
                         <Shield className="w-5 h-5" />
+                      ) : isObserver ? (
+                        <Eye className="w-5 h-5 text-[#0c3e35]" />
                       ) : (
                         <DynamicIcon name={u.directorate?.icon} className="w-5 h-5" />
                       )}
@@ -253,6 +260,12 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
                         {isExec && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#d4af37]/20 border border-[#d4af37]/40 text-[#8a7a52]">
                             إشراف كامل
+                          </span>
+                        )}
+                        {isObserver && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-50 border border-cyan-300 text-cyan-800 flex items-center gap-1">
+                            <Eye className="w-3 h-3" />
+                            مراقبة واطلاع
                           </span>
                         )}
                       </div>

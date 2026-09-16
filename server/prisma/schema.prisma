@@ -11,6 +11,7 @@ enum Role {
   GENERAL_DIRECTOR
   ASSISTANT_DIRECTOR
   DIRECTOR
+  OBSERVER
 }
 
 enum Priority {
