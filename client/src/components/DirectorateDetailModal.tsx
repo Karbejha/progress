@@ -482,25 +482,61 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
             <div className="space-y-3">
               <h3 className="text-sm font-bold text-[#0c3e35] flex items-center gap-2 border-b border-[#d2d1c9] pb-2">
                 <MessageSquare className="w-4 h-4 text-[#d4af37]" />
-                توجيهات وملاحظات المدير العام السابقة
+                سجل التوجيهات والردود المتبادلة ({item.feedbacks.length})
               </h3>
-              <div className="space-y-2">
-                {item.feedbacks.map((fb, idx) => (
-                  <div key={idx} className="p-4 rounded-2xl bg-[#05261e] text-white text-xs space-y-1.5 border border-[#d4af37]/40 shadow-sm">
-                    <div className="flex items-center justify-between text-[11px] text-[#d4af37]">
-                      <span className="font-bold">{fb.fromUser?.fullName || 'المدير العام'} ({fb.fromUser?.title})</span>
-                      <span>{new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <p className="text-[#edece4] text-xs mt-1 leading-relaxed">{fb.feedbackText}</p>
-                    {fb.rating && (
-                      <div className="flex items-center gap-1 text-[#d4af37] pt-1">
-                        {Array.from({ length: fb.rating }).map((_, i) => (
-                          <Star key={i} className="w-3 h-3 fill-[#d4af37] text-[#d4af37]" />
-                        ))}
+              <div className="space-y-2.5">
+                {item.feedbacks.map((fb, idx) => {
+                  const isDirector = fb.fromUser?.role === 'DIRECTOR';
+                  return isDirector ? (
+                    <div
+                      key={fb.id || idx}
+                      className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 text-[#0c3e35] text-xs space-y-1.5 shadow-xs"
+                    >
+                      <div className="flex items-center justify-between text-[11px] text-emerald-900">
+                        <span className="font-extrabold flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-950 text-[10px] font-black border border-emerald-300">
+                            رد وتوضيح المديرية
+                          </span>
+                          {fb.fromUser?.fullName || 'مدير المديرية'} ({fb.fromUser?.title || item.directorateName})
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-semibold">
+                          {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <p className="text-[#0c3e35] text-xs mt-1 leading-relaxed font-medium whitespace-pre-wrap">
+                        {fb.feedbackText}
+                      </p>
+                    </div>
+                  ) : (
+                    <div
+                      key={fb.id || idx}
+                      className="p-4 rounded-2xl bg-[#05261e] text-white text-xs space-y-1.5 border border-[#d4af37]/40 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between text-[11px] text-[#d4af37]">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md bg-[#d4af37]/20 text-[#d4af37] text-[10px] font-black border border-[#d4af37]/40">
+                            توجيه الإدارة العليا
+                          </span>
+                          {fb.fromUser?.fullName || 'المدير العام'} ({fb.fromUser?.title || 'المديرية العامة للموانئ'})
+                        </span>
+                        <span className="text-[10px] text-[#8daaa2]">
+                          {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[#edece4] text-xs mt-1 leading-relaxed font-medium whitespace-pre-wrap">
+                        {fb.feedbackText}
+                      </p>
+                      {fb.rating && (
+                        <div className="flex items-center gap-1 text-[#d4af37] pt-1">
+                          <span className="text-[10px] text-[#8daaa2] ml-1">التقييم:</span>
+                          {Array.from({ length: fb.rating }).map((_, i) => (
+                            <Star key={i} className="w-3 h-3 fill-[#d4af37] text-[#d4af37]" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

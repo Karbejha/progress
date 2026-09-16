@@ -82,7 +82,7 @@ export class DailyPlansService {
               select: { fullName: true, title: true, role: true },
             },
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -595,7 +595,8 @@ export class DailyPlansService {
         tasks: { orderBy: { displayOrder: 'asc' } },
         dailySummary: true,
         feedbacks: {
-          include: { fromUser: { select: { fullName: true, title: true } } },
+          include: { fromUser: { select: { fullName: true, title: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
         },
       },
       orderBy: { planDate: 'desc' },
@@ -855,7 +856,8 @@ export class DailyPlansService {
         },
         dailySummary: true,
         feedbacks: {
-          include: { fromUser: { select: { fullName: true, title: true } } },
+          include: { fromUser: { select: { fullName: true, title: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
         },
       },
       orderBy: { planDate: 'asc' },

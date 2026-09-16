@@ -63,6 +63,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
 
+  // Feedback replies state
+  const [replyOpenPlanId, setReplyOpenPlanId] = useState<string | null>(null);
+  const [replyTextMap, setReplyTextMap] = useState<{ [planId: string]: string }>({});
+  const [submittingReplyPlanId, setSubmittingReplyPlanId] = useState<string | null>(null);
+
   // Drafts State (Requirement 4)
   const getTodayLocalKey = () => {
     const d = new Date();
@@ -263,6 +268,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     loadTodayData();
     loadExecutiveTasks();
     loadTemplates();
+    loadHistory();
   }, []);
 
   const loadTemplates = async () => {
@@ -391,8 +397,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     const handleFeedbackSent = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
-        showToast(`وصلك توجيه جديد وملاحظات من المدير العام!`);
+        if (!payload.isReply && payload.fromRole !== 'DIRECTOR') {
+          showToast(`وصلك توجيه جديد وملاحظات من المدير العام!`);
+        }
         loadTodayData();
+        loadHistory();
       }
     };
 
@@ -643,6 +652,55 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     }
   };
 
+  const handleSendReply = async (planId: string, dailySummaryId?: string) => {
+    const text = replyTextMap[planId]?.trim();
+    if (!text || !currentUser.directorateId) return;
+
+    try {
+      setSubmittingReplyPlanId(planId);
+      const newFeedback = await api.sendFeedback({
+        directorateId: currentUser.directorateId,
+        dailyPlanId: planId,
+        dailySummaryId: dailySummaryId,
+        feedbackText: text,
+      });
+
+      // Update history state if present
+      setHistory((prev) =>
+        prev.map((item) => {
+          if (item.id === planId) {
+            return {
+              ...item,
+              feedbacks: [...(item.feedbacks || []), newFeedback],
+            };
+          }
+          return item;
+        })
+      );
+
+      // Update current plan state if present
+      if (plan && plan.id === planId) {
+        setPlan((prev) =>
+          prev
+            ? {
+                ...prev,
+                feedbacks: [...(prev.feedbacks || []), newFeedback],
+              }
+            : null
+        );
+      }
+
+      setReplyTextMap((prev) => ({ ...prev, [planId]: '' }));
+      setReplyOpenPlanId(null);
+      showToast('تم إرسال ردك وتوضيحك للمدير العام بنجاح!');
+    } catch (err: any) {
+      console.error('Failed to send reply to feedback', err);
+      alert('حدث خطأ أثناء إرسال الرد: ' + (err?.message || ''));
+    } finally {
+      setSubmittingReplyPlanId(null);
+    }
+  };
+
   const loadAchievementsReport = async () => {
     try {
       setLoadingReport(true);
@@ -682,6 +740,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   useEffect(() => {
     if (activeTab === 'HISTORY') {
+      loadHistory();
       loadAchievementsReport();
     }
   }, [activeTab, reportMonth, reportStartDate, reportEndDate, reportStatusFilter, reportPeriodMode]);
@@ -1556,29 +1615,136 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         );
       })()}
 
-      {/* Directives from General Director */}
+      {/* Directives from General Director & Directorate Replies */}
       {plan?.feedbacks && plan.feedbacks.length > 0 && (
-        <div className="p-4 sm:p-5 rounded-2xl sm:rounded-[22px] bg-[#05261e] border-2 border-[#d4af37] text-white space-y-2 shadow-md">
-          <div className="flex items-center justify-between">
+        <div className="p-4 sm:p-5 rounded-2xl sm:rounded-[22px] bg-[#05261e] border-2 border-[#d4af37] text-white space-y-3 shadow-md">
+          <div className="flex items-center justify-between border-b border-[#d4af37]/30 pb-2">
             <h4 className="text-xs font-bold text-[#d4af37] flex items-center gap-2">
               <Shield className="w-4 h-4 text-[#d4af37]" />
-              توجيه وملاحظات واردة من المدير العام على خطة/إنجاز المديرية:
+              توجيهات وملاحظات المدير العام والردود المتبادلة ({plan.feedbacks.length}):
             </h4>
-            <span className="text-[11px] text-[#8daaa2]">
-              {new Date(plan.feedbacks[0].createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
-            </span>
           </div>
-          <p className="text-xs text-[#edece4] leading-relaxed font-medium">
-            {plan.feedbacks[0].feedbackText}
-          </p>
-          {plan.feedbacks[0].rating && (
-            <div className="flex items-center gap-1 text-[#d4af37] pt-1">
-              <span className="text-[11px] text-[#8daaa2] ml-1">تقييم الإدارة:</span>
-              {Array.from({ length: plan.feedbacks[0].rating }).map((_, i) => (
-                <Star key={i} className="w-3.5 h-3.5 fill-[#d4af37] text-[#d4af37]" />
-              ))}
-            </div>
-          )}
+
+          <div className="space-y-2.5">
+            {plan.feedbacks.map((fb, idx) => {
+              const isDirector = fb.fromUser?.role === 'DIRECTOR';
+              return isDirector ? (
+                <div
+                  key={fb.id || idx}
+                  className="p-3.5 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-[#edece4] text-xs space-y-1"
+                >
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-extrabold text-emerald-400 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">
+                        رد وتوضيح المديرية
+                      </span>
+                      {fb.fromUser?.fullName || currentUser.fullName} ({fb.fromUser?.title || currentUser.title})
+                    </span>
+                    <span className="text-[10px] text-emerald-400/80">
+                      {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-white text-xs leading-relaxed font-medium whitespace-pre-wrap">
+                    {fb.feedbackText}
+                  </p>
+                </div>
+              ) : (
+                <div
+                  key={fb.id || idx}
+                  className="p-3.5 rounded-xl bg-black/30 border border-[#d4af37]/30 text-white text-xs space-y-1.5"
+                >
+                  <div className="flex items-center justify-between text-[11px] text-[#d4af37]">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-md bg-[#d4af37]/20 text-[#d4af37] text-[10px] font-black border border-[#d4af37]/40">
+                        توجيه المدير العام
+                      </span>
+                      {fb.fromUser?.fullName || 'المدير العام'} ({fb.fromUser?.title || 'المديرية العامة للموانئ'})
+                    </span>
+                    <span className="text-[10px] text-[#8daaa2]">
+                      {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[#edece4] text-xs leading-relaxed font-medium whitespace-pre-wrap">
+                    {fb.feedbackText}
+                  </p>
+                  {fb.rating && (
+                    <div className="flex items-center gap-1 text-[#d4af37] pt-0.5">
+                      <span className="text-[10px] text-[#8daaa2] ml-1">تقييم الإدارة:</span>
+                      {Array.from({ length: fb.rating }).map((_, i) => (
+                        <Star key={i} className="w-3.5 h-3.5 fill-[#d4af37] text-[#d4af37]" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Reply section for today's plan */}
+          <div className="pt-1">
+            {replyOpenPlanId !== plan.id ? (
+              <button
+                type="button"
+                onClick={() => setReplyOpenPlanId(plan.id)}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#d4af37] hover:text-white bg-white/10 hover:bg-white/20 px-3.5 py-1.5 rounded-xl border border-[#d4af37]/40 transition cursor-pointer"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-[#d4af37]" />
+                <span>إضافة رد / توضيح للمدير العام</span>
+              </button>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-black/40 border border-[#d4af37]/40 space-y-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#d4af37] flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-[#d4af37]" />
+                    <span>الرد على توجيه المدير العام لليوم الحالي:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setReplyOpenPlanId(null)}
+                    className="text-[11px] font-semibold text-[#8daaa2] hover:text-white transition cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+                <textarea
+                  rows={2}
+                  value={replyTextMap[plan.id] || ''}
+                  onChange={(e) =>
+                    setReplyTextMap((prev) => ({ ...prev, [plan.id]: e.target.value }))
+                  }
+                  placeholder="اكتب ردك وتوضيحك للمدير العام..."
+                  className="w-full p-2.5 rounded-lg bg-[#031c16] border border-[#d4af37]/40 text-white text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#d4af37] font-medium"
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReplyOpenPlanId(null)}
+                    className="px-3 py-1 rounded-lg bg-white/10 text-xs text-[#8daaa2] hover:text-white transition cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submittingReplyPlanId === plan.id || !replyTextMap[plan.id]?.trim()}
+                    onClick={() => handleSendReply(plan.id, plan.dailySummary?.id)}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#d4af37] hover:bg-[#c59f2e] text-[#05261e] text-xs font-bold shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {submittingReplyPlanId === plan.id ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>جاري الإرسال...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        <span>إرسال الرد فوراً</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2932,11 +3098,142 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       </div>
                     )}
 
+                    {/* Directives & Directorate Replies Thread */}
                     {h.feedbacks && h.feedbacks.length > 0 && (
-                      <div className="p-3 rounded-xl bg-[#05261e] text-white text-xs border border-[#d4af37]/40">
-                        <strong className="text-[#d4af37]">توجيه المدير العام:</strong> {h.feedbacks[0].feedbackText}
+                      <div className="space-y-2.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-extrabold text-[#0c3e35] flex items-center gap-1.5">
+                            <MessageSquare className="w-3.5 h-3.5 text-[#d4af37]" />
+                            التوجيهات والردود المتبادلة ({h.feedbacks.length}):
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {h.feedbacks.map((fb, idx) => {
+                            const isDirector = fb.fromUser?.role === 'DIRECTOR';
+                            return isDirector ? (
+                              <div
+                                key={fb.id || idx}
+                                className="p-3.5 rounded-xl bg-emerald-50 border-2 border-emerald-200 text-xs space-y-1 shadow-xs"
+                              >
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="font-extrabold text-emerald-900 flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-950 text-[10px] font-black border border-emerald-300">
+                                      رد وتوضيح المديرية
+                                    </span>
+                                    {fb.fromUser?.fullName || currentUser.fullName} ({fb.fromUser?.title || currentUser.title})
+                                  </span>
+                                  <span className="text-[10px] text-emerald-700 font-semibold">
+                                    {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <p className="text-[#0c3e35] text-xs leading-relaxed font-medium whitespace-pre-wrap">
+                                  {fb.feedbackText}
+                                </p>
+                              </div>
+                            ) : (
+                              <div
+                                key={fb.id || idx}
+                                className="p-3.5 rounded-xl bg-[#05261e] text-white text-xs space-y-1.5 border border-[#d4af37]/40 shadow-xs"
+                              >
+                                <div className="flex items-center justify-between text-[11px] text-[#d4af37]">
+                                  <span className="font-bold flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded-md bg-[#d4af37]/20 text-[#d4af37] text-[10px] font-black border border-[#d4af37]/40">
+                                      توجيه المدير العام
+                                    </span>
+                                    {fb.fromUser?.fullName || 'المدير العام'} ({fb.fromUser?.title || 'المديرية العامة للموانئ'})
+                                  </span>
+                                  <span className="text-[10px] text-[#8daaa2]">
+                                    {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <p className="text-[#edece4] text-xs leading-relaxed font-medium whitespace-pre-wrap">
+                                  {fb.feedbackText}
+                                </p>
+                                {fb.rating && (
+                                  <div className="flex items-center gap-1 text-[#d4af37] pt-0.5">
+                                    <span className="text-[10px] text-[#8daaa2] ml-1">التقييم:</span>
+                                    {Array.from({ length: fb.rating }).map((_, i) => (
+                                      <Star key={i} className="w-3 h-3 fill-[#d4af37] text-[#d4af37]" />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
+
+                    {/* Reply Action Button & Form */}
+                    <div className="pt-1">
+                      {replyOpenPlanId !== h.id ? (
+                        <button
+                          type="button"
+                          onClick={() => setReplyOpenPlanId(h.id)}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0c3e35] hover:text-[#072923] bg-[#f4f3ed] hover:bg-[#eae8dd] px-3.5 py-2 rounded-xl border border-[#d2d1c9] transition cursor-pointer shadow-xs"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 text-[#0c3e35]" />
+                          <span>
+                            {h.feedbacks && h.feedbacks.length > 0
+                              ? 'إضافة رد / توضيح على توجيه المدير العام'
+                              : 'إضافة توضيح / ملاحظة للمدير العام على إنجاز هذا اليوم'}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="p-4 rounded-2xl bg-[#f4f3ed] border-2 border-[#0c3e35]/30 space-y-3 shadow-sm animate-fadeIn">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                              <Send className="w-3.5 h-3.5 text-[#0c3e35]" />
+                              <span>كتابة رد وتوضيح رسمي للمدير العام:</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setReplyOpenPlanId(null)}
+                              className="text-[11px] font-semibold text-[#5e736e] hover:text-red-700 transition cursor-pointer"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={replyTextMap[h.id] || ''}
+                            onChange={(e) =>
+                              setReplyTextMap((prev) => ({ ...prev, [h.id]: e.target.value }))
+                            }
+                            placeholder="اكتب ردك، إجابتك على تساؤل المدير العام، أو توضيحاتك بخصوص هذا الإنجاز..."
+                            className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setReplyOpenPlanId(null)}
+                              className="px-3.5 py-1.5 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#5e736e] hover:bg-slate-50 transition cursor-pointer"
+                            >
+                              إلغاء
+                            </button>
+                            <button
+                              type="button"
+                              disabled={submittingReplyPlanId === h.id || !replyTextMap[h.id]?.trim()}
+                              onClick={() => handleSendReply(h.id, h.dailySummary?.id)}
+                              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white text-xs font-bold shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              {submittingReplyPlanId === h.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>جاري الإرسال...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>إرسال الرد فوراً</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

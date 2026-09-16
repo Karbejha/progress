@@ -22,7 +22,7 @@ export class ExecutiveController {
     return this.executiveService.getDirectorateDetails(id, dateStr);
   }
 
-  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR)
+  @Roles(Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.DIRECTOR)
   @Post('feedback')
   giveFeedback(@Request() req: any, @Body() dto: GiveFeedbackDto) {
     return this.executiveService.giveFeedback(req.user, dto);

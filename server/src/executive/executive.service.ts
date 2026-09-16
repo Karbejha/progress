@@ -64,9 +64,9 @@ export class ExecutiveService {
             dailySummary: true,
             feedbacks: {
               include: {
-                fromUser: { select: { fullName: true, title: true } },
+                fromUser: { select: { fullName: true, title: true, role: true } },
               },
-              orderBy: { createdAt: 'desc' },
+              orderBy: { createdAt: 'asc' },
             },
           },
         },
@@ -225,8 +225,8 @@ export class ExecutiveService {
         tasks: { orderBy: { displayOrder: 'asc' } },
         dailySummary: true,
         feedbacks: {
-          include: { fromUser: { select: { fullName: true, title: true } } },
-          orderBy: { createdAt: 'desc' },
+          include: { fromUser: { select: { fullName: true, title: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -253,6 +253,32 @@ export class ExecutiveService {
   }
 
   async giveFeedback(user: any, dto: GiveFeedbackDto) {
+    if (user.role === Role.DIRECTOR && user.directorateId !== dto.directorateId) {
+      throw new ForbiddenException('لا يمكنك إضافة رد أو تعليق لمديرية أخرى');
+    }
+
+    const directorate = await this.prisma.directorate.findUnique({
+      where: { id: dto.directorateId },
+      select: { id: true, name: true },
+    });
+
+    let planDateStr = '';
+    if (dto.dailyPlanId) {
+      const plan = await this.prisma.dailyPlan.findUnique({
+        where: { id: dto.dailyPlanId },
+        select: { planDate: true },
+      });
+      if (plan?.planDate) {
+        planDateStr = new Date(plan.planDate).toLocaleDateString('ar-SY', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        });
+      }
+    }
+
+    const isDirectorReply = user.role === Role.DIRECTOR;
+
     const feedback = await this.prisma.executiveFeedback.create({
       data: {
         directorateId: dto.directorateId,
@@ -260,7 +286,7 @@ export class ExecutiveService {
         dailySummaryId: dto.dailySummaryId,
         fromUserId: user.id,
         feedbackText: dto.feedbackText,
-        rating: dto.rating,
+        rating: isDirectorReply ? undefined : dto.rating,
       },
       include: {
         fromUser: {
@@ -269,38 +295,73 @@ export class ExecutiveService {
       },
     });
 
-    if (dto.dailySummaryId) {
+    if (dto.dailySummaryId && !isDirectorReply) {
       await this.prisma.dailySummary.update({
         where: { id: dto.dailySummaryId },
         data: { status: SummaryStatus.FEEDBACK_GIVEN },
       });
     }
 
+    // Broadcast through socket
     this.eventsGateway.emitFeedbackSent({
       directorateId: feedback.directorateId,
       fromUserName: user.fullName,
+      fromUserTitle: user.title,
+      fromRole: user.role,
+      directorateName: directorate?.name,
       feedbackText: feedback.feedbackText,
       rating: feedback.rating || undefined,
+      isReply: isDirectorReply,
+      dailyPlanId: dto.dailyPlanId,
     });
 
-    // Persist notification for directorate users
-    this.notificationsService.createNotificationForDirectorate(
-      feedback.directorateId,
-      {
-        type: 'feedback',
-        title: 'توجيه من المدير العام',
-        message: feedback.feedbackText,
-        referenceId: feedback.id,
-        metadata: {
-          feedbackId: feedback.id,
-          fromUserName: user.fullName,
-          fromUserTitle: user.title,
-          directorateId: feedback.directorateId,
-          rating: feedback.rating,
+    if (isDirectorReply) {
+      // Persist notification for executive roles (General Director, Assistant, Observer)
+      this.notificationsService.createNotificationForRoles(
+        [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+        {
+          type: 'feedback',
+          title: `رد وتوضيح من ${user.fullName} (${directorate?.name || 'المديرية'})`,
+          message: planDateStr
+            ? `رد بخصوص إنجاز يوم ${planDateStr}: "${feedback.feedbackText}"`
+            : feedback.feedbackText,
+          referenceId: feedback.id,
+          metadata: {
+            feedbackId: feedback.id,
+            fromUserId: user.id,
+            fromUserName: user.fullName,
+            fromUserTitle: user.title,
+            fromRole: user.role,
+            directorateId: feedback.directorateId,
+            directorateName: directorate?.name,
+            dailyPlanId: dto.dailyPlanId,
+            isReply: true,
+          },
         },
-      },
-      user.id,
-    );
+        user.id,
+      );
+    } else {
+      // Persist notification for directorate users
+      this.notificationsService.createNotificationForDirectorate(
+        feedback.directorateId,
+        {
+          type: 'feedback',
+          title: 'توجيه من المدير العام',
+          message: feedback.feedbackText,
+          referenceId: feedback.id,
+          metadata: {
+            feedbackId: feedback.id,
+            fromUserName: user.fullName,
+            fromUserTitle: user.title,
+            fromRole: user.role,
+            directorateId: feedback.directorateId,
+            rating: feedback.rating,
+            isReply: false,
+          },
+        },
+        user.id,
+      );
+    }
 
     return feedback;
   }

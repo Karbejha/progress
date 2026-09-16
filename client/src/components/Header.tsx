@@ -462,24 +462,48 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleFeedbackSent = (data: any) => {
-      if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
-        addNotif({
-          id: `feedback-${Math.random()}`,
-          title: 'توجيه من المدير العام',
-          message: data.feedbackText,
-          content: data.feedbackText,
-          authorName: data.fromUserName || 'المدير العام',
-          type: 'feedback',
-          fullPayload: data,
-        });
-        playSubtleChime();
+      if (data.isReply || data.fromRole === 'DIRECTOR') {
+        const isExecutive = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
+        if (isExecutive) {
+          addNotif({
+            id: `feedback-reply-${Math.random()}`,
+            title: `رد وتوضيح من ${data.fromUserName} (${data.directorateName || 'المديرية'})`,
+            message: data.feedbackText,
+            content: data.feedbackText,
+            authorName: data.fromUserName,
+            authorTitle: data.fromUserTitle || 'مدير المديرية',
+            type: 'feedback',
+            fullPayload: data,
+          });
+          playSubtleChime();
 
-        notifyFeedback({
-          directorateId: data.directorateId,
-          fromUserName: data.fromUserName,
-          feedbackText: data.feedbackText,
-          rating: data.rating,
-        });
+          notifyFeedback({
+            directorateId: data.directorateId,
+            fromUserName: data.fromUserName,
+            feedbackText: data.feedbackText,
+            rating: data.rating,
+          });
+        }
+      } else {
+        if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
+          addNotif({
+            id: `feedback-${Math.random()}`,
+            title: 'توجيه من المدير العام',
+            message: data.feedbackText,
+            content: data.feedbackText,
+            authorName: data.fromUserName || 'المدير العام',
+            type: 'feedback',
+            fullPayload: data,
+          });
+          playSubtleChime();
+
+          notifyFeedback({
+            directorateId: data.directorateId,
+            fromUserName: data.fromUserName,
+            feedbackText: data.feedbackText,
+            rating: data.rating,
+          });
+        }
       }
     };
 

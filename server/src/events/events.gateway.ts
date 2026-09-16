@@ -112,6 +112,11 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     fromUserName: string;
     feedbackText: string;
     rating?: number;
+    fromRole?: string;
+    fromUserTitle?: string;
+    directorateName?: string;
+    isReply?: boolean;
+    dailyPlanId?: string;
   }) {
     this.logger.log(`Broadcasting feedback:sent to room:directorate_${payload.directorateId} and room:executive`);
     this.server.to(`room:directorate_${payload.directorateId}`).to('room:executive').emit('feedback:sent', payload);
