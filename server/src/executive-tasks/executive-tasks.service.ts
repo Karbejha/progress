@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, Priority, TaskStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { randomUUID } from 'crypto';
 
 export interface CreateExecutiveTaskDto {
@@ -30,6 +31,7 @@ export class ExecutiveTasksService {
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   private async enrichTasksWithCoTasks(tasks: any[]) {
@@ -253,6 +255,27 @@ export class ExecutiveTasksService {
         directorateName: directorate.name,
         assignedByName: user.fullName,
       });
+
+      // Persist notification for directorate users
+      this.notificationsService.createNotificationForDirectorate(
+        directorateId,
+        {
+          type: 'executive-task',
+          title: isJoint ? 'تكليف مشترك من المدير العام' : 'تكليف من المدير العام',
+          message: `وردك تكليف من المدير العام: "${task.title}"`,
+          referenceId: `exec-task-${task.id}`,
+          metadata: {
+            taskId: task.id,
+            taskTitle: task.title,
+            description: task.description,
+            priority: task.priority,
+            assignedByName: user.fullName,
+            directorateId,
+            directorateName: directorate.name,
+            isShared: isJoint,
+          },
+        },
+      );
     }
 
     return this.enrichTasksWithCoTasks(createdTasks);
@@ -350,6 +373,27 @@ export class ExecutiveTasksService {
         directorateName: updated.directorate.name,
         updatedByRole: user.role,
       });
+
+      // If a DIRECTOR updated the task, persist notification for executives
+      if (user.role === Role.DIRECTOR) {
+        this.notificationsService.createNotificationForRoles(
+          [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+          {
+            type: 'executive-task-update',
+            title: 'تحديث إنجاز تكليف المدير العام',
+            message: `قامت (${updated.directorate.name}) بتحديث التكليف "${updated.title}" إلى (${updated.completionPercentage}%).`,
+            referenceId: `exec-task-update-${updated.id}-${updated.updatedAt.toISOString()}`,
+            metadata: {
+              taskId: updated.id,
+              taskTitle: updated.title,
+              directorateId: updated.directorateId,
+              directorateName: updated.directorate.name,
+              completionPercentage: updated.completionPercentage,
+              status: updated.status,
+            },
+          },
+        );
+      }
     }
 
     // Sync task completion state to Director's personal agenda (UserTodo)

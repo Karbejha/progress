@@ -283,8 +283,41 @@ export const Header: React.FC<HeaderProps> = ({
 
         const discoveredReadKeys: string[] = [...serverReadKeys];
 
+        // 2. Fetch persisted notifications from the database
+        try {
+          const dbNotifs = await api.getNotifications(100);
+          dbNotifs.forEach((n: any) => {
+            const notifType = (['plan', 'summary', 'task', 'feedback', 'announcement'].includes(n.type))
+              ? n.type
+              : (n.type === 'executive-task' ? 'feedback' : (n.type === 'executive-task-update' ? 'task' : 'plan'));
+
+            loadedNotifs.push({
+              id: n.referenceId || n.id,
+              title: n.title,
+              message: n.message,
+              content: n.metadata?.content || n.metadata?.description || undefined,
+              authorName: n.metadata?.authorName || n.metadata?.fromUserName || n.metadata?.assignedByName || n.metadata?.directorName || undefined,
+              authorTitle: n.metadata?.authorTitle || n.metadata?.fromUserTitle || undefined,
+              priority: n.metadata?.priority || undefined,
+              createdAt: n.createdAt,
+              type: notifType as LiveNotification['type'],
+              time: n.createdAt
+                ? new Date(n.createdAt).toLocaleDateString('ar-SY', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+                : 'اليوم',
+              fullPayload: n.metadata || {},
+            });
+          });
+        } catch (err) {
+          console.debug('Failed to load persisted notifications', err);
+        }
+
+        // 3. Also fetch announcements to get rich data and read status (for DIRECTOR role)
         if (currentUser.role === 'DIRECTOR') {
-          // 1. Fetch Announcements
           try {
             const anns = await api.getAnnouncements();
             const targetAnns = anns.filter((a) => a.authorId !== currentUser.id);
@@ -292,133 +325,45 @@ export const Header: React.FC<HeaderProps> = ({
               if (a.isReadByMe) {
                 discoveredReadKeys.push(a.id);
               }
-              loadedNotifs.push({
-                id: a.id,
-                title: 'تعميم إداري رسمي',
-                message: a.title,
-                content: a.content,
-                authorName: a.author?.fullName || 'المدير العام للموانئ',
-                authorTitle: a.author?.title || 'المدير العام',
-                priority: a.priority,
-                createdAt: a.createdAt,
-                type: 'announcement',
-                time: a.createdAt
-                  ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                  : 'اليوم',
-                fullPayload: a,
-              });
-            });
-          } catch (err) {
-            console.debug('Failed to load announcements in header', err);
-          }
-
-          // 2. Fetch Executive Tasks assigned to directorate (including offline tasks)
-          if (currentUser.directorateId) {
-            try {
-              const tasks = await api.getExecutiveTasks({ directorateId: currentUser.directorateId });
-              tasks.forEach((t) => {
+              // Only add if not already present from DB notifications
+              if (!loadedNotifs.some((n) => n.id === a.id)) {
                 loadedNotifs.push({
-                  id: `exec-task-${t.id}`,
-                  title: t.isShared ? 'تكليف مشترك من المدير العام' : 'تكليف من المدير العام',
-                  message: `وردك تكليف من المدير العام: "${t.title}"`,
-                  content: t.description || t.title,
-                  authorName: t.assignedBy?.fullName || 'المدير العام للموانئ',
-                  authorTitle: t.assignedBy?.title || 'المدير العام',
-                  priority: t.priority,
-                  createdAt: t.createdAt,
-                  type: 'feedback',
-                  time: t.createdAt
-                    ? new Date(t.createdAt).toLocaleDateString('ar-SY', {
+                  id: a.id,
+                  title: 'تعميم إداري رسمي',
+                  message: a.title,
+                  content: a.content,
+                  authorName: a.author?.fullName || 'المدير العام للموانئ',
+                  authorTitle: a.author?.title || 'المدير العام',
+                  priority: a.priority,
+                  createdAt: a.createdAt,
+                  type: 'announcement',
+                  time: a.createdAt
+                    ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit',
                     })
                     : 'اليوم',
-                  fullPayload: {
-                    ...t,
-                    title: t.title,
-                    content: t.description || t.title,
-                    authorName: t.assignedBy?.fullName || 'المدير العام للموانئ',
-                  },
+                  fullPayload: a,
                 });
-              });
-            } catch (err) {
-              console.debug('Failed to load executive tasks in header', err);
-            }
-          }
-        } else if (currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR' || currentUser.role === 'OBSERVER') {
-          // 1. Fetch Executive Overview (Today's submitted plans and summaries)
-          try {
-            const overview = await api.getExecutiveOverview();
-            if (overview.directorates) {
-              overview.directorates.forEach((d) => {
-                if (d.hasPlan) {
-                  loadedNotifs.push({
-                    id: `plan-sub-${d.directorateId}-${overview.date}`,
-                    title: 'رفع خطة صباحية',
-                    message: `قامت (${d.directorateName}) باعتماد ورفع خطة اليوم (${d.tasksCount || 0} مهام).`,
-                    type: 'plan',
-                    time: 'اليوم',
-                    createdAt: d.planSubmittedAt || overview.date,
-                    fullPayload: d,
-                  });
-                }
-
-                if (d.hasSummary) {
-                  loadedNotifs.push({
-                    id: `summary-sub-${d.directorateId}-${overview.date}`,
-                    title: 'تسليم ملخص الإنجاز',
-                    message: `سلّمت (${d.directorateName}) ملخص نهاية الدوام بنسبة إنجاز ${d.completionRate || 0}%.`,
-                    priority: d.urgentFlag ? 'URGENT' : 'NORMAL',
-                    type: 'summary',
-                    time: 'اليوم',
-                    createdAt: d.summarySubmittedAt || overview.date,
-                    fullPayload: d,
-                  });
-                }
-              });
-            }
+              }
+            });
           } catch (err) {
-            console.debug('Failed to load executive overview in header', err);
-          }
-
-          // 2. Fetch Executive Task progress updates
-          try {
-            const allTasks = await api.getExecutiveTasks();
-            allTasks
-              .filter((t) => t.completionPercentage > 0 || t.status === 'COMPLETED' || t.completionNote)
-              .slice(0, 10)
-              .forEach((t) => {
-                loadedNotifs.push({
-                  id: `exec-task-update-${t.id}-${t.updatedAt}`,
-                  title: 'تحديث إنجاز تكليف المدير العام',
-                  message: `قامت (${t.directorate?.name}) بتحديث التكليف "${t.title}" إلى (${t.completionPercentage}%).`,
-                  type: 'task',
-                  time: t.updatedAt
-                    ? new Date(t.updatedAt).toLocaleDateString('ar-SY', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                    : 'مؤخراً',
-                  createdAt: t.updatedAt,
-                  fullPayload: t,
-                });
-              });
-          } catch (err) {
-            console.debug('Failed to load executive task updates in header', err);
+            console.debug('Failed to load announcements in header', err);
           }
         }
 
+        // Deduplicate by id (keep the first occurrence which has richer data from DB)
+        const seenIds = new Set<string>();
+        const deduped = loadedNotifs.filter((n) => {
+          if (seenIds.has(n.id)) return false;
+          seenIds.add(n.id);
+          return true;
+        });
+
         // Sort notifications by date descending
-        loadedNotifs.sort((a, b) => {
+        deduped.sort((a, b) => {
           const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return tB - tA;
@@ -429,10 +374,10 @@ export const Header: React.FC<HeaderProps> = ({
         setReadNotifIds(finalReadKeys);
 
         // Compute unread count strictly against combined server + local reads
-        const unreadItems = loadedNotifs.filter((n) => !finalReadKeys.includes(n.id));
+        const unreadItems = deduped.filter((n) => !finalReadKeys.includes(n.id));
         setUnreadCount(unreadItems.length);
 
-        setNotifications(loadedNotifs);
+        setNotifications(deduped);
       } catch (err) {
         console.error('Failed to load initial notifications in header', err);
       }
@@ -467,7 +412,7 @@ export const Header: React.FC<HeaderProps> = ({
         id: notif.id || Math.random().toString(),
         time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
       };
-      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 30)]);
+      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 100)]);
       setUnreadCount((c) => c + 1);
     };
 

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, SummaryStatus, TaskStatus, Priority } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface SubmitSummaryDto {
   date?: string;
@@ -25,6 +26,7 @@ export class DailySummariesService {
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   private normalizeDate(dateStr?: string): Date {
@@ -163,6 +165,24 @@ export class DailySummariesService {
       urgentFlag: summary.urgentFlag,
       summaryText: summary.summaryText,
     });
+
+    // Persist notification for executive users
+    this.notificationsService.createNotificationForRoles(
+      [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+      {
+        type: 'summary',
+        title: 'تسليم ملخص الإنجاز',
+        message: `سلّمت (${summary.directorate.name}) ملخص نهاية الدوام بنسبة إنجاز ${summary.overallCompletionRate}%.`,
+        referenceId: `summary-sub-${summary.directorateId}-${dto.date || new Date().toISOString().split('T')[0]}`,
+        metadata: {
+          directorateId: summary.directorateId,
+          directorateName: summary.directorate.name,
+          directorName: user.fullName,
+          overallCompletionRate: summary.overallCompletionRate,
+          urgentFlag: summary.urgentFlag,
+        },
+      },
+    );
 
     return summary;
   }

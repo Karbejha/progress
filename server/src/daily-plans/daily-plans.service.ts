@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, PlanStatus, Priority, TaskStatus } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface CreatePlanDto {
   planDate?: string;
@@ -31,6 +32,7 @@ export class DailyPlansService {
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   private normalizeDate(dateStr?: string): Date {
@@ -260,6 +262,24 @@ export class DailyPlansService {
         planDate: updated.planDate.toISOString(),
       });
 
+      // Persist notification for executive users
+      this.notificationsService.createNotificationForRoles(
+        [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+        {
+          type: 'plan',
+          title: 'رفع خطة صباحية',
+          message: `قامت (${updated.directorate.name}) باعتماد ورفع خطة اليوم (${updated.tasks.length} مهام).`,
+          referenceId: `plan-sub-${updated.directorateId}-${updated.planDate.toISOString().split('T')[0]}`,
+          metadata: {
+            directorateId: updated.directorateId,
+            directorateName: updated.directorate.name,
+            directorName: user.fullName,
+            tasksCount: updated.tasks.length,
+            planDate: updated.planDate.toISOString(),
+          },
+        },
+      );
+
       return updated;
     }
 
@@ -316,6 +336,24 @@ export class DailyPlansService {
       tasksCount: created.tasks.length,
       planDate: created.planDate.toISOString(),
     });
+
+    // Persist notification for executive users
+    this.notificationsService.createNotificationForRoles(
+      [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+      {
+        type: 'plan',
+        title: 'رفع خطة صباحية',
+        message: `قامت (${created.directorate.name}) باعتماد ورفع خطة اليوم (${created.tasks.length} مهام).`,
+        referenceId: `plan-sub-${created.directorateId}-${created.planDate.toISOString().split('T')[0]}`,
+        metadata: {
+          directorateId: created.directorateId,
+          directorateName: created.directorate.name,
+          directorName: user.fullName,
+          tasksCount: created.tasks.length,
+          planDate: created.planDate.toISOString(),
+        },
+      },
+    );
 
     return created;
   }

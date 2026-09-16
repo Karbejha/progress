@@ -1,11 +1,176 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Create a single notification for a specific user.
+   */
+  async createNotification(data: {
+    userId: string;
+    type: string;
+    title: string;
+    message: string;
+    referenceId?: string;
+    metadata?: any;
+  }) {
+    try {
+      return await this.prisma.notification.create({
+        data: {
+          userId: data.userId,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          referenceId: data.referenceId || null,
+          metadata: data.metadata || null,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create notification for user ${data.userId}:`, error);
+    }
+  }
+
+  /**
+   * Create notifications for all users with specific roles.
+   * Optionally exclude a specific user (e.g., the author).
+   */
+  async createNotificationForRoles(
+    roles: Role[],
+    data: {
+      type: string;
+      title: string;
+      message: string;
+      referenceId?: string;
+      metadata?: any;
+    },
+    excludeUserId?: string,
+  ) {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: {
+          role: { in: roles },
+          ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+        },
+        select: { id: true },
+      });
+
+      if (users.length === 0) return;
+
+      await this.prisma.notification.createMany({
+        data: users.map((u) => ({
+          userId: u.id,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          referenceId: data.referenceId || null,
+          metadata: data.metadata || null,
+        })),
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create notifications for roles ${roles.join(',')}:`, error);
+    }
+  }
+
+  /**
+   * Create notifications for all users in a specific directorate.
+   */
+  async createNotificationForDirectorate(
+    directorateId: string,
+    data: {
+      type: string;
+      title: string;
+      message: string;
+      referenceId?: string;
+      metadata?: any;
+    },
+    excludeUserId?: string,
+  ) {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: {
+          directorateId,
+          ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+        },
+        select: { id: true },
+      });
+
+      if (users.length === 0) return;
+
+      await this.prisma.notification.createMany({
+        data: users.map((u) => ({
+          userId: u.id,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          referenceId: data.referenceId || null,
+          metadata: data.metadata || null,
+        })),
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create notifications for directorate ${directorateId}:`, error);
+    }
+  }
+
+  /**
+   * Create notifications for all users EXCEPT those in specific roles.
+   * Useful for announcements (notify everyone except the author).
+   */
+  async createNotificationForAllUsers(
+    data: {
+      type: string;
+      title: string;
+      message: string;
+      referenceId?: string;
+      metadata?: any;
+    },
+    excludeUserId?: string,
+  ) {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: excludeUserId ? { id: { not: excludeUserId } } : {},
+        select: { id: true },
+      });
+
+      if (users.length === 0) return;
+
+      await this.prisma.notification.createMany({
+        data: users.map((u) => ({
+          userId: u.id,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          referenceId: data.referenceId || null,
+          metadata: data.metadata || null,
+        })),
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create notifications for all users:`, error);
+    }
+  }
+
+  /**
+   * Get notifications for a specific user, ordered by most recent first.
+   * Returns up to `limit` notifications (default 50).
+   */
+  async getUserNotifications(userId: string, limit = 50) {
+    if (!userId) return [];
+
+    try {
+      return await this.prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to get notifications for user ${userId}:`, error);
+      return [];
+    }
+  }
 
   /**
    * Returns all notification keys read by the given user from the database.

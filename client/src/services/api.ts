@@ -291,6 +291,14 @@ class ApiService {
     }
   }
 
+  async getNotifications(limit = 50): Promise<any[]> {
+    try {
+      return await this.request<any[]>(`/notifications?limit=${limit}`);
+    } catch (err) {
+      console.warn('Failed to fetch notifications from server', err);
+      return [];
+    }
+  }
 
   // Director endpoints
   async getMyTodayPlan(dateStr?: string): Promise<DailyPlan | null> {

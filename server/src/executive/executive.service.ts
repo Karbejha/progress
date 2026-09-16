@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, Priority, SummaryStatus } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface GiveFeedbackDto {
   directorateId: string;
@@ -23,6 +24,7 @@ export class ExecutiveService {
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   private normalizeDate(dateStr?: string): Date {
@@ -281,6 +283,25 @@ export class ExecutiveService {
       rating: feedback.rating || undefined,
     });
 
+    // Persist notification for directorate users
+    this.notificationsService.createNotificationForDirectorate(
+      feedback.directorateId,
+      {
+        type: 'feedback',
+        title: 'توجيه من المدير العام',
+        message: feedback.feedbackText,
+        referenceId: feedback.id,
+        metadata: {
+          feedbackId: feedback.id,
+          fromUserName: user.fullName,
+          fromUserTitle: user.title,
+          directorateId: feedback.directorateId,
+          rating: feedback.rating,
+        },
+      },
+      user.id,
+    );
+
     return feedback;
   }
 
@@ -479,6 +500,24 @@ export class ExecutiveService {
       authorName: user.fullName,
       createdAt: ann.createdAt.toISOString(),
     });
+
+    // Persist notification for all users except the author
+    this.notificationsService.createNotificationForAllUsers(
+      {
+        type: 'announcement',
+        title: 'تعميم إداري رسمي',
+        message: ann.title,
+        referenceId: ann.id,
+        metadata: {
+          announcementId: ann.id,
+          content: ann.content,
+          authorName: user.fullName,
+          authorTitle: user.title,
+          priority: ann.priority,
+        },
+      },
+      user.id,
+    );
 
     return ann;
   }

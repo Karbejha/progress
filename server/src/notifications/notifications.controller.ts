@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request, Query } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { MarkNotificationsReadDto } from './dto/mark-read.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -7,6 +7,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
+
+  @Get()
+  async getUserNotifications(@Request() req: any, @Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    return this.notificationsService.getUserNotifications(req.user.id, parsedLimit);
+  }
 
   @Get('read')
   async getReadKeys(@Request() req: any) {

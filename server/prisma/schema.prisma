@@ -85,6 +85,7 @@ model User {
   receivedExecutiveTasks ExecutiveTask[] @relation("AssignedToUserTasks")
   todos         UserTodo[]
   notificationReads NotificationRead[]
+  notifications Notification[]
 }
 
 model DailyPlan {
@@ -259,5 +260,19 @@ model NotificationRead {
 
   @@unique([userId, notificationKey])
   @@index([userId])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // plan, summary, task, feedback, announcement, executive-task, executive-task-update
+  title       String
+  message     String
+  referenceId String?  // ID of the related entity (plan, task, announcement, etc.)
+  metadata    Json?    // Additional payload data for rendering
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
