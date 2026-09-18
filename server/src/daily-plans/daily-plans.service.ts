@@ -424,6 +424,7 @@ export class DailyPlansService {
     const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged;
 
     if (hasChanges) {
+      console.log(`[DAILY-PLANS] Emitting and persisting task update for task ${updatedTask.id}`);
       this.eventsGateway.emitTaskUpdated({
         directorateId: task.dailyPlan.directorateId,
         directorateName: task.dailyPlan.directorate.name,
@@ -433,6 +434,26 @@ export class DailyPlansService {
         completionPercentage: updatedTask.completionPercentage,
         completionNote: updatedTask.completionNote || undefined,
       });
+
+      // Persist notification for executive users so it isn't lost on refresh
+      this.notificationsService.createNotificationForRoles(
+        [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+        {
+          type: 'task',
+          title: 'تحديث حالة مهمة',
+          message: `قامت (${task.dailyPlan.directorate.name}) بتحديث: "${updatedTask.title}" (${updatedTask.completionPercentage}%).`,
+          referenceId: `task-up-${updatedTask.id}-${new Date().getTime()}`,
+          metadata: {
+            directorateId: task.dailyPlan.directorateId,
+            directorateName: task.dailyPlan.directorate.name,
+            taskId: updatedTask.id,
+            taskTitle: updatedTask.title,
+            status: updatedTask.status,
+            completionPercentage: updatedTask.completionPercentage,
+            completionNote: updatedTask.completionNote || undefined,
+          },
+        },
+      );
     }
 
     // Sync task completion state to Director's personal agenda (UserTodo)

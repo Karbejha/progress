@@ -118,9 +118,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   // Quick reorder menu popover state
   const [activeReorderMenuId, setActiveReorderMenuId] = useState<string | null>(null);
 
-  // Inline Title Editing (Microsoft To Do style)
+  // Inline Title & Description Editing (Microsoft To Do style)
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const [inlineTitleValue, setInlineTitleValue] = useState('');
+  const [inlineDescValue, setInlineDescValue] = useState('');
   const inlineInputRef = useRef<HTMLInputElement | null>(null);
 
   // Quick inline popover states for changing priority / category on the fly
@@ -149,6 +150,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         setActiveCategoryDropdownId(null);
         setActiveReorderMenuId(null);
         setInlineEditingId(null);
+        setInlineTitleValue('');
+        setInlineDescValue('');
         setPlanConversionTodo(null);
         setDeleteConfirmTodo(null);
       }
@@ -539,11 +542,12 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     }
   };
 
-  // Inline Title Editing Handlers (Microsoft To Do style)
+  // Inline Title & Description Editing Handlers (Microsoft To Do style)
   const handleStartInlineEdit = (todo: UserTodo) => {
     if (todo.isCompleted) return;
     setInlineEditingId(todo.id);
     setInlineTitleValue(todo.title);
+    setInlineDescValue(getCleanTodoDescription(todo.description));
     setTimeout(() => {
       inlineInputRef.current?.focus();
       inlineInputRef.current?.select();
@@ -551,25 +555,53 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   };
 
   const handleSaveInlineEdit = async (todoId: string) => {
-    const trimmed = inlineTitleValue.trim();
-    if (!trimmed) {
+    const trimmedTitle = inlineTitleValue.trim();
+    if (!trimmedTitle) {
       setInlineEditingId(null);
       return;
     }
     const currentTodo = todos.find((t) => t.id === todoId);
-    if (currentTodo && currentTodo.title === trimmed) {
+    if (!currentTodo) {
+      setInlineEditingId(null);
+      return;
+    }
+
+    // Preserve existing system tags if they existed in the original description
+    const rawDesc = currentTodo.description || '';
+    const tags: string[] = [];
+    if (rawDesc.includes('الخطة اليومية')) tags.push('[تم إدراجها في الخطة اليومية]');
+    if (rawDesc.includes('تكليف تنفيذي')) tags.push('[تم تحويلها إلى تكليف تنفيذي رسمي]');
+    const matchPlan = rawDesc.match(/\[معرف المهمة:\s*[^\]]+\]/);
+    if (matchPlan) tags.push(matchPlan[0]);
+    const matchExecs = rawDesc.match(/\[معرف التكليف:\s*[^\]]+\]/g);
+    if (matchExecs) tags.push(...matchExecs);
+
+    const cleanDesc = inlineDescValue.trim();
+    let finalDesc: string | null = cleanDesc || null;
+    if (tags.length > 0) {
+      finalDesc = cleanDesc ? `${cleanDesc}\n${tags.join('\n')}` : tags.join('\n');
+    }
+
+    const currentCleanDesc = getCleanTodoDescription(currentTodo.description);
+    if (currentTodo.title === trimmedTitle && currentCleanDesc === cleanDesc) {
       setInlineEditingId(null);
       return;
     }
 
     // Optimistic update
     setTodos((prev) =>
-      prev.map((t) => (t.id === todoId ? { ...t, title: trimmed } : t))
+      prev.map((t) =>
+        t.id === todoId ? { ...t, title: trimmedTitle, description: finalDesc } : t
+      )
     );
     setInlineEditingId(null);
 
     try {
-      await api.updateTodo(todoId, { title: trimmed });
+      await api.updateTodo(todoId, {
+        title: trimmedTitle,
+        description: finalDesc !== null ? finalDesc : '',
+      });
+      showToastMsg('تم التحديث', 'تم حفظ تعديلات المهمة والتفاصيل بنجاح.');
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err) {
       console.error('Failed to save inline edit', err);
@@ -580,6 +612,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const handleCancelInlineEdit = () => {
     setInlineEditingId(null);
     setInlineTitleValue('');
+    setInlineDescValue('');
   };
 
   // Desktop Drag and Drop Handlers
@@ -588,6 +621,17 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     draggedIdRef.current = id;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id);
+
+    // Set the entire task card as drag preview image so dragging feels smooth & natural
+    const card = (e.currentTarget as HTMLElement).closest('[data-todo-id]');
+    if (card && e.dataTransfer.setDragImage) {
+      const rect = card.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      try {
+        e.dataTransfer.setDragImage(card, clickX, clickY);
+      } catch (_) {}
+    }
   };
 
   const handleDragOver = (e: React.DragEvent, targetId: string) => {
@@ -817,10 +861,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   };
 
   // Open Edit Modal
-  const handleOpenEdit = (todo: UserTodo) => {
+  const handleOpenEdit = (todo: UserTodo, initialTitle?: string, initialDesc?: string) => {
     setEditingTodo(todo);
-    setEditTitle(todo.title);
-    setEditDesc(getCleanTodoDescription(todo.description));
+    setEditTitle(initialTitle !== undefined ? initialTitle : todo.title);
+    setEditDesc(initialDesc !== undefined ? initialDesc : getCleanTodoDescription(todo.description));
     setEditPriority(todo.priority);
     setEditCategory(todo.category || 'GENERAL');
     setEditDueDate(todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : '');
@@ -977,7 +1021,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   }, [todos, searchQuery, statusTab, selectedCategoryFilter]);
 
   return (
-    <div className="space-y-6 pb-12 animate-in fade-in duration-300">
+    <div className="space-y-4 sm:space-y-6 pb-24 sm:pb-12 animate-in fade-in duration-300">
       
       {/* Toast Notification */}
       {toast && (
@@ -1010,7 +1054,11 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
             </div>
             <h1 className="text-lg sm:text-2xl font-black tracking-tight text-white flex items-center gap-2 flex-wrap">
               أجندة المهام اليومية والمتابعات
-              <span className="text-[#d4af37]">({currentUser.fullName})</span>
+              {currentUser?.fullName?.trim() ? (
+                <span className="text-[#d4af37]">({currentUser.fullName})</span>
+              ) : currentUser?.title?.trim() ? (
+                <span className="text-[#d4af37]">({currentUser.title})</span>
+              ) : null}
             </h1>
             <p className="text-xs sm:text-sm text-[#8daaa2] leading-relaxed">
               مساحة عمل خاصة وسريعة لتدوين مهامك الشخصية ومواعيدك، مع إمكانية تحويلها إلى خطط أو تكليفات رسمية بنقرة واحدة.
@@ -1127,10 +1175,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
       {/* Quick Add Todo Card */}
       <div className="rounded-2xl sm:rounded-3xl border border-[#d2d1c9] bg-white p-3.5 sm:p-5 shadow-sm transition hover:shadow-md">
-        <form onSubmit={handleCreateTodo} className="space-y-3">
+        <form onSubmit={handleCreateTodo} className="space-y-2.5 sm:space-y-3">
           
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5">
-            <div className="relative flex-1">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
               <input
                 type="text"
                 value={newTitle}
@@ -1146,68 +1194,71 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
             <button
               type="submit"
               disabled={isSubmitting || !newTitle.trim()}
-              className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 sm:px-5 py-2.5 sm:py-3 text-xs font-extrabold rounded-2xl bg-[#0c3e35] text-[#d4af37] hover:bg-[#05261e] transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0 active:scale-98"
+              className="flex items-center justify-center gap-1.5 px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs font-black rounded-2xl bg-[#0c3e35] text-[#d4af37] hover:bg-[#05261e] transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 active:scale-95"
             >
-              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              <span>إضافة المهمة</span>
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 stroke-[2.5]" />}
+              <span className="hidden sm:inline">إضافة المهمة</span>
+              <span className="sm:hidden">إضافة</span>
             </button>
           </div>
 
-          {/* Quick Config Row (Priority, Category, Date) */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pt-1 text-xs">
-            <div className="flex items-center gap-2 flex-wrap">
-              
-              {/* Category selector chips with horizontal scroll on mobile */}
-              <div className="flex items-center gap-1 bg-[#f4f3ed] p-1 rounded-xl border border-[#d2d1c9]/60 max-w-full overflow-x-auto scrollbar-none py-1">
-                {(['GENERAL', 'MEETING', 'FOLLOWUP', 'OFFICIAL', 'CALL'] as const).map((cat) => {
-                  const meta = CATEGORY_LABELS[cat];
-                  const isSelected = newCategory === cat;
-                  return (
-                    <button
-                      type="button"
-                      key={cat}
-                      onClick={() => setNewCategory(cat)}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer shrink-0 whitespace-nowrap ${
-                        isSelected
-                          ? 'bg-[#0c3e35] text-white shadow-xs'
-                          : 'text-[#5e736e] hover:text-[#0c3e35] hover:bg-white/60'
-                      }`}
-                    >
-                      {meta.icon}
-                      <span>{meta.label}</span>
-                    </button>
-                  );
-                })}
+          {/* Quick Config: Categories strip + Priority & Date row */}
+          <div className="space-y-2 pt-0.5 text-xs">
+            {/* Category selector chips with horizontal scroll on mobile */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 -mx-0.5 px-0.5">
+              <span className="text-[11px] font-bold text-[#5e736e] shrink-0 ml-1 hidden sm:inline">التصنيف:</span>
+              {(['GENERAL', 'MEETING', 'FOLLOWUP', 'OFFICIAL', 'CALL'] as const).map((cat) => {
+                const meta = CATEGORY_LABELS[cat];
+                const isSelected = newCategory === cat;
+                return (
+                  <button
+                    type="button"
+                    key={cat}
+                    onClick={() => setNewCategory(cat)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-xl font-bold text-[11px] transition cursor-pointer shrink-0 whitespace-nowrap border ${
+                      isSelected
+                        ? 'bg-[#0c3e35] text-[#d4af37] border-[#0c3e35] shadow-xs'
+                        : 'bg-[#f4f3ed] text-[#5e736e] border-[#d2d1c9]/60 hover:text-[#0c3e35] hover:bg-white'
+                    }`}
+                  >
+                    {meta.icon}
+                    <span>{meta.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Priority selector, Due Date, and Notes toggle */}
+            <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={newPriority}
+                  onChange={(e) => setNewPriority(e.target.value as Priority)}
+                  className="px-2.5 py-1.5 text-xs font-bold rounded-xl bg-white border border-[#d2d1c9] text-[#05261e] focus:outline-hidden cursor-pointer shrink-0"
+                >
+                  <option value="LOW">أولوية منخفضة</option>
+                  <option value="NORMAL">أولوية عادية</option>
+                  <option value="HIGH">أولوية هامة</option>
+                  <option value="URGENT">أولوية طارئة جداً</option>
+                </select>
+
+                <CustomDatePicker
+                  value={newDueDate}
+                  onChange={(newVal) => setNewDueDate(newVal)}
+                  variant="input"
+                  placeholder="تاريخ الاستحقاق (اختياري)"
+                  allowClear={true}
+                  className="py-1 px-2.5 min-w-[135px] sm:min-w-[150px]"
+                />
               </div>
-
-              {/* Priority selector */}
-              <select
-                value={newPriority}
-                onChange={(e) => setNewPriority(e.target.value as Priority)}
-                className="px-2.5 py-1.5 text-xs font-bold rounded-xl bg-white border border-[#d2d1c9] text-[#05261e] focus:outline-hidden cursor-pointer shrink-0"
-              >
-                <option value="LOW">أولوية منخفضة</option>
-                <option value="NORMAL">أولوية عادية</option>
-                <option value="HIGH">أولوية هامة</option>
-                <option value="URGENT">أولوية طارئة جداً</option>
-              </select>
-
-              {/* Due Date Picker using system CustomDatePicker */}
-              <CustomDatePicker
-                value={newDueDate}
-                onChange={(newVal) => setNewDueDate(newVal)}
-                variant="input"
-                placeholder="تاريخ الاستحقاق (اختياري)"
-                allowClear={true}
-                className="py-1 px-2.5 min-w-[140px] sm:min-w-[150px]"
-              />
 
               <button
                 type="button"
                 onClick={() => setShowAdvancedAdd(!showAdvancedAdd)}
-                className="text-xs font-bold text-[#0c3e35] hover:underline px-1 cursor-pointer whitespace-nowrap"
+                className="text-xs font-bold text-[#0c3e35] hover:underline px-1 cursor-pointer whitespace-nowrap flex items-center gap-1 mr-auto"
               >
-                {showAdvancedAdd ? 'إخفاء الملاحظات' : '+ إضافة ملاحظات'}
+                <Edit3 className="w-3 h-3" />
+                <span>{showAdvancedAdd ? 'إخفاء الملاحظات' : '+ إضافة ملاحظات'}</span>
               </button>
             </div>
           </div>
@@ -1235,7 +1286,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         <div className="flex items-center gap-1 bg-[#f4f3ed] p-1 rounded-xl border border-[#d2d1c9]/60 max-w-full overflow-x-auto scrollbar-none shrink-0">
           <button
             onClick={() => setStatusTab('ALL')}
-            className={`px-3 py-1.5 text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
               statusTab === 'ALL' ? 'bg-[#0c3e35] text-white shadow-xs' : 'text-[#5e736e] hover:text-[#0c3e35]'
             }`}
           >
@@ -1243,7 +1294,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
           </button>
           <button
             onClick={() => setStatusTab('PENDING')}
-            className={`px-3 py-1.5 text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
               statusTab === 'PENDING' ? 'bg-[#0c3e35] text-white shadow-xs' : 'text-[#5e736e] hover:text-[#0c3e35]'
             }`}
           >
@@ -1251,7 +1302,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
           </button>
           <button
             onClick={() => setStatusTab('TODAY')}
-            className={`px-3 py-1.5 text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
               statusTab === 'TODAY' ? 'bg-[#0c3e35] text-white shadow-xs' : 'text-[#5e736e] hover:text-[#0c3e35]'
             }`}
           >
@@ -1259,7 +1310,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
           </button>
           <button
             onClick={() => setStatusTab('COMPLETED')}
-            className={`px-3 py-1.5 text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-extrabold rounded-lg transition shrink-0 whitespace-nowrap cursor-pointer ${
               statusTab === 'COMPLETED' ? 'bg-[#0c3e35] text-white shadow-xs' : 'text-[#5e736e] hover:text-[#0c3e35]'
             }`}
           >
@@ -1273,7 +1324,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
           <select
             value={selectedCategoryFilter}
             onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-            className="px-2.5 sm:px-3 py-2 text-xs font-bold rounded-xl bg-[#f8f9fa] border border-[#d2d1c9] text-[#05261e] focus:outline-hidden cursor-pointer shrink-0"
+            className="px-2 sm:px-3 py-2 text-[11px] sm:text-xs font-bold rounded-xl bg-[#f8f9fa] border border-[#d2d1c9] text-[#05261e] focus:outline-hidden cursor-pointer shrink-0 max-w-[125px] sm:max-w-none truncate"
           >
             <option value="ALL">كافة التصنيفات</option>
             <option value="GENERAL">عام</option>
@@ -1308,18 +1359,18 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
       {/* Reorder Hint Bar */}
       {todos.length > 1 && (
-        <div className="flex items-center justify-between text-[11px] text-[#5e736e] px-2 font-medium">
-          <span className="flex items-center gap-1.5 font-bold text-[#0c3e35]">
-            <ArrowUpDown className="w-3.5 h-3.5 text-[#d4af37]" />
+        <div className="flex items-center justify-between gap-2 text-[11px] text-[#5e736e] px-2 font-medium">
+          <span className="flex items-center gap-1.5 font-bold text-[#0c3e35] truncate">
+            <ArrowUpDown className="w-3.5 h-3.5 text-[#d4af37] shrink-0" />
             <span className="hidden sm:inline">
-              يمكنك استخدام أسهم الترتيب (↑/↓) أو السحب والإفلات • انقر نقراً مزدوجاً على العنوان للتحرير السريع
+              يمكنك استخدام أسهم ومقبض الترتيب الجانبي (↑/↓) أو سحبه • انقر نقراً مزدوجاً على العنوان للتحرير السريع
             </span>
-            <span className="inline sm:hidden">
-              استخدم أسهم (↑/↓) أو اضغط مطولاً للسحب وإعادة الترتيب
+            <span className="inline sm:hidden text-[10px]">
+              استخدم الأسهم أو اسحب للترتيب
             </span>
           </span>
-          <span className="text-[#8daaa2] text-[10px] sm:text-[11px]">
-            المهام المنجزة تستقر بالأسفل ⬇️
+          <span className="text-[#8daaa2] text-[10px] shrink-0 font-medium">
+            المنجزة بالأسفل ↓
           </span>
         </div>
       )}
@@ -1385,15 +1436,9 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
                 <div
                   data-todo-id={todo.id}
-                  draggable={!todo.isCompleted && inlineEditingId !== todo.id}
-                  onDragStart={(e) => handleDragStart(e, todo.id)}
                   onDragOver={(e) => handleDragOver(e, todo.id)}
                   onDrop={(e) => handleDrop(e, todo.id)}
                   onDragEnd={handleDragEnd}
-                  onTouchStart={(e) => handleTouchStart(e, todo)}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEndOrCancel}
-                  onTouchCancel={handleTouchEndOrCancel}
                   onKeyDown={(e) => {
                     if (!todo.isCompleted && inlineEditingId !== todo.id) {
                       if (e.altKey && e.key === 'ArrowUp') {
@@ -1405,7 +1450,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                       }
                     }
                   }}
-                  className={`group rounded-2xl border transition-all duration-150 p-3.5 sm:p-4 relative ${
+                  className={`group rounded-2xl border transition-all duration-150 p-3.5 sm:p-4 relative select-text ${
                     isDragging
                       ? 'opacity-40 scale-[0.99] border-dashed border-2 border-[#d4af37] bg-amber-50/40 z-20 ring-2 ring-[#d4af37]/30'
                       : isDragOver
@@ -1429,7 +1474,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                     </div>
                   )}
 
-                  <div className="flex items-start justify-between gap-2 sm:gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
                     
                     {/* Left: Drag Handle & Arrows + Checkbox + Title + Metadata */}
                     <div className="flex items-start gap-2 sm:gap-2.5 flex-1 min-w-0">
@@ -1437,12 +1482,22 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                       {/* Drag Handle & Instant Reorder Arrows */}
                       {!todo.isCompleted ? (
                         <div
-                          className="flex flex-col items-center justify-center shrink-0 select-none py-0.5"
-                          data-no-dnd="true"
+                          draggable={inlineEditingId !== todo.id}
+                          onDragStart={(e) => handleDragStart(e, todo.id)}
+                          onDragEnd={handleDragEnd}
+                          onTouchStart={(e) => handleTouchStart(e, todo)}
+                          onTouchMove={handleTouchMove}
+                          onTouchEnd={handleTouchEndOrCancel}
+                          onTouchCancel={handleTouchEndOrCancel}
+                          className="flex flex-col items-center justify-center shrink-0 select-none py-0.5 px-0.5 rounded-lg hover:bg-slate-100/90 active:bg-slate-200/70 transition cursor-grab active:cursor-grabbing border border-transparent hover:border-[#d2d1c9]/50"
+                          title="اسحب المهمة للأعلى أو للأسفل لإعادة الترتيب، أو استخدم الأسهم"
                         >
                           {/* Up Arrow */}
                           <button
                             type="button"
+                            draggable={false}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMoveUp(todo.id);
@@ -1460,8 +1515,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
                           {/* Grip Handle */}
                           <div
-                            className="p-0.5 text-slate-300 hover:text-[#0c3e35] transition cursor-grab active:cursor-grabbing hover:scale-110"
-                            title="اسحب أو اضغط مطولاً للترتيب الحر"
+                            className="p-0.5 text-slate-300 hover:text-[#0c3e35] transition hover:scale-110 cursor-grab active:cursor-grabbing"
+                            title="اسحب للأعلى أو للأسفل للترتيب الحر"
                           >
                             <GripVertical className="w-3.5 h-3.5" />
                           </div>
@@ -1469,6 +1524,9 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                           {/* Down Arrow */}
                           <button
                             type="button"
+                            draggable={false}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleMoveDown(todo.id);
@@ -1508,453 +1566,510 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                         
                         {/* Inline Edit Form OR Title Display */}
                         {inlineEditingId === todo.id ? (
-                          <div className="py-0.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="py-1" onClick={(e) => e.stopPropagation()}>
                             <form
                               onSubmit={(e) => {
                                 e.preventDefault();
                                 handleSaveInlineEdit(todo.id);
                               }}
-                              className="flex items-center gap-1.5 flex-wrap"
+                              className="space-y-2 bg-[#f4f7f5]/80 p-2 sm:p-2.5 rounded-2xl border border-[#0c3e35]/20 shadow-xs"
                             >
-                              <input
-                                ref={inlineInputRef}
-                                type="text"
-                                value={inlineTitleValue}
-                                onChange={(e) => setInlineTitleValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') {
-                                    e.stopPropagation();
+                              {/* Row 1: Title input + Save + Cancel + Advanced */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <input
+                                  ref={inlineInputRef}
+                                  type="text"
+                                  value={inlineTitleValue}
+                                  onChange={(e) => setInlineTitleValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                      e.stopPropagation();
+                                      handleCancelInlineEdit();
+                                    }
+                                  }}
+                                  className="flex-1 min-w-[200px] px-3 py-1.5 text-sm font-extrabold text-[#05261e] bg-white border-2 border-[#0c3e35] rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#d4af37]/40 shadow-inner transition"
+                                  placeholder="عنوان المهمة..."
+                                  autoFocus
+                                />
+                                <button
+                                  type="submit"
+                                  className="px-3 py-1.5 rounded-xl bg-[#0c3e35] text-[#d4af37] hover:bg-[#05261e] flex items-center gap-1 text-xs font-extrabold shadow-xs transition cursor-pointer shrink-0 active:scale-95"
+                                  title="حفظ التعديل (Enter)"
+                                >
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                  <span>حفظ</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelInlineEdit}
+                                  className="px-2.5 py-1.5 rounded-xl bg-slate-200/80 text-slate-700 hover:bg-slate-300 flex items-center gap-1 text-xs font-bold transition cursor-pointer shrink-0 active:scale-95"
+                                  title="إلغاء (Esc)"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>إلغاء</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleOpenEdit(todo, inlineTitleValue, inlineDescValue);
                                     handleCancelInlineEdit();
-                                  }
-                                }}
-                                className="flex-1 min-w-[200px] px-2.5 py-1 text-sm font-extrabold text-[#05261e] bg-[#f8f9fa] border-2 border-[#0c3e35] rounded-xl focus:outline-hidden focus:bg-white focus:ring-2 focus:ring-[#d4af37]/40 shadow-inner"
-                                placeholder="عنوان المهمة..."
-                                autoFocus
-                              />
-                              <button
-                                type="submit"
-                                className="px-2.5 py-1 rounded-xl bg-[#0c3e35] text-[#d4af37] hover:bg-[#05261e] flex items-center gap-1 text-xs font-extrabold shadow-xs transition cursor-pointer shrink-0 active:scale-95"
-                                title="حفظ التعديل (Enter)"
-                              >
-                                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                <span>حفظ</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleCancelInlineEdit}
-                                className="px-2 py-1 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1 text-xs font-bold transition cursor-pointer shrink-0 active:scale-95"
-                                title="إلغاء (Esc)"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                                <span>إلغاء</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleCancelInlineEdit();
-                                  handleOpenEdit(todo);
-                                }}
-                                className="px-2 py-1 rounded-xl text-[11px] font-bold text-[#0c3e35] bg-[#0c3e35]/10 hover:bg-[#0c3e35]/20 flex items-center gap-1 transition cursor-pointer shrink-0 whitespace-nowrap"
-                                title="تعديل كافة التفاصيل والملاحظات والتاريخ"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                                <span>خيارات متقدمة</span>
-                              </button>
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-[#0c3e35] bg-[#0c3e35]/10 hover:bg-[#0c3e35]/20 flex items-center gap-1 transition cursor-pointer shrink-0 whitespace-nowrap"
+                                  title="تعديل كافة التفاصيل والملاحظات وتاريخ الاستحقاق في نافذة متقدمة"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  <span>خيارات متقدمة</span>
+                                </button>
+                              </div>
+
+                              {/* Row 2: Details / Description Textarea */}
+                              <div className="relative">
+                                <textarea
+                                  value={inlineDescValue}
+                                  onChange={(e) => setInlineDescValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                      e.stopPropagation();
+                                      handleCancelInlineEdit();
+                                    } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                      e.preventDefault();
+                                      handleSaveInlineEdit(todo.id);
+                                    }
+                                  }}
+                                  rows={2}
+                                  className="w-full px-3 py-1.5 text-xs text-[#05261e] font-medium bg-white border border-[#0c3e35]/30 focus:border-[#0c3e35] rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#d4af37]/40 shadow-inner resize-y transition placeholder:text-slate-400 leading-relaxed"
+                                  placeholder="تفاصيل أو ملاحظات إضافية حول المهمة (اختياري)..."
+                                />
+                                <div className="flex items-center justify-between text-[10px] text-[#5e736e] px-1 -mt-0.5">
+                                  <span>تفاصيل وملاحظات المهمة</span>
+                                  <span className="text-slate-400">Ctrl+Enter للحفظ السريع أو Enter بحقل العنوان</span>
+                                </div>
+                              </div>
                             </form>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4
-                              onDoubleClick={() => !todo.isCompleted && handleStartInlineEdit(todo)}
-                              className={`text-sm font-extrabold leading-snug transition cursor-pointer select-none group/title inline-flex items-center gap-1.5 ${
-                                todo.isCompleted
-                                  ? 'line-through text-slate-400'
-                                  : 'text-[#05261e] hover:text-[#0c3e35]'
-                              }`}
-                              title={!todo.isCompleted ? 'انقر نقراً مزدوجاً للتحرير السريع المباشر' : ''}
-                            >
-                              <span>{todo.title}</span>
-                              {!todo.isCompleted && (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleStartInlineEdit(todo);
-                                  }}
-                                  className="opacity-0 group-hover:opacity-100 group-hover/title:opacity-100 p-0.5 text-slate-400 hover:text-[#0c3e35] transition rounded cursor-pointer"
-                                  title="تحرير سريع للعنوان"
+                          <div className="space-y-1 sm:space-y-1.5">
+                            {/* Title Row */}
+                            <div className="flex items-start gap-1.5">
+                              <h4
+                                onDoubleClick={() => !todo.isCompleted && handleStartInlineEdit(todo)}
+                                className={`text-sm font-black leading-snug transition group/title inline-flex items-center gap-1.5 select-text break-words ${
+                                  todo.isCompleted
+                                    ? 'line-through text-slate-400'
+                                    : 'text-[#05261e] hover:text-[#0c3e35]'
+                                }`}
+                                title={!todo.isCompleted ? 'انقر نقراً مزدوجاً للتحرير السريع المباشر' : ''}
+                              >
+                                <span>{todo.title}</span>
+                                {!todo.isCompleted && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStartInlineEdit(todo);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 group-hover/title:opacity-100 p-0.5 text-slate-400 hover:text-[#0c3e35] transition rounded cursor-pointer"
+                                    title="تحرير سريع للعنوان"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </span>
+                                )}
+                              </h4>
+                            </div>
+
+                            {/* Description (Visible only when not in inline edit) */}
+                            {getCleanTodoDescription(todo.description) && (
+                              <p
+                                onDoubleClick={() => !todo.isCompleted && handleStartInlineEdit(todo)}
+                                className={`text-xs whitespace-pre-line leading-relaxed select-text cursor-text ${
+                                  todo.isCompleted ? 'text-slate-400' : 'text-[#5e736e]'
+                                }`}
+                                title={!todo.isCompleted ? 'انقر نقراً مزدوجاً لتعديل العنوان والتفاصيل' : ''}
+                              >
+                                {getCleanTodoDescription(todo.description)}
+                              </p>
+                            )}
+
+                            {/* Metadata Chips Row: Priority, Category, Due Date, Plan/Exec Badges, Completed stamp */}
+                            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                              {/* Priority Badge Popover */}
+                              <div className="relative priority-popover">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleTogglePriorityDropdown(e, todo.id)}
+                                  className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${priorityBadge.color}`}
+                                  title="انقر لتغيير درجة الأولوية فورياً"
                                 >
-                                  <Edit3 className="w-3 h-3" />
+                                  <span>{priorityBadge.label}</span>
+                                  <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                                </button>
+
+                                {activePriorityDropdownId === todo.id && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className={`absolute z-40 w-36 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
+                                      dropdownAlign === 'left' ? 'left-0' : 'right-0'
+                                    } ${
+                                      dropdownPlacement === 'up'
+                                        ? 'bottom-full mb-1.5'
+                                        : 'top-full mt-1.5'
+                                    }`}
+                                  >
+                                    <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
+                                      تغيير الأولوية:
+                                    </span>
+                                    {(['URGENT', 'HIGH', 'NORMAL', 'LOW'] as Priority[]).map((p) => {
+                                      const badge = PRIORITY_BADGES[p];
+                                      const isSelected = todo.priority === p;
+                                      return (
+                                        <button
+                                          key={p}
+                                          type="button"
+                                          onClick={() => handleQuickChangePriority(todo.id, p)}
+                                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                            isSelected
+                                              ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                                              : 'text-[#05261e] hover:bg-[#f8f9fa]'
+                                          }`}
+                                        >
+                                          <span className={`px-1.5 py-0.2 rounded border ${badge.color}`}>
+                                            {badge.label}
+                                          </span>
+                                          {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Category Badge Popover */}
+                              <div className="relative category-popover">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleCategoryDropdown(e, todo.id)}
+                                  className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${categoryMeta.color}`}
+                                  title="انقر لتغيير نوع المهمة فورياً"
+                                >
+                                  {categoryMeta.icon}
+                                  <span>{categoryMeta.label}</span>
+                                  <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                                </button>
+
+                                {activeCategoryDropdownId === todo.id && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className={`absolute z-40 w-40 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
+                                      dropdownAlign === 'left' ? 'left-0' : 'right-0'
+                                    } ${
+                                      dropdownPlacement === 'up'
+                                        ? 'bottom-full mb-1.5'
+                                        : 'top-full mt-1.5'
+                                    }`}
+                                  >
+                                    <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
+                                      تغيير نوع المهمة:
+                                    </span>
+                                    {(['GENERAL', 'MEETING', 'FOLLOWUP', 'OFFICIAL', 'CALL'] as const).map((cat) => {
+                                      const meta = CATEGORY_LABELS[cat];
+                                      const isSelected = todo.category === cat;
+                                      return (
+                                        <button
+                                          key={cat}
+                                          type="button"
+                                          onClick={() => handleQuickChangeCategory(todo.id, cat)}
+                                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                            isSelected
+                                              ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                                              : 'text-[#05261e] hover:bg-[#f8f9fa]'
+                                          }`}
+                                        >
+                                          <span className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded border ${meta.color}`}>
+                                            {meta.icon}
+                                            <span>{meta.label}</span>
+                                          </span>
+                                          {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Due Date Indicator */}
+                              {(todo.dueDate || !todo.isCompleted) && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  className="relative inline-flex items-center"
+                                >
+                                  <CustomDatePicker
+                                    value={todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : ''}
+                                    onChange={(newDate) => handleQuickChangeDueDate(todo.id, newDate)}
+                                    variant="badge"
+                                    badgeStatus={
+                                      isOverdue
+                                        ? 'overdue'
+                                        : isDueToday
+                                        ? 'today'
+                                        : todo.dueDate
+                                        ? 'normal'
+                                        : 'none'
+                                    }
+                                    placeholder="+ موعد"
+                                    allowClear={true}
+                                    disabled={todo.isCompleted}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Badges for Plan / Executive Linking */}
+                              {todo.description?.includes('الخطة اليومية') && (
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
+                                    todo.isCompleted
+                                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                      : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  }`}
+                                  title="هذه المهمة مدرجة في الخطة اليومية للمديرية"
+                                >
+                                  {todo.isCompleted ? (
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-700 shrink-0" />
+                                  ) : (
+                                    <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  )}
+                                  <span>{todo.isCompleted ? 'مكتملة بالخطة اليومية' : 'مدرجة بالخطة اليومية'}</span>
                                 </span>
                               )}
-                            </h4>
 
-                            {/* Priority Badge Popover */}
-                            <div className="relative priority-popover">
-                              <button
-                                type="button"
-                                onClick={(e) => handleTogglePriorityDropdown(e, todo.id)}
-                                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${priorityBadge.color}`}
-                                title="انقر لتغيير درجة الأولوية فورياً"
-                              >
-                                <span>{priorityBadge.label}</span>
-                                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-                              </button>
-
-                              {activePriorityDropdownId === todo.id && (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={`absolute z-40 w-36 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
-                                    dropdownAlign === 'left' ? 'left-0' : 'right-0'
-                                  } ${
-                                    dropdownPlacement === 'up'
-                                      ? 'bottom-full mb-1.5'
-                                      : 'top-full mt-1.5'
+                              {todo.description?.includes('تكليف تنفيذي') && (
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
+                                    todo.isCompleted
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : 'bg-amber-50 text-amber-900 border-amber-300'
                                   }`}
+                                  title="تم إصدار تكليف تنفيذي رسمي بهذه المهمة"
                                 >
-                                  <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
-                                    تغيير الأولوية:
-                                  </span>
-                                  {(['URGENT', 'HIGH', 'NORMAL', 'LOW'] as Priority[]).map((p) => {
-                                    const badge = PRIORITY_BADGES[p];
-                                    const isSelected = todo.priority === p;
-                                    return (
-                                      <button
-                                        key={p}
-                                        type="button"
-                                        onClick={() => handleQuickChangePriority(todo.id, p)}
-                                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                                          isSelected
-                                            ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
-                                            : 'text-[#05261e] hover:bg-[#f8f9fa]'
-                                        }`}
-                                      >
-                                        <span className={`px-1.5 py-0.2 rounded border ${badge.color}`}>
-                                          {badge.label}
-                                        </span>
-                                        {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                  {todo.isCompleted ? (
+                                    <CheckCircle2 className="w-3 h-3 text-amber-700 shrink-0" />
+                                  ) : (
+                                    <Layers className="w-3 h-3 text-amber-700 shrink-0" />
+                                  )}
+                                  <span>{todo.isCompleted ? 'مكتملة كتكليف تنفيذي' : 'مُكلّفة رسمياً'}</span>
+                                </span>
                               )}
-                            </div>
 
-                            {/* Category Badge Popover */}
-                            <div className="relative category-popover">
-                              <button
-                                type="button"
-                                onClick={(e) => handleToggleCategoryDropdown(e, todo.id)}
-                                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer hover:shadow-xs hover:scale-105 active:scale-95 ${categoryMeta.color}`}
-                                title="انقر لتغيير نوع المهمة فورياً"
-                              >
-                                {categoryMeta.icon}
-                                <span>{categoryMeta.label}</span>
-                                <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-                              </button>
-
-                              {activeCategoryDropdownId === todo.id && (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  className={`absolute z-40 w-40 bg-white border border-[#d2d1c9] rounded-xl shadow-xl p-1 text-right animate-in fade-in zoom-in-95 duration-150 ${
-                                    dropdownAlign === 'left' ? 'left-0' : 'right-0'
-                                  } ${
-                                    dropdownPlacement === 'up'
-                                      ? 'bottom-full mb-1.5'
-                                      : 'top-full mt-1.5'
-                                  }`}
-                                >
-                                  <span className="block px-2 py-1 text-[9px] font-bold text-[#8daaa2] border-b border-[#f4f3ed]">
-                                    تغيير نوع المهمة:
-                                  </span>
-                                  {(['GENERAL', 'MEETING', 'FOLLOWUP', 'OFFICIAL', 'CALL'] as const).map((cat) => {
-                                    const meta = CATEGORY_LABELS[cat];
-                                    const isSelected = todo.category === cat;
-                                    return (
-                                      <button
-                                        key={cat}
-                                        type="button"
-                                        onClick={() => handleQuickChangeCategory(todo.id, cat)}
-                                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                                          isSelected
-                                            ? 'bg-[#0c3e35]/10 text-[#0c3e35]'
-                                            : 'text-[#05261e] hover:bg-[#f8f9fa]'
-                                        }`}
-                                      >
-                                        <span className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded border ${meta.color}`}>
-                                          {meta.icon}
-                                          <span>{meta.label}</span>
-                                        </span>
-                                        {isSelected && <Check className="w-3 h-3 text-[#0c3e35]" />}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                              {todo.isCompleted && todo.completedAt && (
+                                <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                                  <CheckCheck className="w-3 h-3" />
+                                  <span>أنجزت {new Date(todo.completedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
+                                </span>
                               )}
+
                             </div>
-
-                            {/* Due Date Indicator */}
-                            {(todo.dueDate || !todo.isCompleted) && (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                className="relative inline-flex items-center"
-                              >
-                                <CustomDatePicker
-                                  value={todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : ''}
-                                  onChange={(newDate) => handleQuickChangeDueDate(todo.id, newDate)}
-                                  variant="badge"
-                                  badgeStatus={
-                                    isOverdue
-                                      ? 'overdue'
-                                      : isDueToday
-                                      ? 'today'
-                                      : todo.dueDate
-                                      ? 'normal'
-                                      : 'none'
-                                  }
-                                  placeholder="+ موعد"
-                                  allowClear={true}
-                                  disabled={todo.isCompleted}
-                                />
-                              </div>
-                            )}
-
-                            {/* Badges for Plan / Executive Linking */}
-                            {todo.description?.includes('الخطة اليومية') && (
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
-                                  todo.isCompleted
-                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                }`}
-                                title="هذه المهمة مدرجة في الخطة اليومية للمديرية"
-                              >
-                                {todo.isCompleted ? (
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-700 shrink-0" />
-                                ) : (
-                                  <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
-                                )}
-                                <span>{todo.isCompleted ? 'مكتملة بالخطة اليومية' : 'مدرجة بالخطة اليومية'}</span>
-                              </span>
-                            )}
-
-                            {todo.description?.includes('تكليف تنفيذي') && (
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
-                                  todo.isCompleted
-                                    ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                    : 'bg-amber-50 text-amber-900 border-amber-300'
-                                }`}
-                                title="تم إصدار تكليف تنفيذي رسمي بهذه المهمة"
-                              >
-                                {todo.isCompleted ? (
-                                  <CheckCircle2 className="w-3 h-3 text-amber-700 shrink-0" />
-                                ) : (
-                                  <Layers className="w-3 h-3 text-amber-700 shrink-0" />
-                                )}
-                                <span>{todo.isCompleted ? 'مكتملة كتكليف تنفيذي' : 'مُكلّفة رسمياً'}</span>
-                              </span>
-                            )}
-
-                            {todo.isCompleted && todo.completedAt && (
-                              <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                                <CheckCheck className="w-3 h-3" />
-                                <span>أنجزت {new Date(todo.completedAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}</span>
-                              </span>
-                            )}
-
                           </div>
-                        )}
-
-                        {/* Description */}
-                        {getCleanTodoDescription(todo.description) && (
-                          <p className={`text-xs whitespace-pre-line leading-relaxed ${
-                            todo.isCompleted ? 'text-slate-400' : 'text-[#5e736e]'
-                          }`}>
-                            {getCleanTodoDescription(todo.description)}
-                          </p>
                         )}
 
                       </div>
                     </div>
 
-                    {/* Right: Actions */}
-                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                    
-                    {/* Smart Conversion: For Directorate Director -> Convert to Daily Plan */}
-                    {!isGeneralDirector && currentUser.directorateId && !todo.isCompleted && (
-                      <button
-                        type="button"
-                        onClick={() => handleConvertToPlan(todo)}
-                        className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition border cursor-pointer min-h-[30px] ${
-                          todo.description?.includes('الخطة اليومية')
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-xs'
-                            : 'bg-[#0c3e35]/10 hover:bg-[#0c3e35] text-[#0c3e35] hover:text-white border-[#0c3e35]/20'
-                        }`}
-                        title={
-                          todo.description?.includes('الخطة اليومية')
-                            ? 'المهمة مدرجة مسبقاً في الخطة اليومية (انقر لإدراج نسخة إضافية)'
-                            : 'إدراج هذه المهمة في الخطة الصباحية الرسمية لليوم مع الحفاظ عليها في أجندتك'
-                        }
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">
-                          {todo.description?.includes('الخطة اليومية') ? 'مدرجة بالخطة ✓' : 'إدراج بالخطة اليومية'}
-                        </span>
-                      </button>
-                    )}
-
-                    {/* Smart Conversion: For General Director -> Convert to Executive Task */}
-                    {isGeneralDirector && !todo.isCompleted && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenExecConversion(todo)}
-                        className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold transition border cursor-pointer min-h-[30px] ${
-                          todo.description?.includes('تكليف تنفيذي')
-                            ? 'bg-amber-100 text-amber-900 border-amber-400 hover:bg-amber-200 shadow-xs'
-                            : 'bg-[#d4af37]/20 hover:bg-[#d4af37] text-[#05261e] border-[#d4af37]/40'
-                        }`}
-                        title={
-                          todo.description?.includes('تكليف تنفيذي')
-                            ? 'صدر بها أمر تكليف مسبقاً (انقر لتكليف مديريات إضافية)'
-                            : 'تحويل هذه المهمة إلى تكليف رسمي وإسناده لإحدى مديريات الموانئ مع الحفاظ عليها في أجندتك'
-                        }
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">
-                          {todo.description?.includes('تكليف تنفيذي') ? 'مُكلّفة رسمياً ✓' : 'تحويل لتكليف تنفيذي'}
-                        </span>
-                      </button>
-                    )}
-
-                    {/* Quick Reorder Dropdown Menu (Move to top, Move to bottom) */}
-                    {!todo.isCompleted && (
-                      <div className="relative reorder-menu-popover" data-no-dnd="true">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveReorderMenuId(activeReorderMenuId === todo.id ? null : todo.id);
-                          }}
-                          className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100 transition cursor-pointer min-w-[30px] min-h-[30px] flex items-center justify-center"
-                          title="خيارات نقل وترتيب المهمة"
-                        >
-                          <ArrowUpDown className="w-3.5 h-3.5" />
-                        </button>
-
-                        {activeReorderMenuId === todo.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className={`absolute z-40 w-44 bg-white border border-[#d2d1c9] rounded-2xl shadow-2xl p-1.5 text-right animate-in fade-in zoom-in-95 duration-150 ${
-                              dropdownPlacement === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-                            } left-0`}
+                    {/* Actions Toolbar */}
+                    <div className="flex items-center justify-between sm:justify-end gap-1.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#d2d1c9]/40 sm:border-transparent shrink-0">
+                      
+                      {/* Primary Conversion Action (Plan / Exec Task) */}
+                      <div>
+                        {/* Smart Conversion: For Directorate Director -> Convert to Daily Plan */}
+                        {!isGeneralDirector && currentUser.directorateId && !todo.isCompleted && (
+                          <button
+                            type="button"
+                            onClick={() => handleConvertToPlan(todo)}
+                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer min-h-[32px] ${
+                              todo.description?.includes('الخطة اليومية')
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-xs'
+                                : 'bg-[#0c3e35]/10 hover:bg-[#0c3e35] text-[#0c3e35] hover:text-white border-[#0c3e35]/20'
+                            }`}
+                            title={
+                              todo.description?.includes('الخطة اليومية')
+                                ? 'المهمة مدرجة مسبقاً في الخطة اليومية (انقر لإدراج نسخة إضافية)'
+                                : 'إدراج هذه المهمة في الخطة الصباحية الرسمية لليوم مع الحفاظ عليها في أجندتك'
+                            }
                           >
-                            <span className="block px-2 py-1 text-[10px] font-extrabold text-[#8daaa2] border-b border-[#f4f3ed]">
-                              ترتيب ونقل المهمة:
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>
+                              {todo.description?.includes('الخطة اليومية') ? 'مدرجة بالخطة ✓' : 'إدراج بالخطة'}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleMoveToTop(todo.id)}
-                              disabled={isFirstPending}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                                isFirstPending
-                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
-                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <ChevronsUp className="w-4 h-4 text-[#d4af37]" />
-                                <span>نقل لأعلى القائمة</span>
-                              </span>
-                            </button>
+                          </button>
+                        )}
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveReorderMenuId(null);
-                                handleMoveUp(todo.id);
-                              }}
-                              disabled={isFirstPending}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                                isFirstPending
-                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
-                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <ChevronUp className="w-4 h-4 text-[#0c3e35]" />
-                                <span>تحريك للأعلى (خطوة)</span>
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveReorderMenuId(null);
-                                handleMoveDown(todo.id);
-                              }}
-                              disabled={isLastPending}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                                isLastPending
-                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
-                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <ChevronDown className="w-4 h-4 text-[#0c3e35]" />
-                                <span>تحريك للأسفل (خطوة)</span>
-                              </span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleMoveToBottom(todo.id)}
-                              disabled={isLastPending}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                                isLastPending
-                                  ? 'opacity-40 cursor-not-allowed text-slate-400'
-                                  : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <ChevronsDown className="w-4 h-4 text-[#5e736e]" />
-                                <span>نقل لأسفل القائمة</span>
-                              </span>
-                            </button>
-                          </div>
+                        {/* Smart Conversion: For General Director -> Convert to Executive Task */}
+                        {isGeneralDirector && !todo.isCompleted && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenExecConversion(todo)}
+                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer min-h-[32px] ${
+                              todo.description?.includes('تكليف تنفيذي')
+                                ? 'bg-amber-100 text-amber-900 border-amber-400 hover:bg-amber-200 shadow-xs'
+                                : 'bg-[#d4af37]/20 hover:bg-[#d4af37] text-[#05261e] border-[#d4af37]/40'
+                            }`}
+                            title={
+                              todo.description?.includes('تكليف تنفيذي')
+                                ? 'صدر بها أمر تكليف مسبقاً (انقر لتكليف مديريات إضافية)'
+                                : 'تحويل هذه المهمة إلى تكليف رسمي وإسناده لإحدى مديريات الموانئ مع الحفاظ عليها في أجندتك'
+                            }
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>
+                              {todo.description?.includes('تكليف تنفيذي') ? 'مُكلّفة رسمياً ✓' : 'تحويل لتكليف'}
+                            </span>
+                          </button>
                         )}
                       </div>
-                    )}
 
-                    {/* Edit Button: Quick Inline Edit or Full Modal */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!todo.isCompleted) {
-                          handleStartInlineEdit(todo);
-                        } else {
-                          handleOpenEdit(todo);
-                        }
-                      }}
-                      className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100 transition cursor-pointer min-w-[30px] min-h-[30px] flex items-center justify-center"
-                      title={!todo.isCompleted ? 'تحرير سريع' : 'تعديل'}
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
+                      {/* Secondary Actions: Reorder Menu, Edit, Delete */}
+                      <div className="flex items-center gap-1">
+                        {/* Quick Reorder Dropdown Menu (Move to top, Move to bottom) */}
+                        {!todo.isCompleted && (
+                          <div className="relative reorder-menu-popover" data-no-dnd="true">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveReorderMenuId(activeReorderMenuId === todo.id ? null : todo.id);
+                              }}
+                              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100 transition cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
+                              title="خيارات نقل وترتيب المهمة"
+                            >
+                              <ArrowUpDown className="w-3.5 h-3.5" />
+                            </button>
 
-                    {/* Delete Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteTodo(todo.id, todo.title)}
-                      className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer min-w-[30px] min-h-[30px] flex items-center justify-center"
-                      title="حذف"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                            {activeReorderMenuId === todo.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className={`absolute z-40 w-44 bg-white border border-[#d2d1c9] rounded-2xl shadow-2xl p-1.5 text-right animate-in fade-in zoom-in-95 duration-150 ${
+                                  dropdownPlacement === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+                                } left-0`}
+                              >
+                                <span className="block px-2 py-1 text-[10px] font-extrabold text-[#8daaa2] border-b border-[#f4f3ed]">
+                                  ترتيب ونقل المهمة:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveToTop(todo.id)}
+                                  disabled={isFirstPending}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                    isFirstPending
+                                      ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                      : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <ChevronsUp className="w-4 h-4 text-[#d4af37]" />
+                                    <span>نقل لأعلى القائمة</span>
+                                  </span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveReorderMenuId(null);
+                                    handleMoveUp(todo.id);
+                                  }}
+                                  disabled={isFirstPending}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                    isFirstPending
+                                      ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                      : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <ChevronUp className="w-4 h-4 text-[#0c3e35]" />
+                                    <span>تحريك للأعلى (خطوة)</span>
+                                  </span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveReorderMenuId(null);
+                                    handleMoveDown(todo.id);
+                                  }}
+                                  disabled={isLastPending}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                    isLastPending
+                                      ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                      : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <ChevronDown className="w-4 h-4 text-[#0c3e35]" />
+                                    <span>تحريك للأسفل (خطوة)</span>
+                                  </span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveToBottom(todo.id)}
+                                  disabled={isLastPending}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                    isLastPending
+                                      ? 'opacity-40 cursor-not-allowed text-slate-400'
+                                      : 'text-[#05261e] hover:bg-[#0c3e35]/10 hover:text-[#0c3e35]'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <ChevronsDown className="w-4 h-4 text-[#5e736e]" />
+                                    <span>نقل لأسفل القائمة</span>
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Edit Button: Quick Inline Edit or Full Modal */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!todo.isCompleted) {
+                              if (inlineEditingId === todo.id) {
+                                handleCancelInlineEdit();
+                              } else {
+                                handleStartInlineEdit(todo);
+                              }
+                            } else {
+                              handleOpenEdit(todo);
+                            }
+                          }}
+                          className={`p-1.5 sm:p-2 rounded-xl transition cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center ${
+                            inlineEditingId === todo.id
+                              ? 'bg-[#0c3e35] text-[#d4af37] shadow-xs hover:bg-[#05261e]'
+                              : 'text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100'
+                          }`}
+                          title={
+                            !todo.isCompleted
+                              ? inlineEditingId === todo.id
+                                ? 'إلغاء التعديل (Esc)'
+                                : 'تعديل العنوان والتفاصيل'
+                              : 'تعديل المهمة'
+                          }
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTodo(todo.id, todo.title)}
+                          className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                    </div>
 
                   </div>
-
-                </div>
               </div>
             </React.Fragment>
           );

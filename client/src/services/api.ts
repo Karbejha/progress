@@ -291,7 +291,7 @@ class ApiService {
     }
   }
 
-  async getNotifications(limit = 50): Promise<any[]> {
+  async getNotifications(limit = 150): Promise<any[]> {
     try {
       return await this.request<any[]>(`/notifications?limit=${limit}`);
     } catch (err) {

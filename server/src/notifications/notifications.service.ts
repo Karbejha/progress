@@ -1,12 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '@prisma/client';
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    // Non-blocking auto-backfill on module initialization
+    this.autoBackfillHistoricalNotifications().catch((err) => {
+      this.logger.error('Error during automatic notifications backfill:', err);
+    });
+  }
 
   /**
    * Create a single notification for a specific user.
@@ -155,9 +162,9 @@ export class NotificationsService {
 
   /**
    * Get notifications for a specific user, ordered by most recent first.
-   * Returns up to `limit` notifications (default 50).
+   * Returns up to `limit` notifications (default 150).
    */
-  async getUserNotifications(userId: string, limit = 50) {
+  async getUserNotifications(userId: string, limit = 150) {
     if (!userId) return [];
 
     try {
@@ -266,6 +273,252 @@ export class NotificationsService {
     } catch (error) {
       this.logger.error(`Failed to mark notifications as read for user ${userId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Automatically scans existing entities (Daily Plans, Summaries, Feedbacks, Announcements, Executive Tasks)
+   * and creates notification records if they do not already exist.
+   */
+  async autoBackfillHistoricalNotifications() {
+    try {
+      this.logger.log('Checking and backfilling historical notifications...');
+
+      const execUsers = await this.prisma.user.findMany({
+        where: { role: { in: [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER] } },
+        select: { id: true, role: true },
+      });
+
+      if (execUsers.length === 0) return;
+
+      // 1. Daily Plans
+      const plans = await this.prisma.dailyPlan.findMany({
+        include: { directorate: true, tasks: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      for (const p of plans) {
+        const dateStr = p.planDate.toISOString().split('T')[0];
+        const refId = `plan-sub-${p.directorateId}-${dateStr}`;
+
+        for (const exec of execUsers) {
+          const exists = await this.prisma.notification.findFirst({
+            where: { userId: exec.id, referenceId: refId },
+            select: { id: true },
+          });
+          if (!exists) {
+            await this.prisma.notification.create({
+              data: {
+                userId: exec.id,
+                type: 'plan',
+                title: 'رفع خطة صباحية',
+                message: `قامت (${p.directorate.name}) باعتماد ورفع خطة اليوم (${p.tasks.length} مهام).`,
+                referenceId: refId,
+                metadata: {
+                  directorateId: p.directorateId,
+                  directorateName: p.directorate.name,
+                  tasksCount: p.tasks.length,
+                  planDate: p.planDate.toISOString(),
+                },
+                createdAt: p.createdAt,
+              },
+            });
+          }
+        }
+      }
+
+      // 2. Daily Summaries
+      const summaries = await this.prisma.dailySummary.findMany({
+        include: { directorate: true, user: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      for (const s of summaries) {
+        const dateStr = s.summaryDate.toISOString().split('T')[0];
+        const refId = `summary-sub-${s.directorateId}-${dateStr}`;
+
+        for (const exec of execUsers) {
+          const exists = await this.prisma.notification.findFirst({
+            where: { userId: exec.id, referenceId: refId },
+            select: { id: true },
+          });
+          if (!exists) {
+            await this.prisma.notification.create({
+              data: {
+                userId: exec.id,
+                type: 'summary',
+                title: 'تسليم ملخص الإنجاز',
+                message: `سلّمت (${s.directorate.name}) ملخص نهاية الدوام بنسبة إنجاز ${s.overallCompletionRate}%.`,
+                referenceId: refId,
+                metadata: {
+                  directorateId: s.directorateId,
+                  directorateName: s.directorate.name,
+                  directorName: s.user?.fullName,
+                  overallCompletionRate: s.overallCompletionRate,
+                  urgentFlag: s.urgentFlag,
+                },
+                createdAt: s.createdAt,
+              },
+            });
+          }
+        }
+      }
+
+      // 3. Executive Feedbacks & Replies
+      const feedbacks = await this.prisma.executiveFeedback.findMany({
+        include: { directorate: true, fromUser: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      for (const f of feedbacks) {
+        const refId = f.id;
+        const isDirectorReply = f.fromUser.role === Role.DIRECTOR;
+
+        if (isDirectorReply) {
+          for (const exec of execUsers) {
+            const exists = await this.prisma.notification.findFirst({
+              where: { userId: exec.id, referenceId: refId },
+              select: { id: true },
+            });
+            if (!exists) {
+              await this.prisma.notification.create({
+                data: {
+                  userId: exec.id,
+                  type: 'feedback',
+                  title: `رد وتوضيح من ${f.fromUser.fullName} (${f.directorate.name})`,
+                  message: f.feedbackText,
+                  referenceId: refId,
+                  metadata: {
+                    feedbackId: f.id,
+                    fromUserId: f.fromUserId,
+                    fromUserName: f.fromUser.fullName,
+                    fromUserTitle: f.fromUser.title,
+                    fromRole: f.fromUser.role,
+                    directorateId: f.directorateId,
+                    directorateName: f.directorate.name,
+                    dailyPlanId: f.dailyPlanId,
+                    isReply: true,
+                  },
+                  createdAt: f.createdAt,
+                },
+              });
+            }
+          }
+        } else {
+          const dirUsers = await this.prisma.user.findMany({
+            where: { directorateId: f.directorateId },
+            select: { id: true },
+          });
+          for (const du of dirUsers) {
+            const exists = await this.prisma.notification.findFirst({
+              where: { userId: du.id, referenceId: refId },
+              select: { id: true },
+            });
+            if (!exists) {
+              await this.prisma.notification.create({
+                data: {
+                  userId: du.id,
+                  type: 'feedback',
+                  title: 'توجيه من المدير العام',
+                  message: f.feedbackText,
+                  referenceId: refId,
+                  metadata: {
+                    feedbackId: f.id,
+                    fromUserName: f.fromUser.fullName,
+                    fromUserTitle: f.fromUser.title,
+                    feedbackText: f.feedbackText,
+                    rating: f.rating,
+                  },
+                  createdAt: f.createdAt,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // 4. Announcements
+      const announcements = await this.prisma.announcement.findMany({
+        include: { author: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const allUsers = await this.prisma.user.findMany({ select: { id: true } });
+      for (const ann of announcements) {
+        for (const u of allUsers) {
+          if (u.id === ann.authorId) continue;
+          const exists = await this.prisma.notification.findFirst({
+            where: { userId: u.id, referenceId: ann.id },
+            select: { id: true },
+          });
+          if (!exists) {
+            await this.prisma.notification.create({
+              data: {
+                userId: u.id,
+                type: 'announcement',
+                title: 'تعميم إداري رسمي',
+                message: ann.title,
+                referenceId: ann.id,
+                metadata: {
+                  announcementId: ann.id,
+                  content: ann.content,
+                  authorName: ann.author?.fullName,
+                  authorTitle: ann.author?.title,
+                  priority: ann.priority,
+                },
+                createdAt: ann.createdAt,
+              },
+            });
+          }
+        }
+      }
+
+      // 5. Executive Tasks
+      const execTasks = await this.prisma.executiveTask.findMany({
+        include: { directorate: true, assignedBy: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      for (const et of execTasks) {
+        const dirUsers = await this.prisma.user.findMany({
+          where: { directorateId: et.directorateId },
+          select: { id: true },
+        });
+        for (const du of dirUsers) {
+          const refId = `exec-task-${et.id}`;
+          const exists = await this.prisma.notification.findFirst({
+            where: { userId: du.id, referenceId: refId },
+            select: { id: true },
+          });
+          if (!exists) {
+                const isShared = !!et.sharedGroupId;
+                await this.prisma.notification.create({
+                  data: {
+                    userId: du.id,
+                    type: 'executive-task',
+                    title: isShared ? 'تكليف مشترك من المدير العام' : 'تكليف من المدير العام',
+                    message: `وردك تكليف من المدير العام: "${et.title}"`,
+                    referenceId: refId,
+                    metadata: {
+                      taskId: et.id,
+                      taskTitle: et.title,
+                      description: et.description,
+                      priority: et.priority,
+                      assignedByName: et.assignedBy?.fullName,
+                      directorateId: et.directorateId,
+                      directorateName: et.directorate.name,
+                      isShared,
+                    },
+                    createdAt: et.createdAt,
+                  },
+                });
+          }
+        }
+      }
+
+      this.logger.log('Historical notifications backfill completed successfully.');
+    } catch (err) {
+      this.logger.error('Failed to backfill historical notifications:', err);
     }
   }
 }

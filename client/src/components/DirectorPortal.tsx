@@ -1901,12 +1901,29 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
           {/* Dynamic Tasks List */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <label className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
-                <span>المهام المجدولة لتنفيذها اليوم:</span>
-              </label>
+            {/* Header and Quick Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs sm:text-sm font-extrabold text-[#0c3e35] flex items-center gap-1.5">
+                  <span>المهام المجدولة لتنفيذها اليوم:</span>
+                </label>
+                <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-white">
+                  {tasks.length} {tasks.length === 1 ? 'مهمة' : 'مهام'}
+                </span>
+              </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* Quick Actions Toolbar */}
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                {/* Add New Empty Task Button */}
+                <button
+                  type="button"
+                  onClick={handleAddTask}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-xs font-extrabold px-3.5 py-2 rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] transition cursor-pointer shadow-xs active:scale-95 border border-[#d4af37]/40"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[#d4af37]" />
+                  <span>إضافة مهمة جديدة</span>
+                </button>
+
                 {/* Incomplete Tasks Modal Trigger Button */}
                 <button
                   type="button"
@@ -1914,13 +1931,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     fetchIncompleteTasks();
                     setShowIncompleteTasksModal(true);
                   }}
-                  className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer shadow-xs active:scale-95 relative"
+                  className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer shadow-2xs active:scale-95 relative"
                   title="استعراض وترحيل المهام السابقة غير المكتملة بنسبتها التراكمية"
                 >
                   <ArrowRightLeft className="w-3.5 h-3.5 text-[#d4af37]" />
-                  <span>المهام غير المكتملة</span>
+                  <span className="whitespace-nowrap">المهام المعلقة</span>
                   {incompleteTasks.length > 0 && (
-                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] shrink-0">
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#d4af37] text-[#05261e] shrink-0">
                       {incompleteTasks.length}
                     </span>
                   )}
@@ -1931,7 +1948,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   type="button"
                   onClick={handleClonePreviousPlan}
                   disabled={loadingPreviousPlan}
-                  className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50"
                   title="استيراد مهام آخر خطة سابقة تم تقديمها"
                 >
                   {loadingPreviousPlan ? (
@@ -1939,33 +1956,24 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   ) : (
                     <Copy className="w-3.5 h-3.5 text-[#d4af37]" />
                   )}
-                  <span>استيراد مهام الأمس</span>
+                  <span className="whitespace-nowrap">استيراد الأمس</span>
                 </button>
 
                 {/* Templates Modal Trigger Button */}
                 <button
                   type="button"
                   onClick={() => setShowTemplatesModal(true)}
-                  className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer shadow-xs active:scale-95"
+                  className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer shadow-2xs active:scale-95"
                   title="استعراض وإدراج قوالب المهام المتكررة"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5 text-[#d4af37]" />
-                  <span>قوالب المهام المتكررة ({templates.length})</span>
-                </button>
-
-                {/* Add New Empty Task Button */}
-                <button
-                  type="button"
-                  onClick={handleAddTask}
-                  className="flex items-center gap-1 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] transition cursor-pointer shadow-xs active:scale-95"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>إضافة مهمة جديدة</span>
+                  <span className="whitespace-nowrap">القوالب ({templates.length})</span>
                 </button>
               </div>
             </div>
 
-            <div className="space-y-3">
+            {/* Task Cards List */}
+            <div className="space-y-3.5">
               {tasks.map((task, idx) => {
                 const matchingTpl = getMatchingTemplate(task);
                 const isSaved = Boolean(matchingTpl);
@@ -1974,129 +1982,119 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 return (
                   <div
                     key={idx}
-                    className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3.5 shadow-xs transition-shadow hover:shadow-md"
                   >
-                    {task.carriedFromTaskId && (
-                      <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
-                        <div className="flex items-center gap-1.5">
-                          <ArrowRightLeft className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                          <span>مهمة مرحّلة من خطة سابقة</span>
-                          {typeof task.initialCompletionPercentage === 'number' && (
-                            <span className="text-amber-800 font-extrabold">(الإنجاز السابق: {task.initialCompletionPercentage}%)</span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md font-semibold">
-                          تراكمي مستمر
+                    {/* Card Header: Task Number, Badges & Actions */}
+                    <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-[#f0eee6]">
+                      {/* Right: Task Badge & Status */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 text-xs font-black flex items-center justify-center shadow-xs shrink-0">
+                          {idx + 1}
                         </span>
-                      </div>
-                    )}
 
-                    {typeof task.completionPercentage === 'number' && task.completionPercentage > 0 && (
-                      <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold">
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span>نسبة الإنجاز المحققة اليوم:</span>
-                          <span className="text-emerald-700 font-extrabold">{task.completionPercentage}%</span>
-                          {task.status === 'COMPLETED' && (
-                            <span className="text-[10px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold">مكتملة</span>
+                        {task.carriedFromTaskId && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                            <ArrowRightLeft className="w-3 h-3 text-amber-700" />
+                            <span>مرحّلة ({task.initialCompletionPercentage ?? 0}%)</span>
+                          </span>
+                        )}
+
+                        {typeof task.completionPercentage === 'number' && task.completionPercentage > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-300 inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>منجزة {task.completionPercentage}%</span>
+                            {task.status === 'COMPLETED' && (
+                              <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1 rounded font-extrabold">مكتملة</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Left: Quick Actions (Save as Template & Delete) */}
+                      <div className="flex items-center gap-1">
+                        {/* Bookmark Task as Template */}
+                        <button
+                          type="button"
+                          disabled={isToggling}
+                          onClick={() => handleToggleTemplate(task, idx)}
+                          className={`px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer active:scale-95 flex items-center gap-1 text-xs font-bold ${
+                            isSaved
+                              ? 'bg-amber-50 border border-amber-300 text-amber-700 hover:bg-amber-100 shadow-xs'
+                              : 'text-[#8daaa2] hover:text-[#0c3e35] hover:bg-[#f4f3ed] border border-transparent hover:border-[#d2d1c9]'
+                          }`}
+                          title={
+                            isSaved
+                              ? `قالب محفوظ: "${matchingTpl?.title}" (انقر لإلغاء الحفظ)`
+                              : 'حفظ هذه المهمة كقالب للاستخدام لاحقاً'
+                          }
+                        >
+                          {isToggling ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
+                          ) : (
+                            <Bookmark
+                              className={`w-3.5 h-3.5 transition-all duration-200 ${
+                                isSaved
+                                  ? 'text-amber-500 fill-amber-400 drop-shadow-xs'
+                                  : 'text-[#8daaa2] hover:text-[#d4af37]'
+                              }`}
+                            />
                           )}
-                        </div>
-                        <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md font-semibold">
-                          محفوظة ومستمرة
-                        </span>
-                      </div>
-                    )}
+                          <span className="text-[11px] hidden sm:inline">
+                            {isSaved ? 'قالب محفوظ' : 'حفظ كقالب'}
+                          </span>
+                        </button>
 
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="w-6 h-6 rounded-full bg-[#0c3e35] text-white text-xs font-bold flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
+                        {/* Delete Task */}
+                        {(tasks.length > 1 || task.title.trim().length > 0 || Boolean(task.id)) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTaskClick(idx)}
+                            className="p-1.5 sm:px-2 sm:py-1.5 rounded-xl text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition cursor-pointer flex items-center gap-1"
+                            title="حذف المهمة من الخطة"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span className="text-[11px] font-bold hidden sm:inline">حذف</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Task Title (Full 100% Width) */}
+                    <div className="space-y-1">
                       <input
                         type="text"
                         required
                         placeholder="عنوان المهمة (مثلاً: تدقيق معاملات تسجيل زوارق النزهة)..."
                         value={task.title}
                         onChange={(e) => handleTaskChange(idx, 'title', e.target.value)}
-                        className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] font-medium"
+                        className="w-full p-2.5 sm:p-3 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs sm:text-sm font-bold placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] focus:bg-white transition"
                       />
-
-                      {/* Bookmark Task as Template */}
-                      <button
-                        type="button"
-                        disabled={isToggling}
-                        onClick={() => handleToggleTemplate(task, idx)}
-                        className={`p-2 rounded-xl transition-all duration-200 cursor-pointer active:scale-95 flex items-center justify-center ${
-                          isSaved
-                            ? 'bg-amber-50 border border-amber-300 text-amber-600 hover:bg-amber-100 hover:border-amber-400 shadow-xs ring-1 ring-amber-200/60'
-                            : 'text-[#8daaa2] hover:text-[#0c3e35] hover:bg-[#f4f3ed] border border-transparent hover:border-[#d2d1c9]'
-                        }`}
-                        title={
-                          isSaved
-                            ? `قالب محفوظ: "${matchingTpl?.title}" (انقر لإلغاء الحفظ من القوالب)`
-                            : 'حفظ هذه المهمة كقالب مهمة متكررة'
-                        }
-                      >
-                        {isToggling ? (
-                          <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                        ) : (
-                          <Bookmark
-                            className={`w-4 h-4 transition-all duration-200 ${
-                              isSaved
-                                ? 'text-amber-500 fill-amber-400 drop-shadow-xs'
-                                : 'text-[#8daaa2] hover:text-[#d4af37]'
-                            }`}
-                          />
-                        )}
-                      </button>
-
-                      {(tasks.length > 1 || task.title.trim().length > 0 || Boolean(task.id)) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTaskClick(idx)}
-                          className="p-2 rounded-xl text-red-600 hover:bg-red-50 transition cursor-pointer"
-                          title="حذف المهمة"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="sm:col-span-2">
-                        <input
-                          type="text"
-                          placeholder="تفاصيل إضافية أو النتيجة المتوقعة (اختياري)..."
-                          value={task.description}
-                          onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
-                          className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
-                        />
-                      </div>
+                    {/* Task Details / Expected Outcome (Full 100% Width) */}
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        placeholder="تفاصيل إضافية أو النتيجة المتوقعة (اختياري)..."
+                        value={task.description}
+                        onChange={(e) => handleTaskChange(idx, 'description', e.target.value)}
+                        className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] focus:bg-white transition"
+                      />
+                    </div>
 
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={task.priority}
-                          onChange={(e) => handleTaskChange(idx, 'priority', e.target.value as Priority)}
-                          className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs focus:outline-none focus:border-[#0c3e35] cursor-pointer font-bold"
-                        >
-                          <option value="URGENT">عاجل جداً</option>
-                          <option value="HIGH">أولوية مرتفعة</option>
-                          <option value="NORMAL">أولوية عادية</option>
-                          <option value="LOW">منخفضة</option>
-                        </select>
-
-                        <div className="flex items-center gap-1 bg-[#f4f3ed] border border-[#d2d1c9] px-2.5 py-2 rounded-xl text-xs text-[#0c3e35] shrink-0 font-bold">
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="12"
-                            step="0.5"
-                            value={task.estimatedHours}
-                            onChange={(e) => handleTaskChange(idx, 'estimatedHours', parseFloat(e.target.value))}
-                            className="w-10 bg-transparent text-center text-[#0c3e35] focus:outline-none font-bold"
-                          />
-                          <span>ساعة</span>
-                        </div>
-                      </div>
+                    {/* Priority Selector */}
+                    <div className="flex items-center gap-2 bg-[#f4f3ed] border border-[#d2d1c9] px-3 py-2 rounded-xl">
+                      <span className="text-[11px] font-extrabold text-[#5e736e] shrink-0">الأولوية:</span>
+                      <select
+                        value={task.priority}
+                        onChange={(e) => handleTaskChange(idx, 'priority', e.target.value as Priority)}
+                        className="flex-1 bg-transparent text-[#0c3e35] text-xs font-bold focus:outline-none cursor-pointer"
+                      >
+                        <option value="URGENT">عاجل جداً</option>
+                        <option value="HIGH">أولوية مرتفعة</option>
+                        <option value="NORMAL">أولوية عادية</option>
+                        <option value="LOW">منخفضة</option>
+                      </select>
                     </div>
                   </div>
                 );
@@ -2104,11 +2102,20 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             </div>
           </div>
 
-          <div className="flex items-center justify-end pt-4 border-t border-[#d2d1c9]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-[#d2d1c9]">
+            <button
+              type="button"
+              onClick={handleAddTask}
+              className="flex items-center justify-center gap-1.5 text-xs font-bold px-4 py-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer shadow-xs active:scale-95"
+            >
+              <Plus className="w-4 h-4 text-[#d4af37]" />
+              <span>إضافة مهمة أخرى للخطة</span>
+            </button>
+
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <Send className="w-4 h-4" />
               <span>{saving ? 'جاري الحفظ والإرسال...' : (plan ? 'حفظ وتحديث الخطة الصباحية' : 'اعتماد وإرسال الخطة الصباحية للمدير العام')}</span>
@@ -2194,9 +2201,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                             تعديل غير محفوظ
                           </span>
                         )}
-                        <span className="text-xs text-[#0c3e35] font-bold bg-[#edece4] px-2.5 py-1 rounded-lg border border-[#d2d1c9]">
-                          {task.estimatedHours} س
-                        </span>
+                        {task.priority === 'URGENT' && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-red-100 text-red-800 border border-red-300">
+                            عاجل جداً
+                          </span>
+                        )}
+                        {task.priority === 'HIGH' && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
+                            مرتفعة
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -2321,11 +2335,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
       {/* Tab 3: End-of-Day Summary Wizard (Streamlined & Simplified) */}
       {activeTab === 'SUMMARY' && (
-        <form onSubmit={handleSubmitSummary} className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
-          <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[#d2d1c9] pb-4">
+        <form onSubmit={handleSubmitSummary} className="bg-[#edece4] p-4 sm:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6 pb-12 sm:pb-6 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#d2d1c9] pb-4">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-[#d4af37]" />
                   ملخص إنجاز نهاية الدوام الرسمي
                 </h3>
@@ -2341,7 +2355,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               </p>
             </div>
             {plan?.dailySummary && (
-              <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5">
+              <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                 <Check className="w-3.5 h-3.5" />
                 تم إرسال الملخص المسائي اليوم
               </span>
@@ -2380,46 +2394,59 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               : 100;
 
             return (
-              <div className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-4 shadow-xs">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div>
-                    <h4 className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>الحصيلة الإحصائية لأعمال اليوم (محسوبة تلقائياً):</span>
-                    </h4>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-extrabold px-3 py-1 rounded-full bg-[#0c3e35] text-white">
-                      نسبة الإنجاز العامة: {avgRate}%
-                    </span>
-                  </div>
+              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3.5 shadow-xs">
+                {/* Header with Title and Average Progress */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h4 className="text-xs font-extrabold text-[#0c3e35] flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>الحصيلة الإحصائية لأعمال اليوم (محسوبة تلقائياً):</span>
+                  </h4>
+                  <span className="text-xs font-black px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 shadow-2xs">
+                    نسبة الإنجاز العامة: {avgRate}%
+                  </span>
                 </div>
 
-                {/* Quick stats pills */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
-                    <span className="text-xs text-emerald-900 font-bold">مهام مكتملة 100%:</span>
-                    <span className="text-sm font-extrabold text-emerald-800">{completedList.length} من {total}</span>
+                {/* Visual Progress Bar */}
+                <div className="w-full h-2 bg-[#e2e1d8] rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#0c3e35] to-[#d4af37] transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.max(0, avgRate))}%` }}
+                  />
+                </div>
+
+                {/* 3-Column Compact KPI Metrics Grid */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center pt-1">
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col items-center justify-center">
+                    <span className="text-base sm:text-lg font-black text-emerald-800 leading-tight">
+                      {completedList.length} <span className="text-[10px] font-bold text-emerald-600">/ {total}</span>
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-emerald-900 font-extrabold mt-0.5">مكتملة 100%</span>
                   </div>
-                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between">
-                    <span className="text-xs text-amber-900 font-bold">مهام قيد المتابعة:</span>
-                    <span className="text-sm font-extrabold text-amber-800">{inProgressList.length}</span>
+
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-amber-50/90 border border-amber-200 flex flex-col items-center justify-center">
+                    <span className="text-base sm:text-lg font-black text-amber-800 leading-tight">
+                      {inProgressList.length}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-amber-900 font-extrabold mt-0.5">قيد المتابعة</span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                    <span className="text-xs text-slate-700 font-bold">مهام قيد الانتظار:</span>
-                    <span className="text-sm font-extrabold text-slate-800">{pendingList.length}</span>
+
+                  <div className="p-2.5 sm:p-3 rounded-xl bg-slate-50/90 border border-slate-200 flex flex-col items-center justify-center">
+                    <span className="text-base sm:text-lg font-black text-slate-800 leading-tight">
+                      {pendingList.length}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-slate-700 font-extrabold mt-0.5">قيد الانتظار</span>
                   </div>
                 </div>
 
                 {/* Completed tasks list */}
                 {completedList.length > 0 && (
                   <div className="pt-2 border-t border-[#f0efe9]">
-                    <span className="text-[11px] font-bold text-[#5e736e] block mb-2">قائمة الإنجازات المكتملة التي سيتم توثيقها:</span>
-                    <div className="flex flex-wrap gap-2">
+                    <span className="text-[11px] font-bold text-[#5e736e] block mb-1.5">قائمة الإنجازات المكتملة التي سيتم توثيقها:</span>
+                    <div className="flex flex-wrap gap-1.5">
                       {completedList.map((t, idx) => (
                         <span key={idx} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-emerald-100/70 text-emerald-900 font-medium border border-emerald-200">
-                          <Check className="w-3 h-3 text-emerald-700" />
-                          {t.title}
+                          <Check className="w-3 h-3 text-emerald-700 shrink-0" />
+                          <span>{t.title}</span>
                         </span>
                       ))}
                     </div>
@@ -2430,57 +2457,57 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           })()}
 
           {/* 2. Optional Notes / Remarks Field */}
-          <div>
-            <label className="block text-xs font-bold text-[#0c3e35] mb-1.5">
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-[#0c3e35]">
               ملاحظات أو تعليق ختامي على إنجاز اليوم (اختياري):
             </label>
             <textarea
-              rows={2}
+              rows={3}
               placeholder="اكتب أي ملاحظات أو توضيحات إضافية للمدير العام (في حال تركه فارغاً، سيعتمد النظام التقرير الإحصائي المحسوب أعلاه تلقائياً)..."
               value={summaryText}
               onChange={(e) => setSummaryText(e.target.value)}
-              className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
+              className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium leading-relaxed resize-y min-h-[85px]"
             />
           </div>
 
           {/* 3. Combined Challenges & Urgent Flag */}
-          <div className={`p-4 rounded-2xl border transition-all ${urgentFlag || challenges ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-[#d2d1c9]'}`}>
-            <label className="flex items-center gap-2.5 cursor-pointer">
+          <div className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${urgentFlag || challenges ? 'bg-amber-50/80 border-amber-300 shadow-xs' : 'bg-white border-[#d2d1c9]'}`}>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={urgentFlag}
                 onChange={(e) => setUrgentFlag(e.target.checked)}
-                className="w-4 h-4 accent-[#0c3e35] rounded cursor-pointer"
+                className="w-4 h-4 accent-[#0c3e35] rounded cursor-pointer shrink-0"
               />
-              <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                هل واجهت المديرية معوقات أو توجد احتياجات تتطلب تدخل وقرار المدير العام؟
+              <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5 flex-wrap">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>هل واجهت المديرية معوقات أو توجد احتياجات تتطلب تدخل وقرار المدير العام؟</span>
               </span>
             </label>
 
             {urgentFlag && (
               <div className="mt-3 animate-fadeIn space-y-2">
                 <textarea
-                  rows={2}
+                  rows={3}
                   placeholder="اكتب المعوقات أو التوجيهات والقرارات المطلوبة من الإدارة العليا..."
                   value={challenges}
                   onChange={(e) => setChallenges(e.target.value)}
-                  className="w-full p-3 rounded-xl bg-white border border-amber-300 text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] font-medium"
+                  className="w-full p-3 rounded-xl bg-white border border-amber-300 text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] font-medium leading-relaxed min-h-[75px]"
                 />
               </div>
             )}
           </div>
 
           {/* Submit Action */}
-          <div className="flex items-center justify-between pt-4 border-t border-[#d2d1c9] flex-wrap gap-3">
-            <span className="text-xs text-[#5e736e]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-4 border-t border-[#d2d1c9] gap-3">
+            <span className="text-xs text-[#5e736e] text-center sm:text-right">
               {hasSummary && !isSummaryModified
                 ? 'تم تسليم تقرير نهاية الدوام للمدير العام بنجاح.'
                 : 'سيتم إرسال تقرير إنجاز متكامل مباشرة إلى لوحة متابعة المدير العام.'}
             </span>
 
             {hasSummary && !isSummaryModified ? (
-              <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-xs">
+              <div className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs shadow-xs">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                 <span>تم إرسال الملخص (لا توجد تعديلات)</span>
               </div>
@@ -2488,7 +2515,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               <button
                 type="submit"
                 disabled={saving}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer border border-[#d4af37]"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer border border-[#d4af37]/40"
               >
                 {saving ? (
                   <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
@@ -2510,19 +2537,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
       {/* Tab 3: Executive Tasks (تكليفات وتوجيهات المدير العام) */}
       {activeTab === 'EXECUTIVE_TASKS' && (
-        <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6 animate-fadeIn">
+        <div className="bg-[#edece4] p-4 sm:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6 animate-fadeIn">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#d2d1c9] pb-4">
             <div>
-              <h3 className="text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
                 <Layers className="w-5 h-5 text-[#d4af37]" />
-                تكليفات وتوجيهات المدير العام المباشرة لمديرية {currentUser.directorate?.name}
+                تكليفات وتوجيهات المدير العام المباشرة لـ {currentUser.directorate?.name}
               </h3>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
                 المهام الموجهة لمديريتكم حصراً من المدير العام ومعاونيه لمتابعة تنفيذها ورفع تقرير الإنجاز.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5">
+              <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                 <CheckCheck className="w-4 h-4 text-[#d4af37]" />
                 إجمالي التكليفات: {executiveTasks.length}
               </span>
@@ -2565,54 +2592,58 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 const getBadge = (p: Priority) => {
                   switch (p) {
                     case 'URGENT':
-                      return <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-300">🚨 عاجل جداً</span>;
+                      return <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-300 shrink-0 whitespace-nowrap">🚨 عاجل جداً</span>;
                     case 'HIGH':
-                      return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">⚠️ أولوية مرتفعة</span>;
+                      return <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0 whitespace-nowrap">⚠️ أولوية مرتفعة</span>;
                     default:
-                      return <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#0c3e35]/10 text-[#0c3e35] border border-[#0c3e35]/20">📌 عادي</span>;
+                      return <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-[#0c3e35]/10 text-[#0c3e35] border border-[#0c3e35]/20 shrink-0 whitespace-nowrap">📌 عادي</span>;
                   }
                 };
 
                 return (
                   <div
                     key={task.id}
-                    className={`p-6 rounded-2xl border transition shadow-xs ${
+                    className={`p-4 sm:p-6 rounded-2xl border transition shadow-xs space-y-3.5 ${
                       isCompleted ? 'bg-white/90 border-emerald-300' : 'bg-white border-[#d2d1c9]'
                     }`}
                   >
                     {/* Task Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#f0eee6] pb-3">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className="text-sm font-extrabold text-[#05261e]">{task.title}</span>
-                        {task.isShared && (
-                          <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1 shadow-2xs">
-                            <Users className="w-3.5 h-3.5 text-emerald-700" />
-                            <span>تكليف مشترك (بالتنسيق مع {task.sharedDirectoratesCount ? task.sharedDirectoratesCount - 1 : (task.coTasks?.length || 1) - 1} مديريات أخرى)</span>
+                    <div className="space-y-2.5 border-b border-[#f0eee6] pb-3">
+                      <div className="flex items-start justify-between gap-2.5 flex-wrap">
+                        <h4 className="text-sm sm:text-base font-extrabold text-[#05261e] leading-snug">
+                          {task.title}
+                        </h4>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {task.isShared && (
+                            <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1 shadow-2xs shrink-0 whitespace-nowrap">
+                              <Users className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>تكليف مشترك</span>
+                            </span>
+                          )}
+                          {getBadge(task.priority)}
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
+                              isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {local.status === 'COMPLETED'
+                              ? 'مكتملة ومُنجزة'
+                              : local.status === 'IN_PROGRESS'
+                              ? 'قيد التنفيذ'
+                              : 'قيد الانتظار'}
                           </span>
-                        )}
-                        {getBadge(task.priority)}
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                            isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                          }`}
-                        >
-                          {local.status === 'COMPLETED'
-                            ? 'مكتملة ومُنجزة'
-                            : local.status === 'IN_PROGRESS'
-                            ? 'قيد التنفيذ'
-                            : 'قيد الانتظار'}
-                        </span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-[#5e736e]">
-                        <span>
+                      <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-[#5e736e] pt-0.5">
+                        <span className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                           المُسنِد:{' '}
-                          <strong className="text-[#0c3e35]">{task.assignedBy?.fullName}</strong>
+                          <strong className="text-[#0c3e35] font-extrabold">{task.assignedBy?.fullName}</strong>
                         </span>
                         {dueDateStr && (
-                          <span className="font-bold text-[#0c3e35] bg-[#f4f3ed] px-2.5 py-0.5 rounded-lg border border-[#d2d1c9] flex items-center gap-1">
+                          <span className="font-bold text-[#0c3e35] bg-[#f4f3ed] px-2.5 py-1 rounded-lg border border-[#d2d1c9] inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap text-[11px]">
                             <Calendar className="w-3.5 h-3.5 text-[#d4af37]" />
-                            موعد الاستحقاق: {dueDateStr}
+                            <span>الاستحقاق: {dueDateStr}</span>
                           </span>
                         )}
                       </div>
@@ -2620,7 +2651,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
                     {/* Instructions */}
                     {task.description && (
-                      <div className="my-3 p-3.5 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9]/70 text-xs text-[#05261e] leading-relaxed whitespace-pre-line">
+                      <div className="p-3.5 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9]/70 text-xs text-[#05261e] leading-relaxed whitespace-pre-line">
                         <strong className="text-[#0c3e35] block mb-1">
                           التوجيهات والتفاصيل المطلوبة:
                         </strong>
@@ -2630,7 +2661,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
                     {/* Co-assigned partner directorates progress preview */}
                     {task.isShared && task.coTasks && task.coTasks.length > 1 && (
-                      <div className="my-3.5 p-3.5 rounded-2xl bg-[#edece4] border border-[#d2d1c9] space-y-2.5">
+                      <div className="p-3.5 rounded-2xl bg-[#edece4] border border-[#d2d1c9] space-y-2.5">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
                             <Users className="w-4 h-4 text-[#0c3e35]" />
@@ -2681,11 +2712,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     )}
 
                     {/* Interactive Execution & Response Controls */}
-                    <div className="mt-4 p-4 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] space-y-4">
+                    <div className="p-3.5 sm:p-4 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] space-y-3.5">
                       <div className="text-xs font-extrabold text-[#0c3e35] flex items-center gap-1.5 pb-2 border-b border-[#d2d1c9]">
-                        <span>توثيق نسبة إنجاز ورد مديرية {currentUser.directorate?.name}:</span>
+                        <span>توثيق نسبة إنجاز ورد {currentUser.directorate?.name}:</span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         {/* Status Dropdown */}
                         <div>
                           <label className="block text-xs font-bold text-[#0c3e35] mb-1">
@@ -2700,7 +2731,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                                 e.target.value as TaskStatus
                               )
                             }
-                            className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35]"
+                            className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
                           >
                             <option value="PENDING">قيد الانتظار والترتيب</option>
                             <option value="IN_PROGRESS">قيد التنفيذ والعمل الميداني</option>
@@ -2709,11 +2740,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                           </select>
                         </div>
 
-                        {/* Completion % Slider */}
+                        {/* Completion % Slider with Quick Presets */}
                         <div>
                           <div className="flex items-center justify-between text-xs font-bold text-[#0c3e35] mb-1">
                             <span>نسبة الإنجاز المحققة:</span>
-                            <span className="text-emerald-700 font-extrabold">
+                            <span className="text-emerald-700 font-extrabold text-sm">
                               {local.completionPercentage}%
                             </span>
                           </div>
@@ -2730,8 +2761,32 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                                 Number(e.target.value)
                               )
                             }
-                            className="w-full accent-[#0c3e35] cursor-pointer mt-1"
+                            className="w-full accent-[#0c3e35] cursor-pointer"
                           />
+                          {/* Quick % buttons */}
+                          <div className="flex items-center justify-between gap-1 mt-1.5">
+                            {[0, 25, 50, 75, 100].map((pct) => (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => {
+                                  handleLocalExecTaskChange(task.id, 'completionPercentage', pct);
+                                  if (pct === 100) {
+                                    handleLocalExecTaskChange(task.id, 'status', 'COMPLETED');
+                                  } else if (pct > 0 && local.status === 'PENDING') {
+                                    handleLocalExecTaskChange(task.id, 'status', 'IN_PROGRESS');
+                                  }
+                                }}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition cursor-pointer ${
+                                  local.completionPercentage === pct
+                                    ? 'bg-[#0c3e35] text-white shadow-2xs'
+                                    : 'bg-white text-[#5e736e] hover:bg-[#edece4] border border-[#d2d1c9]'
+                                }`}
+                              >
+                                {pct}%
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
 
@@ -2741,52 +2796,45 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                           تقرير الإنجاز ورد مدير المديرية للمدير العام:
                         </label>
                         <textarea
-                          rows={2}
+                          rows={3}
                           placeholder="اكتب الإجراءات المنفذة، المخرجات المتحققة، أو أي ملاحظات توضيحية للإدارة العليا..."
                           value={local.completionNote}
                           onChange={(e) =>
                             handleLocalExecTaskChange(task.id, 'completionNote', e.target.value)
                           }
-                          className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
+                          className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] focus:outline-none focus:border-[#0c3e35] leading-relaxed resize-y min-h-[75px]"
                         />
                       </div>
 
-                      {/* Save Button & Status */}
-                      <div className="flex items-center justify-between pt-2 border-t border-[#d2d1c9]/70 flex-wrap gap-2">
-                        {local.isModified ? (
-                          <span className="text-xs font-bold text-amber-600 animate-pulse flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping inline-block" />
-                            توجد تعديلات غير محفوظة
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-[#5e736e] flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            البيانات محفوظة ومطابقة للإدارة العامة
-                          </span>
-                        )}
+                      {/* Save Button & Status Footer */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-[#d2d1c9]/70">
+                        <div>
+                          {local.isModified ? (
+                            <span className="text-xs font-extrabold text-amber-700 flex items-center gap-1.5 animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                              توجد تعديلات غير محفوظة، يرجى اعتماد الحفظ
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              البيانات محفوظة ومطابقة للإدارة العامة
+                            </span>
+                          )}
+                        </div>
 
-                        {local.isModified ? (
+                        {local.isModified && (
                           <button
                             type="button"
                             disabled={isSaving}
                             onClick={() => handleSaveExecutiveTask(task.id)}
-                            className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition shadow-md border border-[#d4af37] disabled:opacity-50 cursor-pointer animate-fadeIn active:scale-95"
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#0c3e35] text-white text-xs font-extrabold hover:bg-[#072923] transition shadow-md border border-[#d4af37]/40 disabled:opacity-50 cursor-pointer animate-fadeIn active:scale-95"
                           >
                             {isSaving ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
+                              <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
                             ) : (
-                              <Send className="w-3.5 h-3.5 text-[#d4af37]" />
+                              <Send className="w-4 h-4 text-[#d4af37]" />
                             )}
                             <span>حفظ وإرسال تقرير الإنجاز</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#edece4] text-[#5e736e] text-xs font-bold border border-[#d2d1c9] cursor-not-allowed opacity-80"
-                          >
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>تم الحفظ (لا توجد تعديلات)</span>
                           </button>
                         )}
                       </div>
@@ -3049,11 +3097,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           )}
 
           {/* Daily Records History List */}
-          <div className="bg-[#edece4] p-7 rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-6">
+          <div className="bg-[#edece4] p-4 sm:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6 pb-12 sm:pb-6 animate-fadeIn">
             <div className="border-b border-[#d2d1c9] pb-4">
-              <h3 className="text-base font-bold text-[#0c3e35] flex items-center gap-2">
-                <History className="w-5 h-5 text-[#0c3e35]" />
-                أرشيف الخطط والإنجازات السابقة لمديرية {currentUser.directorate?.name}
+              <h3 className="text-sm sm:text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
+                <History className="w-5 h-5 text-[#d4af37]" />
+                أرشيف الخطط والإنجازات السابقة لـ {currentUser.directorate?.name}
               </h3>
               <p className="text-xs text-[#5e736e] mt-1 font-medium">
                 أرشيف الأيام السابقة خاص بمديريتكم حصراً.
@@ -3069,19 +3117,21 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 {history.map((h) => (
                   <div
                     key={h.id}
-                    className="p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3 shadow-xs"
+                    className="p-4 sm:p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3.5 shadow-xs"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-[#0c3e35]" />
-                        {new Date(h.planDate).toLocaleDateString('ar-SY', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                        })}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-[#d4af37]" />
+                        <span>
+                          {new Date(h.planDate).toLocaleDateString('ar-SY', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </span>
                       </span>
-                      <span className="text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">
+                      <span className="text-xs font-black text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 shrink-0 whitespace-nowrap shadow-2xs">
                         نسبة الإنجاز: {h.dailySummary?.overallCompletionRate || 0}%
                       </span>
                     </div>
@@ -3108,22 +3158,29 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                           </span>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           {h.feedbacks.map((fb, idx) => {
                             const isDirector = fb.fromUser?.role === 'DIRECTOR';
+                            const senderName = fb.fromUser?.fullName?.trim() || (isDirector ? currentUser.fullName : 'المدير العام للموانئ');
+                            const senderTitle = fb.fromUser?.title?.trim() || (isDirector ? currentUser.title : '');
+                            const showTitle = Boolean(senderTitle && senderTitle !== senderName);
+
                             return isDirector ? (
                               <div
                                 key={fb.id || idx}
-                                className="p-3.5 rounded-xl bg-emerald-50 border-2 border-emerald-200 text-xs space-y-1 shadow-xs"
+                                className="p-3.5 rounded-2xl bg-emerald-50/90 border border-emerald-300 text-xs space-y-2 shadow-xs"
                               >
-                                <div className="flex items-center justify-between text-[11px]">
-                                  <span className="font-extrabold text-emerald-900 flex items-center gap-1.5">
-                                    <span className="px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-950 text-[10px] font-black border border-emerald-300">
+                                <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] pb-1 border-b border-emerald-200/60">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-950 text-[10px] font-black border border-emerald-300 shrink-0 whitespace-nowrap">
                                       رد وتوضيح المديرية
                                     </span>
-                                    {fb.fromUser?.fullName || currentUser.fullName} ({fb.fromUser?.title || currentUser.title})
-                                  </span>
-                                  <span className="text-[10px] text-emerald-700 font-semibold">
+                                    <span className="font-extrabold text-emerald-900">
+                                      {senderName}
+                                      {showTitle && <span className="font-medium text-emerald-800 mr-1">({senderTitle})</span>}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-emerald-700 font-bold shrink-0 whitespace-nowrap">
                                     {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
@@ -3134,28 +3191,33 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                             ) : (
                               <div
                                 key={fb.id || idx}
-                                className="p-3.5 rounded-xl bg-[#05261e] text-white text-xs space-y-1.5 border border-[#d4af37]/40 shadow-xs"
+                                className="p-3.5 rounded-2xl bg-[#05261e] text-white text-xs space-y-2 border border-[#d4af37]/40 shadow-xs"
                               >
-                                <div className="flex items-center justify-between text-[11px] text-[#d4af37]">
-                                  <span className="font-bold flex items-center gap-1.5">
-                                    <span className="px-2 py-0.5 rounded-md bg-[#d4af37]/20 text-[#d4af37] text-[10px] font-black border border-[#d4af37]/40">
+                                <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] pb-1.5 border-b border-[#d4af37]/20">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded-md bg-[#d4af37]/20 text-[#d4af37] text-[10px] font-black border border-[#d4af37]/40 shrink-0 whitespace-nowrap">
                                       توجيه المدير العام
                                     </span>
-                                    {fb.fromUser?.fullName || 'المدير العام'} ({fb.fromUser?.title || 'المديرية العامة للموانئ'})
-                                  </span>
-                                  <span className="text-[10px] text-[#8daaa2]">
+                                    <span className="font-extrabold text-[#d4af37]">
+                                      {senderName}
+                                      {showTitle && <span className="font-medium text-[#c5a028] mr-1">({senderTitle})</span>}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-[#8daaa2] font-semibold shrink-0 whitespace-nowrap">
                                     {new Date(fb.createdAt).toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </div>
-                                <p className="text-[#edece4] text-xs leading-relaxed font-medium whitespace-pre-wrap">
+                                <p className="text-[#edece4] text-xs sm:text-sm leading-relaxed font-medium whitespace-pre-wrap">
                                   {fb.feedbackText}
                                 </p>
                                 {fb.rating && (
-                                  <div className="flex items-center gap-1 text-[#d4af37] pt-0.5">
-                                    <span className="text-[10px] text-[#8daaa2] ml-1">التقييم:</span>
-                                    {Array.from({ length: fb.rating }).map((_, i) => (
-                                      <Star key={i} className="w-3 h-3 fill-[#d4af37] text-[#d4af37]" />
-                                    ))}
+                                  <div className="flex items-center gap-1.5 text-[#d4af37] pt-1 border-t border-[#0c3e35]">
+                                    <span className="text-[10px] text-[#8daaa2] font-bold">التقييم:</span>
+                                    <div className="flex items-center gap-0.5">
+                                      {Array.from({ length: fb.rating }).map((_, i) => (
+                                        <Star key={i} className="w-3.5 h-3.5 fill-[#d4af37] text-[#d4af37]" />
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -3292,29 +3354,17 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
                   />
                 </div>
-                <div className="flex items-center gap-2">
+                <div>
                   <select
                     value={newTemplateForm.priority}
                     onChange={(e) => setNewTemplateForm({ ...newTemplateForm, priority: e.target.value as Priority })}
-                    className="flex-1 p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs focus:outline-none focus:border-[#0c3e35] font-bold"
+                    className="w-full p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] text-[#0c3e35] text-xs focus:outline-none focus:border-[#0c3e35] font-bold cursor-pointer"
                   >
                     <option value="URGENT">عاجل جداً</option>
                     <option value="HIGH">أولوية مرتفعة</option>
                     <option value="NORMAL">أولوية عادية</option>
                     <option value="LOW">منخفضة</option>
                   </select>
-                  <div className="flex items-center gap-1 bg-[#f4f3ed] border border-[#d2d1c9] px-2 py-2 rounded-xl text-xs text-[#0c3e35] shrink-0 font-bold">
-                    <input
-                      type="number"
-                      min="0.5"
-                      max="12"
-                      step="0.5"
-                      value={newTemplateForm.estimatedHours}
-                      onChange={(e) => setNewTemplateForm({ ...newTemplateForm, estimatedHours: parseFloat(e.target.value) })}
-                      className="w-9 bg-transparent text-center text-[#0c3e35] focus:outline-none font-bold"
-                    />
-                    <span>س</span>
-                  </div>
                 </div>
               </div>
               <div className="flex justify-end pt-1">
@@ -3366,9 +3416,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <h5 className="text-xs font-extrabold text-[#0c3e35] truncate">{tpl.title}</h5>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#f4f3ed] text-[#0c3e35] border border-[#d2d1c9]">
-                            {tpl.estimatedHours} س
-                          </span>
                         </div>
                         {tpl.description && (
                           <p className="text-[11px] text-[#5e736e] mt-0.5 line-clamp-1">{tpl.description}</p>

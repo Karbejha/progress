@@ -10,7 +10,7 @@ export class NotificationsController {
 
   @Get()
   async getUserNotifications(@Request() req: any, @Query('limit') limit?: string) {
-    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const parsedLimit = limit ? parseInt(limit, 10) : 150;
     return this.notificationsService.getUserNotifications(req.user.id, parsedLimit);
   }
 

@@ -285,14 +285,14 @@ export const Header: React.FC<HeaderProps> = ({
 
         // 2. Fetch persisted notifications from the database
         try {
-          const dbNotifs = await api.getNotifications(100);
+          const dbNotifs = await api.getNotifications(150);
           dbNotifs.forEach((n: any) => {
             const notifType = (['plan', 'summary', 'task', 'feedback', 'announcement'].includes(n.type))
               ? n.type
               : (n.type === 'executive-task' ? 'feedback' : (n.type === 'executive-task-update' ? 'task' : 'plan'));
 
             loadedNotifs.push({
-              id: n.referenceId || n.id,
+              id: n.id,
               title: n.title,
               message: n.message,
               content: n.metadata?.content || n.metadata?.description || undefined,
@@ -309,7 +309,11 @@ export const Header: React.FC<HeaderProps> = ({
                   minute: '2-digit',
                 })
                 : 'اليوم',
-              fullPayload: n.metadata || {},
+              fullPayload: {
+                ...(n.metadata || {}),
+                referenceId: n.referenceId,
+                dbId: n.id,
+              },
             });
           });
         } catch (err) {
@@ -326,7 +330,7 @@ export const Header: React.FC<HeaderProps> = ({
                 discoveredReadKeys.push(a.id);
               }
               // Only add if not already present from DB notifications
-              if (!loadedNotifs.some((n) => n.id === a.id)) {
+              if (!loadedNotifs.some((n) => n.id === a.id || n.fullPayload?.referenceId === a.id)) {
                 loadedNotifs.push({
                   id: a.id,
                   title: 'تعميم إداري رسمي',
@@ -345,7 +349,10 @@ export const Header: React.FC<HeaderProps> = ({
                       minute: '2-digit',
                     })
                     : 'اليوم',
-                  fullPayload: a,
+                  fullPayload: {
+                    ...a,
+                    referenceId: a.id,
+                  },
                 });
               }
             });
@@ -373,8 +380,11 @@ export const Header: React.FC<HeaderProps> = ({
         const finalReadKeys = syncReadNotificationsFromServer(currentUser.id, discoveredReadKeys);
         setReadNotifIds(finalReadKeys);
 
-        // Compute unread count strictly against combined server + local reads
-        const unreadItems = deduped.filter((n) => !finalReadKeys.includes(n.id));
+        // Compute unread count strictly against combined server + local reads (checks both id and referenceId)
+        const isItemRead = (n: LiveNotification) => {
+          return finalReadKeys.includes(n.id) || (!!n.fullPayload?.referenceId && finalReadKeys.includes(n.fullPayload.referenceId));
+        };
+        const unreadItems = deduped.filter((n) => !isItemRead(n));
         setUnreadCount(unreadItems.length);
 
         setNotifications(deduped);
@@ -412,7 +422,7 @@ export const Header: React.FC<HeaderProps> = ({
         id: notif.id || Math.random().toString(),
         time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
       };
-      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 100)]);
+      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 150)]);
       setUnreadCount((c) => c + 1);
     };
 
@@ -615,13 +625,19 @@ export const Header: React.FC<HeaderProps> = ({
     e.stopPropagation();
     if (!currentUser) return;
 
-    const allIds = notifications.map((n) => n.id);
-    if (allIds.length > 0) {
-      markAllNotificationsAsRead(currentUser.id, allIds);
-      setReadNotifIds((prev) => Array.from(new Set([...prev, ...allIds])));
+    const allKeys: string[] = [];
+    notifications.forEach((n) => {
+      if (n.id) allKeys.push(n.id);
+      if (n.fullPayload?.referenceId) allKeys.push(n.fullPayload.referenceId);
+    });
+
+    const uniqueKeys = Array.from(new Set(allKeys.filter(Boolean)));
+    if (uniqueKeys.length > 0) {
+      uniqueKeys.forEach((k) => markNotificationAsRead(currentUser.id, k));
+      setReadNotifIds((prev) => Array.from(new Set([...prev, ...uniqueKeys])));
 
       // Explicitly persist all notification IDs to backend database
-      api.markNotificationsRead(allIds).catch(() => { });
+      api.markNotificationsRead(uniqueKeys).catch(() => { });
 
       // Also trigger server-side read for announcements
       notifications
@@ -636,12 +652,17 @@ export const Header: React.FC<HeaderProps> = ({
 
   const handleNotificationClick = (n: LiveNotification) => {
     if (currentUser && n.id) {
-      markNotificationAsRead(currentUser.id, n.id);
-      setReadNotifIds((prev) => Array.from(new Set([...prev, n.id])));
+      const keysToMark = [n.id];
+      if (n.fullPayload?.referenceId && n.fullPayload.referenceId !== n.id) {
+        keysToMark.push(n.fullPayload.referenceId);
+      }
+
+      keysToMark.forEach((k) => markNotificationAsRead(currentUser.id, k));
+      setReadNotifIds((prev) => Array.from(new Set([...prev, ...keysToMark])));
       setUnreadCount((c) => Math.max(0, c - 1));
 
       // Persist to backend database immediately
-      api.markNotificationsRead([n.id]).catch(() => { });
+      api.markNotificationsRead(keysToMark).catch(() => { });
 
       if (n.type === 'announcement') {
         markAnnouncementAsRead(currentUser.id, n.id);
@@ -860,7 +881,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </div>
                           ) : (
                             notifications.map((n) => {
-                              const isRead = readNotifIds.includes(n.id);
+                              const isRead = readNotifIds.includes(n.id) || (!!n.fullPayload?.referenceId && readNotifIds.includes(n.fullPayload.referenceId));
 
                               return (
                                 <div
