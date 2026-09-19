@@ -38,6 +38,8 @@ export interface PlanTask {
   completionPercentage: number;
   completionNote?: string;
   displayOrder: number;
+  isMultiDay?: boolean;
+  todayTargetMet?: boolean;
   carriedFromTaskId?: string;
   carriedFromTask?: {
     id: string;
@@ -58,6 +60,8 @@ export interface IncompleteTask {
   status: TaskStatus;
   completionPercentage: number;
   completionNote?: string;
+  isMultiDay?: boolean;
+  todayTargetMet?: boolean;
   daysAgo: number;
 }
 
@@ -213,6 +217,7 @@ export interface ExecutiveTask {
   status: TaskStatus;
   completionPercentage: number;
   completionNote?: string;
+  todayTargetMet?: boolean;
   assignedById: string;
   assignedBy?: {
     id: string;
@@ -323,6 +328,7 @@ export interface UserTodo {
   priority: Priority;
   dueDate?: string | null;
   isCompleted: boolean;
+  completionPercentage: number;
   completedAt?: string | null;
   category: TodoCategory | string;
   displayOrder: number;
@@ -336,6 +342,7 @@ export interface TodoStats {
   pending: number;
   urgentPending: number;
   dueTodayPending: number;
+  completionRate?: number;
 }
 
 export interface TodosResponse {
@@ -349,6 +356,7 @@ export interface CreateTodoDto {
   priority?: Priority;
   dueDate?: string;
   category?: string;
+  completionPercentage?: number;
 }
 
 export interface UpdateTodoDto {
@@ -357,6 +365,7 @@ export interface UpdateTodoDto {
   priority?: Priority;
   dueDate?: string | null;
   isCompleted?: boolean;
+  completionPercentage?: number;
   category?: string;
   displayOrder?: number;
 }
@@ -373,6 +382,8 @@ export interface ReportTaskItem {
   status: TaskStatus;
   completionPercentage: number;
   completionNote?: string;
+  isMultiDay?: boolean;
+  todayTargetMet?: boolean;
   source: 'PLAN' | 'EXECUTIVE';
   sourceLabel: string;
   assignedBy?: string;
@@ -386,6 +397,7 @@ export interface AchievementsReportStats {
   nearingTasksCount: number;
   inProgressTasksCount: number;
   averageCompletionRate: number;
+  averageDailyFulfillmentRate?: number;
   totalHours: number;
   executiveTasksCount: number;
 }

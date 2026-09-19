@@ -349,6 +349,7 @@ class ApiService {
   async submitPlan(payload: {
     planDate?: string;
     generalFocus?: string;
+    isSilent?: boolean;
     tasks: {
       id?: string;
       title: string;
@@ -356,6 +357,8 @@ class ApiService {
       priority?: string;
       estimatedHours?: number;
       carriedFromTaskId?: string;
+      isMultiDay?: boolean;
+      todayTargetMet?: boolean;
       completionPercentage?: number;
       status?: string;
       completionNote?: string;
@@ -367,9 +370,31 @@ class ApiService {
     });
   }
 
+  async addQuickPlanTask(payload: {
+    title: string;
+    description?: string;
+    priority?: string;
+    estimatedHours?: number;
+  }): Promise<any> {
+    return this.request<any>('/daily-plans/tasks/quick', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async updateTaskStatus(
     taskId: string,
-    payload: { status?: string; completionPercentage?: number; completionNote?: string },
+    payload: {
+      title?: string;
+      description?: string;
+      priority?: string;
+      estimatedHours?: number;
+      status?: string;
+      completionPercentage?: number;
+      completionNote?: string;
+      isMultiDay?: boolean;
+      todayTargetMet?: boolean;
+    },
   ) {
     return this.request<any>(`/daily-plans/tasks/${taskId}`, {
       method: 'PATCH',
@@ -396,7 +421,14 @@ class ApiService {
     directorNotes?: string;
     urgentFlag?: boolean;
     tomorrowPlanPreview?: string;
-    taskUpdates?: { taskId: string; status: string; completionPercentage: number; completionNote?: string }[];
+    taskUpdates?: {
+      taskId: string;
+      status: string;
+      completionPercentage: number;
+      completionNote?: string;
+      isMultiDay?: boolean;
+      todayTargetMet?: boolean;
+    }[];
   }): Promise<DailySummary> {
     return this.request<DailySummary>('/daily-summaries/submit', {
       method: 'POST',
@@ -470,6 +502,7 @@ class ApiService {
       status?: string;
       completionPercentage?: number;
       completionNote?: string;
+      todayTargetMet?: boolean;
       directorateId?: string;
       assignedToUserId?: string;
     },

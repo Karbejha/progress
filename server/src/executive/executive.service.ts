@@ -98,9 +98,17 @@ export class ExecutiveService {
       if (isUrgent) urgentIssuesCount++;
 
       // Combined tasks count and completed count
+      const isTaskFulfilledToday = (t: any) => {
+        return t.status === 'COMPLETED' || t.completionPercentage === 100 || ((t.isMultiDay || !!t.carriedFromTaskId) && t.todayTargetMet);
+      };
+      const getTaskFulfillmentPct = (t: any) => {
+        if (isTaskFulfilledToday(t)) return 100;
+        return Math.min(100, Math.max(0, t.completionPercentage || 0));
+      };
+
       const allTasksCount = planTasks.length + execTasks.length;
-      const completedPlanTasks = planTasks.filter((t) => t.status === 'COMPLETED' || t.completionPercentage === 100).length;
-      const completedExecTasks = execTasks.filter((t) => t.status === 'COMPLETED' || t.completionPercentage === 100).length;
+      const completedPlanTasks = planTasks.filter(isTaskFulfilledToday).length;
+      const completedExecTasks = execTasks.filter(isTaskFulfilledToday).length;
       const totalCompleted = completedPlanTasks + completedExecTasks;
 
       totalTasksCount += allTasksCount;
@@ -112,8 +120,8 @@ export class ExecutiveService {
         sumCompletionRates += completionRate;
         activeReportingDirectorates++;
       } else if (allTasksCount > 0) {
-        const sumPlanPct = planTasks.reduce((sum, t) => sum + t.completionPercentage, 0);
-        const sumExecPct = execTasks.reduce((sum, t) => sum + t.completionPercentage, 0);
+        const sumPlanPct = planTasks.reduce((sum, t) => sum + getTaskFulfillmentPct(t), 0);
+        const sumExecPct = execTasks.reduce((sum, t) => sum + getTaskFulfillmentPct(t), 0);
         completionRate = Math.round(((sumPlanPct + sumExecPct) / allTasksCount) * 10) / 10;
         sumCompletionRates += completionRate;
         activeReportingDirectorates++;

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber, IsInt, Min, Max } from 'class-validator';
 import { Priority } from '@prisma/client';
 
 export class UpdateTodoDto {
@@ -22,6 +22,12 @@ export class UpdateTodoDto {
   @IsOptional()
   isCompleted?: boolean;
 
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  completionPercentage?: number;
+
   @IsString()
   @IsOptional()
   category?: string;
@@ -30,3 +36,4 @@ export class UpdateTodoDto {
   @IsOptional()
   displayOrder?: number;
 }
+

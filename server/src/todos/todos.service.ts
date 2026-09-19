@@ -63,11 +63,19 @@ export class TodosService {
     // Compute user stats across all their todos
     const allUserTodos = await this.prisma.userTodo.findMany({
       where: { userId: user.id },
-      select: { isCompleted: true, priority: true, dueDate: true },
+      select: { isCompleted: true, priority: true, dueDate: true, completionPercentage: true },
     });
 
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
+
+    const sumProgress = allUserTodos.reduce((acc, t) => {
+      const taskPct = t.isCompleted ? 100 : Math.max(0, Math.min(100, t.completionPercentage ?? 0));
+      return acc + taskPct;
+    }, 0);
+
+    const completionRate =
+      allUserTodos.length > 0 ? Math.round(sumProgress / allUserTodos.length) : 0;
 
     const stats = {
       total: allUserTodos.length,
@@ -81,6 +89,7 @@ export class TodosService {
         const dStr = new Date(t.dueDate).toISOString().split('T')[0];
         return dStr === todayStr;
       }).length,
+      completionRate,
     };
 
     return {
@@ -108,6 +117,10 @@ export class TodosService {
 
     const dueDate = dto.dueDate ? new Date(dto.dueDate) : null;
 
+    const pct = typeof dto.completionPercentage === 'number'
+      ? Math.min(100, Math.max(0, Math.round(dto.completionPercentage)))
+      : 0;
+
     const todo = await this.prisma.userTodo.create({
       data: {
         userId: user.id,
@@ -116,7 +129,9 @@ export class TodosService {
         priority: dto.priority || Priority.NORMAL,
         dueDate,
         category: dto.category || 'GENERAL',
-        isCompleted: false,
+        completionPercentage: pct,
+        isCompleted: pct === 100,
+        completedAt: pct === 100 ? new Date() : null,
       },
     });
 
@@ -134,9 +149,24 @@ export class TodosService {
     if (dto.category !== undefined) data.category = dto.category;
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
 
+    if (dto.completionPercentage !== undefined) {
+      const pct = Math.min(100, Math.max(0, Math.round(dto.completionPercentage)));
+      data.completionPercentage = pct;
+      if (pct === 100) {
+        data.isCompleted = true;
+        data.completedAt = existing.completedAt || new Date();
+      } else if (dto.isCompleted === undefined) {
+        data.isCompleted = false;
+        data.completedAt = null;
+      }
+    }
+
     if (dto.isCompleted !== undefined) {
       data.isCompleted = dto.isCompleted;
-      data.completedAt = dto.isCompleted ? new Date() : null;
+      data.completedAt = dto.isCompleted ? (existing.completedAt || new Date()) : null;
+      if (dto.completionPercentage === undefined) {
+        data.completionPercentage = dto.isCompleted ? 100 : 0;
+      }
     }
 
     const updated = await this.prisma.userTodo.update({
@@ -144,8 +174,8 @@ export class TodosService {
       data,
     });
 
-    if (dto.isCompleted !== undefined) {
-      await this.syncLinkedEntities(updated, updated.isCompleted);
+    if (dto.isCompleted !== undefined || dto.completionPercentage !== undefined) {
+      await this.syncLinkedEntities(updated, updated.isCompleted, updated.completionPercentage);
     }
 
     this.eventsGateway.emitTodoUpdated(user.id);
@@ -155,16 +185,18 @@ export class TodosService {
   async toggleTodo(user: any, id: string) {
     const existing = await this.getTodoById(user, id);
     const nextCompleted = !existing.isCompleted;
+    const nextPercentage = nextCompleted ? 100 : 0;
 
     const updated = await this.prisma.userTodo.update({
       where: { id },
       data: {
         isCompleted: nextCompleted,
         completedAt: nextCompleted ? new Date() : null,
+        completionPercentage: nextPercentage,
       },
     });
 
-    await this.syncLinkedEntities(updated, nextCompleted);
+    await this.syncLinkedEntities(updated, nextCompleted, nextPercentage);
     this.eventsGateway.emitTodoUpdated(user.id);
     return updated;
   }
@@ -236,6 +268,14 @@ export class TodosService {
 
     const maxOrder = plan.tasks.reduce((max, t) => Math.max(max, t.displayOrder), 0);
 
+    // Synchronize initial percentage and status from the todo
+    const currentPct = typeof todo.completionPercentage === 'number'
+      ? Math.min(100, Math.max(0, Math.round(todo.completionPercentage)))
+      : (todo.isCompleted ? 100 : 0);
+    const initialStatus = currentPct === 100
+      ? TaskStatus.COMPLETED
+      : (currentPct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+
     const planTask = await this.prisma.planTask.create({
       data: {
         dailyPlanId: plan.id,
@@ -243,13 +283,13 @@ export class TodosService {
         description: todo.description,
         priority: todo.priority,
         estimatedHours: 1.0,
-        status: TaskStatus.PENDING,
-        completionPercentage: 0,
+        status: initialStatus,
+        completionPercentage: currentPct,
         displayOrder: maxOrder + 1,
       },
     });
 
-    // Keep the todo active in the user's agenda and tag it
+    // Keep the todo active in the user's agenda and tag it with plan task ID
     const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${planTask.id}]`;
     const alreadyTagged = todo.description?.includes('الخطة اليومية');
     const updatedDesc = alreadyTagged
@@ -263,11 +303,36 @@ export class TodosService {
     await this.prisma.userTodo.update({
       where: { id },
       data: {
-        isCompleted: false,
-        completedAt: null,
+        isCompleted: currentPct === 100,
+        completedAt: currentPct === 100 ? (todo.completedAt || new Date()) : null,
+        completionPercentage: currentPct,
         description: updatedDesc,
       },
     });
+
+    // Recalculate summary overall rate if daily summary already exists
+    const allPlanTasks = await this.prisma.planTask.findMany({
+      where: { dailyPlanId: plan.id },
+    });
+    const allExecTasks = await this.prisma.executiveTask.findMany({
+      where: { directorateId: user.directorateId },
+    });
+    const allPcts = [
+      ...allPlanTasks.map((t) => t.completionPercentage),
+      ...allExecTasks.map((t) => t.completionPercentage),
+    ];
+    if (allPcts.length > 0) {
+      const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
+      const summary = await this.prisma.dailySummary.findUnique({
+        where: { dailyPlanId: plan.id },
+      });
+      if (summary) {
+        await this.prisma.dailySummary.update({
+          where: { id: summary.id },
+          data: { overallCompletionRate: Math.round(avg * 10) / 10 },
+        });
+      }
+    }
 
     // Notify live clients via Socket
     const dir = await this.prisma.directorate.findUnique({ where: { id: user.directorateId } });
@@ -277,12 +342,13 @@ export class TodosService {
       taskId: planTask.id,
       taskTitle: planTask.title,
       status: planTask.status,
-      completionPercentage: 0,
+      completionPercentage: currentPct,
     });
+    this.eventsGateway.emitTodoUpdated(user.id);
 
     return {
       success: true,
-      message: 'تم إدراج المهمة بنجاح في الخطة اليومية الرسمية للمديرية مع الاحتفاظ بها في الأجندة',
+      message: 'تم إدراج المهمة بنجاح في الخطة اليومية الرسمية للمديرية مع الاحتفاظ بها في الأجندة ومزامنة نسبة التقدم',
       planTask,
       planId: plan.id,
     };
@@ -315,6 +381,13 @@ export class TodosService {
       ? new Date(todo.dueDate)
       : null;
 
+    const currentPct = typeof todo.completionPercentage === 'number'
+      ? Math.min(100, Math.max(0, Math.round(todo.completionPercentage)))
+      : (todo.isCompleted ? 100 : 0);
+    const initialStatus = currentPct === 100
+      ? TaskStatus.COMPLETED
+      : (currentPct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+
     const isJoint = dto.directorateIds.length > 1;
     const sharedGroupId = isJoint ? randomUUID() : null;
     const createdTasks = [];
@@ -331,8 +404,8 @@ export class TodosService {
           description: todo.description,
           priority: todo.priority,
           dueDate,
-          status: TaskStatus.PENDING,
-          completionPercentage: 0,
+          status: initialStatus,
+          completionPercentage: currentPct,
           assignedById: user.id,
           directorateId,
           sharedGroupId,
@@ -370,8 +443,9 @@ export class TodosService {
     await this.prisma.userTodo.update({
       where: { id },
       data: {
-        isCompleted: false,
-        completedAt: null,
+        isCompleted: currentPct === 100,
+        completedAt: currentPct === 100 ? (todo.completedAt || new Date()) : null,
+        completionPercentage: currentPct,
         description: updatedDesc,
       },
     });
@@ -380,7 +454,7 @@ export class TodosService {
 
     return {
       success: true,
-      message: `تم تحويل المهمة بنجاح إلى تكليف تنفيذي وإسنادها لـ ${createdTasks.length} مديرية مع الاحتفاظ بها في الأجندة`,
+      message: `تم تحويل المهمة بنجاح إلى تكليف تنفيذي وإسنادها لـ ${createdTasks.length} مديرية مع الاحتفاظ بها في الأجندة ومزامنة نسبة التقدم`,
       createdTasks,
     };
   }
@@ -388,35 +462,115 @@ export class TodosService {
   /**
    * Sync completion of linked PlanTask or ExecutiveTask when todo completion is changed
    */
-  private async syncLinkedEntities(todo: any, isCompleted: boolean) {
+  private async syncLinkedEntities(todo: any, isCompleted: boolean, percentage?: number) {
     try {
+      const nextPercentage = typeof percentage === 'number'
+        ? Math.min(100, Math.max(0, Math.round(percentage)))
+        : (isCompleted ? 100 : 0);
+      const nextStatus = nextPercentage === 100
+        ? TaskStatus.COMPLETED
+        : (nextPercentage > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+
       // 1. Check if linked to a PlanTask
       const planMatch = todo.description?.match(/\[معرف المهمة:\s*([^\]]+)\]/);
-      if (planMatch && planMatch[1]) {
-        const planTaskId = planMatch[1].trim();
-        const planTask = await this.prisma.planTask.findUnique({
-          where: { id: planTaskId },
-          include: { dailyPlan: { include: { directorate: true } } },
-        });
-        if (planTask) {
-          const nextStatus = isCompleted ? TaskStatus.COMPLETED : TaskStatus.IN_PROGRESS;
-          const nextPercentage = isCompleted ? 100 : 50;
-          await this.prisma.planTask.update({
+      let planTaskId = planMatch && planMatch[1] ? planMatch[1].trim() : null;
+
+      let planTask = planTaskId
+        ? await this.prisma.planTask.findUnique({
             where: { id: planTaskId },
-            data: {
-              status: nextStatus,
-              completionPercentage: nextPercentage,
+            include: { dailyPlan: { include: { directorate: true } } },
+          })
+        : null;
+
+      // Fallback: If no explicit ID tag in description, try matching by clean title in today's daily plan
+      if (!planTask && todo.title && todo.userId) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: todo.userId },
+          select: { directorateId: true },
+        });
+
+        if (user?.directorateId) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const todayPlan = await this.prisma.dailyPlan.findUnique({
+            where: {
+              directorateId_planDate: {
+                directorateId: user.directorateId,
+                planDate: today,
+              },
             },
+            include: { tasks: true, directorate: true },
           });
-          this.eventsGateway.emitTaskUpdated({
-            directorateId: planTask.dailyPlan.directorateId,
-            directorateName: planTask.dailyPlan.directorate.name,
-            taskId: planTask.id,
-            taskTitle: planTask.title,
+
+          if (todayPlan) {
+            const cleanTodoTitle = todo.title.trim().toLowerCase();
+            const matched = todayPlan.tasks.find(
+              (t) => t.title.trim().toLowerCase() === cleanTodoTitle,
+            );
+            if (matched) {
+              planTask = {
+                ...matched,
+                dailyPlan: todayPlan,
+              } as any;
+              planTaskId = matched.id;
+
+              // Ensure todo description has the explicit ID tag for subsequent fast queries
+              const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${matched.id}]`;
+              if (!todo.description?.includes(matched.id)) {
+                const newDesc = todo.description ? `${todo.description}\n${planTag}` : planTag;
+                await this.prisma.userTodo.update({
+                  where: { id: todo.id },
+                  data: { description: newDesc },
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (planTask && planTaskId) {
+        await this.prisma.planTask.update({
+          where: { id: planTaskId },
+          data: {
             status: nextStatus,
             completionPercentage: nextPercentage,
+          },
+        });
+
+        // Recalculate summary overall completion rate if daily summary exists
+        const allPlanTasks = await this.prisma.planTask.findMany({
+          where: { dailyPlanId: planTask.dailyPlanId },
+        });
+        const allExecTasks = await this.prisma.executiveTask.findMany({
+          where: { directorateId: planTask.dailyPlan.directorateId },
+        });
+        const allPcts = [
+          ...allPlanTasks.map((t) => (t.id === planTaskId ? nextPercentage : t.completionPercentage)),
+          ...allExecTasks.map((t) => t.completionPercentage),
+        ];
+
+        if (allPcts.length > 0) {
+          const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
+          const summary = await this.prisma.dailySummary.findUnique({
+            where: { dailyPlanId: planTask.dailyPlanId },
           });
+          if (summary) {
+            await this.prisma.dailySummary.update({
+              where: { id: summary.id },
+              data: { overallCompletionRate: Math.round(avg * 10) / 10 },
+            });
+          }
         }
+
+        this.eventsGateway.emitTaskUpdated({
+          directorateId: planTask.dailyPlan.directorateId,
+          directorateName: planTask.dailyPlan.directorate.name,
+          taskId: planTaskId,
+          taskTitle: planTask.title,
+          status: nextStatus,
+          completionPercentage: nextPercentage,
+        });
       }
 
       // 2. Check if linked to ExecutiveTask(s)
@@ -429,8 +583,6 @@ export class TodosService {
             include: { directorate: true },
           });
           if (execTask) {
-            const nextStatus = isCompleted ? TaskStatus.COMPLETED : TaskStatus.IN_PROGRESS;
-            const nextPercentage = isCompleted ? 100 : 50;
             const updated = await this.prisma.executiveTask.update({
               where: { id: execTaskId },
               data: {

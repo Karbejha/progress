@@ -93,9 +93,13 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
 
   const handleToggle = async (todo: UserTodo) => {
     try {
+      const nextCompleted = !todo.isCompleted;
+      const nextPercentage = nextCompleted ? 100 : 0;
       setTodos((prev) =>
         prev.map((t) =>
-          t.id === todo.id ? { ...t, isCompleted: !t.isCompleted } : t
+          t.id === todo.id
+            ? { ...t, isCompleted: nextCompleted, completionPercentage: nextPercentage }
+            : t
         )
       );
       const updated = await api.toggleTodo(todo.id);
@@ -260,7 +264,21 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
                                 allowClear={true}
                               />
                             )}
+                            {todo.completionPercentage !== undefined && todo.completionPercentage > 0 && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-[#0c3e35]/10 text-[#0c3e35] text-[9px] font-black border border-[#0c3e35]/20">
+                                <span>{todo.completionPercentage}%</span>
+                              </span>
+                            )}
                           </div>
+
+                          {todo.completionPercentage !== undefined && todo.completionPercentage > 0 && !todo.isCompleted && (
+                            <div className="w-full bg-slate-100 rounded-full h-1 mt-2 overflow-hidden">
+                              <div
+                                className="bg-[#0c3e35] h-1 rounded-full transition-all duration-300"
+                                style={{ width: `${todo.completionPercentage}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

@@ -278,6 +278,10 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
                       {/* Meta Badges (Priority & Plan Date) */}
                       <div className="flex items-center gap-2 flex-wrap">
                         {getPriorityBadge(task.priority)}
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-900 border border-indigo-200 inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+                          <Layers className="w-3 h-3 text-indigo-600" />
+                          <span>مهمة ممتدة</span>
+                        </span>
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#f4f3ed] text-[#5e736e] border border-[#d2d1c9] inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
                           <Calendar className="w-3 h-3 text-[#d4af37]" />
                           <span>خطة: {formatTaskDate(task.planDate)}</span>

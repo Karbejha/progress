@@ -399,10 +399,22 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="font-bold text-[#05261e]">{task.title}</p>
+                          {(task.isMultiDay || task.carriedFromTaskId) && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-900 border border-indigo-200 flex items-center gap-1">
+                              <Layers className="w-2.5 h-2.5 text-indigo-600" />
+                              <span>مهمة ممتدة</span>
+                            </span>
+                          )}
                           {task.carriedFromTaskId && (
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
                               <ArrowRightLeft className="w-2.5 h-2.5 text-amber-700" />
-                              <span>مهمة مرحّلة من خطة سابقة</span>
+                              <span>مرحّلة</span>
+                            </span>
+                          )}
+                          {task.todayTargetMet && task.completionPercentage < 100 && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>مستهدف اليوم مكتمل</span>
                             </span>
                           )}
                         </div>

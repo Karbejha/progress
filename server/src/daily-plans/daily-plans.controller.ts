@@ -72,6 +72,14 @@ export class DailyPlansController {
     return this.dailyPlansService.createOrUpdatePlan(req.user, dto);
   }
 
+  @Post('tasks/quick')
+  addQuickTask(
+    @Request() req: any,
+    @Body() dto: { title: string; description?: string; priority?: Priority; estimatedHours?: number },
+  ) {
+    return this.dailyPlansService.addQuickTask(req.user, dto);
+  }
+
   @Patch('tasks/:taskId')
   updateTaskStatus(
     @Request() req: any,

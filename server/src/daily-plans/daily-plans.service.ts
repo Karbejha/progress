@@ -8,6 +8,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 export interface CreatePlanDto {
   planDate?: string;
   generalFocus?: string;
+  isSilent?: boolean;
   tasks: {
     id?: string;
     title: string;
@@ -15,6 +16,8 @@ export interface CreatePlanDto {
     priority?: Priority;
     estimatedHours?: number;
     carriedFromTaskId?: string;
+    isMultiDay?: boolean;
+    todayTargetMet?: boolean;
     completionPercentage?: number;
     status?: TaskStatus;
     completionNote?: string;
@@ -22,9 +25,15 @@ export interface CreatePlanDto {
 }
 
 export interface UpdateTaskDto {
+  title?: string;
+  description?: string;
+  priority?: Priority;
+  estimatedHours?: number;
   status?: TaskStatus;
   completionPercentage?: number;
   completionNote?: string;
+  isMultiDay?: boolean;
+  todayTargetMet?: boolean;
 }
 
 @Injectable()
@@ -39,6 +48,23 @@ export class DailyPlansService {
     const d = dateStr ? new Date(dateStr) : new Date();
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+
+  public calculateDailyFulfillmentRate(task: {
+    completionPercentage: number;
+    status?: TaskStatus | string;
+    isMultiDay?: boolean;
+    todayTargetMet?: boolean;
+    carriedFromTaskId?: string | null;
+  }): number {
+    if (task.status === TaskStatus.COMPLETED || task.completionPercentage >= 100) {
+      return 100;
+    }
+    const isMulti = task.isMultiDay || !!task.carriedFromTaskId;
+    if (isMulti && task.todayTargetMet) {
+      return 100;
+    }
+    return Math.min(100, Math.max(0, task.completionPercentage || 0));
   }
 
   async getMyPlanForDate(user: any, dateStr?: string) {
@@ -165,9 +191,23 @@ export class DailyPlansService {
               status,
               completionPercentage: pct,
               completionNote,
+              isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : (existingTask.isMultiDay || !!t.carriedFromTaskId),
+              todayTargetMet: t.todayTargetMet !== undefined ? t.todayTargetMet : existingTask.todayTargetMet,
               carriedFromTaskId: t.carriedFromTaskId || existingTask.carriedFromTaskId,
             },
           });
+
+          // Sync progress changes to personal agenda (UserTodo)
+          const isTaskCompleted = status === TaskStatus.COMPLETED || pct === 100;
+          await this.syncPlanTaskToUserTodo(
+            user.id,
+            existingTask.id,
+            t.title,
+            isTaskCompleted,
+            t.priority || existingTask.priority,
+            t.description,
+            pct,
+          );
         } else {
           // New task added by director
           const pct =
@@ -185,6 +225,8 @@ export class DailyPlansService {
               status,
               completionPercentage: pct,
               completionNote: t.completionNote || null,
+              isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : !!t.carriedFromTaskId,
+              todayTargetMet: t.todayTargetMet || false,
               carriedFromTaskId: t.carriedFromTaskId || null,
             },
           });
@@ -210,7 +252,7 @@ export class DailyPlansService {
         data: {
           generalFocus: dto.generalFocus,
           status: PlanStatus.SUBMITTED,
-          submittedAt: new Date(),
+          submittedAt: dto.isSilent ? (existing.submittedAt || new Date()) : new Date(),
         },
         include: {
           tasks: {
@@ -241,8 +283,8 @@ export class DailyPlansService {
         });
 
         const allPcts = [
-          ...allPlanTasks.map((t) => t.completionPercentage),
-          ...allExecTasks.map((t) => t.completionPercentage),
+          ...allPlanTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
+          ...allExecTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
         ];
 
         if (allPcts.length > 0) {
@@ -262,23 +304,25 @@ export class DailyPlansService {
         planDate: updated.planDate.toISOString(),
       });
 
-      // Persist notification for executive users
-      this.notificationsService.createNotificationForRoles(
-        [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
-        {
-          type: 'plan',
-          title: 'رفع خطة صباحية',
-          message: `قامت (${updated.directorate.name}) باعتماد ورفع خطة اليوم (${updated.tasks.length} مهام).`,
-          referenceId: `plan-sub-${updated.directorateId}-${updated.planDate.toISOString().split('T')[0]}`,
-          metadata: {
-            directorateId: updated.directorateId,
-            directorateName: updated.directorate.name,
-            directorName: user.fullName,
-            tasksCount: updated.tasks.length,
-            planDate: updated.planDate.toISOString(),
+      // Persist notification for executive users only if not silent auto-save
+      if (!dto.isSilent) {
+        this.notificationsService.createNotificationForRoles(
+          [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+          {
+            type: 'plan',
+            title: 'رفع خطة صباحية',
+            message: `قامت (${updated.directorate.name}) باعتماد ورفع خطة اليوم (${updated.tasks.length} مهام).`,
+            referenceId: `plan-sub-${updated.directorateId}-${updated.planDate.toISOString().split('T')[0]}`,
+            metadata: {
+              directorateId: updated.directorateId,
+              directorateName: updated.directorate.name,
+              directorName: user.fullName,
+              tasksCount: updated.tasks.length,
+              planDate: updated.planDate.toISOString(),
+            },
           },
-        },
-      );
+        );
+      }
 
       return updated;
     }
@@ -305,6 +349,8 @@ export class DailyPlansService {
               status,
               completionPercentage: pct,
               completionNote: t.completionNote || null,
+              isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : !!t.carriedFromTaskId,
+              todayTargetMet: t.todayTargetMet || false,
               carriedFromTaskId: t.carriedFromTaskId || null,
             };
           }),
@@ -380,10 +426,16 @@ export class DailyPlansService {
     const updatedTask = await this.prisma.planTask.update({
       where: { id: taskId },
       data: {
+        title: dto.title !== undefined ? dto.title.trim() : task.title,
+        description: dto.description !== undefined ? dto.description : task.description,
+        priority: dto.priority !== undefined ? dto.priority : task.priority,
+        estimatedHours: dto.estimatedHours !== undefined ? dto.estimatedHours : task.estimatedHours,
         status: dto.status !== undefined ? dto.status : task.status,
         completionPercentage:
           dto.completionPercentage !== undefined ? dto.completionPercentage : task.completionPercentage,
         completionNote: dto.completionNote !== undefined ? dto.completionNote : task.completionNote,
+        isMultiDay: dto.isMultiDay !== undefined ? dto.isMultiDay : task.isMultiDay,
+        todayTargetMet: dto.todayTargetMet !== undefined ? dto.todayTargetMet : task.todayTargetMet,
       },
     });
 
@@ -396,8 +448,8 @@ export class DailyPlansService {
     });
 
     const allPcts = [
-      ...allPlanTasks.map((t) => t.completionPercentage),
-      ...allExecTasks.map((t) => t.completionPercentage),
+      ...allPlanTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
+      ...allExecTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
     ];
 
     if (allPcts.length > 0) {
@@ -466,6 +518,7 @@ export class DailyPlansService {
       isCompleted,
       updatedTask.priority,
       updatedTask.description,
+      updatedTask.completionPercentage,
     );
     if (user.id && user.id !== targetUserId) {
       await this.syncPlanTaskToUserTodo(
@@ -475,10 +528,71 @@ export class DailyPlansService {
         isCompleted,
         updatedTask.priority,
         updatedTask.description,
+        updatedTask.completionPercentage,
       );
     }
 
     return updatedTask;
+  }
+
+  async addQuickTask(
+    user: any,
+    dto: { title: string; description?: string; priority?: Priority; estimatedHours?: number },
+  ) {
+    if (!user.directorateId && user.role === Role.DIRECTOR) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
+    }
+    const today = this.normalizeDate();
+    let plan = await this.prisma.dailyPlan.findUnique({
+      where: {
+        directorateId_planDate: {
+          directorateId: user.directorateId,
+          planDate: today,
+        },
+      },
+      include: { tasks: true },
+    });
+
+    if (!plan) {
+      plan = await this.prisma.dailyPlan.create({
+        data: {
+          directorateId: user.directorateId,
+          userId: user.id,
+          planDate: today,
+          status: PlanStatus.SUBMITTED,
+          submittedAt: new Date(),
+          generalFocus: 'الخطة اليومية',
+        },
+        include: { tasks: true },
+      });
+    }
+
+    const maxOrder = plan.tasks.reduce((max, t) => Math.max(max, t.displayOrder), 0);
+    const createdTask = await this.prisma.planTask.create({
+      data: {
+        dailyPlanId: plan.id,
+        title: dto.title.trim(),
+        description: dto.description || '',
+        priority: dto.priority || Priority.NORMAL,
+        estimatedHours: dto.estimatedHours || 1.5,
+        displayOrder: maxOrder + 1,
+        status: TaskStatus.PENDING,
+        completionPercentage: 0,
+      },
+    });
+
+    // Sync to user todo
+    await this.syncPlanTaskToUserTodo(
+      user.id,
+      createdTask.id,
+      createdTask.title,
+      false,
+      createdTask.priority,
+      createdTask.description,
+      0,
+    );
+
+    return createdTask;
   }
 
   /**
@@ -491,18 +605,24 @@ export class DailyPlansService {
     isCompleted: boolean,
     priority: Priority,
     description?: string | null,
+    completionPercentage?: number,
   ) {
     try {
       const cleanTitle = title.trim();
       const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${taskId}]`;
+      const pct = typeof completionPercentage === 'number'
+        ? completionPercentage
+        : (isCompleted ? 100 : 0);
 
       // Find existing todo by taskId in description or by title (case-insensitive)
       const existingTodos = await this.prisma.userTodo.findMany({
         where: {
-          userId,
           OR: [
             { description: { contains: taskId } },
-            { title: { equals: cleanTitle, mode: 'insensitive' } },
+            {
+              userId,
+              title: { equals: cleanTitle, mode: 'insensitive' },
+            },
           ],
         },
       });
@@ -514,16 +634,19 @@ export class DailyPlansService {
           if (!alreadyHasTag) {
             newDesc = newDesc ? `${newDesc}\n${planTag}` : planTag;
           }
+          const willBeCompleted = isCompleted || pct === 100;
           await this.prisma.userTodo.update({
             where: { id: todo.id },
             data: {
-              isCompleted,
-              completedAt: isCompleted ? (todo.completedAt || new Date()) : null,
+              isCompleted: willBeCompleted,
+              completedAt: willBeCompleted ? (todo.completedAt || new Date()) : null,
+              completionPercentage: pct,
               description: newDesc,
             },
           });
+          this.eventsGateway.emitTodoUpdated(todo.userId);
         }
-      } else if (isCompleted) {
+      } else if (isCompleted || pct === 100) {
         // If not in agenda and marked completed in DirectorPortal, create it as a completed todo
         const desc = description?.trim() ? `${description.trim()}\n${planTag}` : planTag;
         await this.prisma.userTodo.create({
@@ -533,13 +656,13 @@ export class DailyPlansService {
             description: desc,
             priority: priority || Priority.NORMAL,
             category: 'OFFICIAL',
+            completionPercentage: pct,
             isCompleted: true,
             completedAt: new Date(),
           },
         });
+        this.eventsGateway.emitTodoUpdated(userId);
       }
-
-      this.eventsGateway.emitTodoUpdated(userId);
     } catch (err) {
       console.error('Failed to sync plan task to user todo:', err);
     }
@@ -576,8 +699,8 @@ export class DailyPlansService {
     });
 
     const allPcts = [
-      ...allPlanTasks.map((t) => t.completionPercentage),
-      ...allExecTasks.map((t) => t.completionPercentage),
+      ...allPlanTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
+      ...allExecTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
     ];
 
     if (allPcts.length > 0) {
@@ -775,6 +898,8 @@ export class DailyPlansService {
           status: task.status,
           completionPercentage: task.completionPercentage,
           completionNote: task.completionNote || '',
+          isMultiDay: task.isMultiDay || true,
+          todayTargetMet: false,
           daysAgo,
         });
       }
@@ -926,6 +1051,8 @@ export class DailyPlansService {
           status: t.status,
           completionPercentage: t.completionPercentage,
           completionNote: t.completionNote || '',
+          isMultiDay: t.isMultiDay,
+          todayTargetMet: t.todayTargetMet,
           source: 'PLAN' as const,
           sourceLabel: 'خطة يومية',
         };
@@ -1019,14 +1146,20 @@ export class DailyPlansService {
     const totalNearingCount = nearingTasks.length;
     const totalTasksCount = completedTasks.length + nearingTasks.length + inProgressTasks.length;
 
+    // 1. Calculate true cumulative completion rate across unique tasks
+    const all = [...completedTasks, ...nearingTasks, ...inProgressTasks];
     let averageCompletionRate = 0;
-    if (summariesWithRateCount > 0) {
-      averageCompletionRate = Math.round((sumCompletionRate / summariesWithRateCount) * 10) / 10;
-    } else if (totalTasksCount > 0) {
-      const all = [...completedTasks, ...nearingTasks, ...inProgressTasks];
+    if (totalTasksCount > 0) {
       const sumPct = all.reduce((acc, curr) => acc + (curr.completionPercentage || 0), 0);
       averageCompletionRate = Math.round((sumPct / totalTasksCount) * 10) / 10;
+    } else if (summariesWithRateCount > 0) {
+      averageCompletionRate = Math.round((sumCompletionRate / summariesWithRateCount) * 10) / 10;
     }
+
+    const averageDailyFulfillmentRate =
+      summariesWithRateCount > 0
+        ? Math.round((sumCompletionRate / summariesWithRateCount) * 10) / 10
+        : averageCompletionRate;
 
     const totalHours = Math.round(
       [...completedTasks, ...nearingTasks].reduce((acc, curr) => acc + (curr.estimatedHours || 0), 0) * 10,
@@ -1064,6 +1197,7 @@ export class DailyPlansService {
         nearingTasksCount: totalNearingCount,
         inProgressTasksCount: inProgressTasks.length,
         averageCompletionRate,
+        averageDailyFulfillmentRate,
         totalHours,
         executiveTasksCount: executiveTasks.length,
       },

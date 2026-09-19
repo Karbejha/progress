@@ -85,7 +85,6 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const [newPriority, setNewPriority] = useState<Priority>('NORMAL');
   const [newCategory, setNewCategory] = useState<string>('GENERAL');
   const [newDueDate, setNewDueDate] = useState<string>('');
-  const [showAdvancedAdd, setShowAdvancedAdd] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filters & Search
@@ -192,6 +191,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const [editPriority, setEditPriority] = useState<Priority>('NORMAL');
   const [editCategory, setEditCategory] = useState<string>('GENERAL');
   const [editDueDate, setEditDueDate] = useState<string>('');
+  const [editPercentage, setEditPercentage] = useState<number>(0);
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Executive Conversion Modal State (for General Director)
@@ -293,7 +293,6 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       setNewPriority('NORMAL');
       setNewCategory('GENERAL');
       setNewDueDate('');
-      setShowAdvancedAdd(false);
 
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err) {
@@ -307,9 +306,11 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const handleToggleTodo = async (todo: UserTodo) => {
     try {
       const nextCompleted = !todo.isCompleted;
+      const nextPercentage = nextCompleted ? 100 : 0;
       const updatedItem: UserTodo = {
         ...todo,
         isCompleted: nextCompleted,
+        completionPercentage: nextPercentage,
         completedAt: nextCompleted ? new Date().toISOString() : null,
       };
 
@@ -318,7 +319,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       const sorted = sortWithCompletedAtBottom(updatedList);
       setTodos(sorted);
 
-      const updated = await api.toggleTodo(todo.id);
+      await api.updateTodo(todo.id, {
+        isCompleted: nextCompleted,
+        completionPercentage: nextPercentage,
+      });
 
       // Persist the new order in backend
       api.reorderTodos(sorted.map((t) => t.id)).catch(() => {});
@@ -326,6 +330,55 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err) {
       console.error('Failed to toggle todo', err);
+      loadTodos();
+    }
+  };
+
+  // Update local slider percentage (while dragging for real-time responsiveness)
+  const handleSliderChange = (todo: UserTodo, newPercentage: number) => {
+    const isCompleted = newPercentage === 100;
+    setTodos((prev) =>
+      prev.map((t) => {
+        if (t.id === todo.id) {
+          return {
+            ...t,
+            completionPercentage: newPercentage,
+            isCompleted,
+            completedAt: isCompleted ? (t.completedAt || new Date().toISOString()) : null,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  // Commit percentage change to backend (on slider release or preset click)
+  const handleSliderCommit = async (todo: UserTodo, newPercentage: number) => {
+    try {
+      const isCompleted = newPercentage === 100;
+      const updatedItem: UserTodo = {
+        ...todo,
+        completionPercentage: newPercentage,
+        isCompleted,
+        completedAt: isCompleted ? (todo.completedAt || new Date().toISOString()) : null,
+      };
+
+      const updatedList = todos.map((t) => (t.id === todo.id ? updatedItem : t));
+      const sorted = sortWithCompletedAtBottom(updatedList);
+      setTodos(sorted);
+
+      await api.updateTodo(todo.id, {
+        completionPercentage: newPercentage,
+        isCompleted,
+      });
+
+      if (isCompleted !== todo.isCompleted) {
+        api.reorderTodos(sorted.map((t) => t.id)).catch(() => {});
+      }
+
+      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+    } catch (err) {
+      console.error('Failed to update todo percentage', err);
       loadTodos();
     }
   };
@@ -868,6 +921,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     setEditPriority(todo.priority);
     setEditCategory(todo.category || 'GENERAL');
     setEditDueDate(todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : '');
+    setEditPercentage(todo.completionPercentage ?? (todo.isCompleted ? 100 : 0));
   };
 
   // Save Edit
@@ -899,6 +953,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         priority: editPriority,
         category: editCategory,
         dueDate: editDueDate || null,
+        completionPercentage: editPercentage,
       });
 
       setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
@@ -984,7 +1039,13 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       return new Date(t.dueDate).toISOString().split('T')[0] === todayStr;
     }).length;
 
-    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    // Calculate total progress: completed tasks contribute 100%, active tasks contribute their completionPercentage
+    const sumProgress = todos.reduce((acc, t) => {
+      const taskPct = t.isCompleted ? 100 : Math.max(0, Math.min(100, t.completionPercentage ?? 0));
+      return acc + taskPct;
+    }, 0);
+
+    const completionRate = total > 0 ? Math.round(sumProgress / total) : 0;
 
     return { total, completed, pending, urgent, dueToday, completionRate };
   }, [todos]);
@@ -1228,53 +1289,51 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
               })}
             </div>
 
-            {/* Priority selector, Due Date, and Notes toggle */}
-            <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
-              <div className="flex items-center gap-2 flex-wrap">
-                <select
-                  value={newPriority}
-                  onChange={(e) => setNewPriority(e.target.value as Priority)}
-                  className="px-2.5 py-1.5 text-xs font-bold rounded-xl bg-white border border-[#d2d1c9] text-[#05261e] focus:outline-hidden cursor-pointer shrink-0"
-                >
-                  <option value="LOW">أولوية منخفضة</option>
-                  <option value="NORMAL">أولوية عادية</option>
-                  <option value="HIGH">أولوية هامة</option>
-                  <option value="URGENT">أولوية طارئة جداً</option>
-                </select>
-
-                <CustomDatePicker
-                  value={newDueDate}
-                  onChange={(newVal) => setNewDueDate(newVal)}
-                  variant="input"
-                  placeholder="تاريخ الاستحقاق (اختياري)"
-                  allowClear={true}
-                  className="py-1 px-2.5 min-w-[135px] sm:min-w-[150px]"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowAdvancedAdd(!showAdvancedAdd)}
-                className="text-xs font-bold text-[#0c3e35] hover:underline px-1 cursor-pointer whitespace-nowrap flex items-center gap-1 mr-auto"
+            {/* Priority selector & Due Date */}
+            <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+              <select
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value as Priority)}
+                className="px-2.5 py-1.5 text-xs font-bold rounded-xl bg-white border border-[#d2d1c9] text-[#05261e] focus:outline-hidden cursor-pointer shrink-0"
               >
-                <Edit3 className="w-3 h-3" />
-                <span>{showAdvancedAdd ? 'إخفاء الملاحظات' : '+ إضافة ملاحظات'}</span>
-              </button>
+                <option value="LOW">أولوية منخفضة</option>
+                <option value="NORMAL">أولوية عادية</option>
+                <option value="HIGH">أولوية هامة</option>
+                <option value="URGENT">أولوية طارئة جداً</option>
+              </select>
+
+              <CustomDatePicker
+                value={newDueDate}
+                onChange={(newVal) => setNewDueDate(newVal)}
+                variant="input"
+                placeholder="تاريخ الاستحقاق (اختياري)"
+                allowClear={true}
+                className="py-1 px-2.5 min-w-[135px] sm:min-w-[150px]"
+              />
             </div>
           </div>
 
-          {/* Collapsible Details / Notes Input */}
-          {showAdvancedAdd && (
-            <div className="pt-2 animate-in fade-in duration-200">
+          {/* Details / Notes Input (Always Visible) */}
+          <div className="pt-1">
+            <div className="relative">
               <textarea
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
-                placeholder="أضف تفاصيل أو أرقام هواتف أو ملاحظات فرعية للمهمة..."
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreateTodo();
+                  }
+                }}
+                placeholder="ملاحظات أو تفاصيل إضافية للمهمة (اختياري)..."
                 rows={2}
-                className="w-full p-3 text-xs font-medium rounded-xl bg-[#f8f9fa] border border-[#d2d1c9] focus:outline-hidden focus:ring-2 focus:ring-[#0c3e35] focus:bg-white transition text-[#05261e]"
+                className="w-full p-2.5 pl-3 pr-9 text-xs font-medium rounded-2xl bg-[#f8f9fa] border border-[#d2d1c9] focus:outline-hidden focus:ring-2 focus:ring-[#0c3e35] focus:bg-white transition text-[#05261e] placeholder:text-[#8daaa2] resize-none"
               />
+              <span className="absolute right-3 top-3 text-[#8daaa2]">
+                <Edit3 className="w-3.5 h-3.5" />
+              </span>
             </div>
-          )}
+          </div>
 
         </form>
       </div>
@@ -1867,6 +1926,76 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                               )}
 
                             </div>
+
+                            {/* Dedicated Progress Slider Row */}
+                            <div
+                              className="pt-2 mt-1.5 border-t border-[#d2d1c9]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 select-none"
+                              data-no-dnd="true"
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[11px] font-bold text-[#5e736e]">نسبة الإنجاز:</span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-[11px] font-black border transition-colors ${
+                                      (todo.completionPercentage ?? (todo.isCompleted ? 100 : 0)) === 100
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                        : (todo.completionPercentage ?? 0) >= 50
+                                        ? 'bg-[#0c3e35]/10 text-[#0c3e35] border-[#0c3e35]/25'
+                                        : (todo.completionPercentage ?? 0) > 0
+                                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                                    }`}
+                                  >
+                                    {todo.completionPercentage ?? (todo.isCompleted ? 100 : 0)}%
+                                  </span>
+                                </div>
+
+                                {/* Slider */}
+                                <div className="flex-1 min-w-[110px] max-w-[220px] sm:max-w-xs flex items-center">
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={todo.completionPercentage ?? (todo.isCompleted ? 100 : 0)}
+                                    onChange={(e) => handleSliderChange(todo, parseInt(e.target.value, 10))}
+                                    onPointerUp={(e) => handleSliderCommit(todo, parseInt((e.target as HTMLInputElement).value, 10))}
+                                    onTouchEnd={(e) => handleSliderCommit(todo, parseInt((e.target as HTMLInputElement).value, 10))}
+                                    onKeyUp={(e) => handleSliderCommit(todo, parseInt((e.target as HTMLInputElement).value, 10))}
+                                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#0c3e35]"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Milestone quick clicks */}
+                              <div className="flex items-center gap-1 shrink-0 self-start sm:self-auto">
+                                {[0, 25, 50, 75, 100].map((preset) => {
+                                  const currentPct = todo.completionPercentage ?? (todo.isCompleted ? 100 : 0);
+                                  const isCurrent = currentPct === preset;
+                                  return (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSliderCommit(todo, preset);
+                                      }}
+                                      className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-md border transition cursor-pointer active:scale-95 ${
+                                        isCurrent
+                                          ? 'bg-[#0c3e35] text-[#d4af37] border-[#0c3e35] shadow-xs'
+                                          : 'bg-white text-slate-600 border-slate-200 hover:border-[#0c3e35]/40 hover:text-[#0c3e35]'
+                                      }`}
+                                      title={`تعيين نسبة الإنجاز إلى ${preset}%`}
+                                    >
+                                      {preset}%
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
                         )}
 
@@ -2159,6 +2288,41 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                     allowClear={true}
                     className="w-full"
                   />
+                </div>
+              </div>
+
+              {/* Completion Percentage in Edit Modal */}
+              <div className="p-3 bg-[#f8f9fa] rounded-2xl border border-[#d2d1c9]/70 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-[#05261e]">
+                  <span>نسبة الإنجاز:</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-[#0c3e35]/10 text-[#0c3e35] border border-[#0c3e35]/20">
+                    {editPercentage}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={editPercentage}
+                  onChange={(e) => setEditPercentage(parseInt(e.target.value, 10))}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#0c3e35]"
+                />
+                <div className="flex items-center justify-between gap-1 pt-1">
+                  {[0, 25, 50, 75, 100].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setEditPercentage(preset)}
+                      className={`flex-1 py-1 text-[11px] font-bold rounded-lg border transition ${
+                        editPercentage === preset
+                          ? 'bg-[#0c3e35] text-[#d4af37] border-[#0c3e35]'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {preset}%
+                    </button>
+                  ))}
                 </div>
               </div>
 

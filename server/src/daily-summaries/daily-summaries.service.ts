@@ -18,6 +18,8 @@ export interface SubmitSummaryDto {
     status: TaskStatus;
     completionPercentage: number;
     completionNote?: string;
+    isMultiDay?: boolean;
+    todayTargetMet?: boolean;
   }[];
 }
 
@@ -39,20 +41,19 @@ export class DailySummariesService {
     if (user.role === Role.OBSERVER) {
       throw new ForbiddenException('حساب المراقب مخصص للاطلاع فقط ولا يمكنه إرسال ملخصات الإنجاز');
     }
-    if (!user.directorateId) {
-      throw new ForbiddenException('فقط مدراء المديريات يمكنهم إرسال ملخص الإنجاز');
+
+    const directorateId = user.directorateId;
+    if (!directorateId) {
+      throw new ForbiddenException('المستخدم غير مرتبط بمديرية معينة');
     }
 
     const summaryDate = this.normalizeDate(dto.date);
-    const directorateId = user.directorateId;
 
-    // Find daily plan
-    let plan = await this.prisma.dailyPlan.findUnique({
+    // Find the daily plan for this date
+    let plan = await this.prisma.dailyPlan.findFirst({
       where: {
-        directorateId_planDate: {
-          directorateId,
-          planDate: summaryDate,
-        },
+        directorateId,
+        planDate: summaryDate,
       },
       include: { tasks: true, dailySummary: true },
     });
@@ -80,6 +81,8 @@ export class DailySummariesService {
             status: update.status,
             completionPercentage: update.completionPercentage,
             completionNote: update.completionNote,
+            ...(update.isMultiDay !== undefined ? { isMultiDay: update.isMultiDay } : {}),
+            ...(update.todayTargetMet !== undefined ? { todayTargetMet: update.todayTargetMet } : {}),
           },
         });
       }
@@ -93,9 +96,22 @@ export class DailySummariesService {
       where: { directorateId },
     });
 
+    const calculateTaskDailyFulfillmentRate = (t: {
+      completionPercentage: number;
+      status?: TaskStatus | string;
+      isMultiDay?: boolean;
+      todayTargetMet?: boolean;
+      carriedFromTaskId?: string | null;
+    }) => {
+      if (t.status === TaskStatus.COMPLETED || t.completionPercentage >= 100) return 100;
+      const isMulti = t.isMultiDay || !!t.carriedFromTaskId;
+      if (isMulti && t.todayTargetMet) return 100;
+      return Math.min(100, Math.max(0, t.completionPercentage || 0));
+    };
+
     const allPcts = [
-      ...tasks.map((t) => t.completionPercentage),
-      ...execTasks.map((t) => t.completionPercentage),
+      ...tasks.map((t) => calculateTaskDailyFulfillmentRate(t)),
+      ...execTasks.map((t) => calculateTaskDailyFulfillmentRate(t)),
     ];
 
     let overallRate = 100.0;
@@ -142,19 +158,15 @@ export class DailySummariesService {
       },
     });
 
-    // Synchronize all completed plan tasks and executive tasks to the director's agenda (UserTodo)
-    const completedPlanTasks = tasks.filter(
-      (t) => t.status === TaskStatus.COMPLETED || t.completionPercentage === 100,
-    );
-    for (const ct of completedPlanTasks) {
-      await this.syncTaskToUserTodo(user.id, ct.id, ct.title, true, ct.priority, ct.description, 'PLAN');
+    // Synchronize all plan tasks and executive tasks with their actual completion percentage to the director's agenda (UserTodo)
+    for (const pt of tasks) {
+      const isTaskCompleted = pt.status === TaskStatus.COMPLETED || pt.completionPercentage === 100;
+      await this.syncTaskToUserTodo(user.id, pt.id, pt.title, isTaskCompleted, pt.priority, pt.description, 'PLAN', pt.completionPercentage);
     }
 
-    const completedExecTasks = execTasks.filter(
-      (t) => t.status === TaskStatus.COMPLETED || t.completionPercentage === 100,
-    );
-    for (const et of completedExecTasks) {
-      await this.syncTaskToUserTodo(user.id, et.id, et.title, true, et.priority, et.description, 'EXECUTIVE');
+    for (const et of execTasks) {
+      const isExecCompleted = et.status === TaskStatus.COMPLETED || et.completionPercentage === 100;
+      await this.syncTaskToUserTodo(user.id, et.id, et.title, isExecCompleted, et.priority, et.description, 'EXECUTIVE', et.completionPercentage);
     }
 
     this.eventsGateway.emitSummarySubmitted({
@@ -198,19 +210,25 @@ export class DailySummariesService {
     priority: Priority,
     description?: string | null,
     type: 'PLAN' | 'EXECUTIVE' = 'PLAN',
+    completionPercentage?: number,
   ) {
     try {
       const cleanTitle = title.trim();
       const tag = type === 'PLAN'
         ? `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${taskId}]`
         : `[تم إسنادها كتكليف تنفيذي] [معرف التكليف: ${taskId}]`;
+      const pct = typeof completionPercentage === 'number'
+        ? Math.min(100, Math.max(0, Math.round(completionPercentage)))
+        : (isCompleted ? 100 : 0);
 
       const existingTodos = await this.prisma.userTodo.findMany({
         where: {
-          userId,
           OR: [
             { description: { contains: taskId } },
-            { title: { equals: cleanTitle, mode: 'insensitive' } },
+            {
+              userId,
+              title: { equals: cleanTitle, mode: 'insensitive' },
+            },
           ],
         },
       });
@@ -222,16 +240,19 @@ export class DailySummariesService {
           if (!alreadyHasTag) {
             newDesc = newDesc ? `${newDesc}\n${tag}` : tag;
           }
+          const willBeCompleted = isCompleted || pct === 100;
           await this.prisma.userTodo.update({
             where: { id: todo.id },
             data: {
-              isCompleted,
-              completedAt: isCompleted ? (todo.completedAt || new Date()) : null,
+              isCompleted: willBeCompleted,
+              completedAt: willBeCompleted ? (todo.completedAt || new Date()) : null,
+              completionPercentage: pct,
               description: newDesc,
             },
           });
+          this.eventsGateway.emitTodoUpdated(todo.userId);
         }
-      } else if (isCompleted) {
+      } else if (isCompleted || pct === 100) {
         const desc = description?.trim() ? `${description.trim()}\n${tag}` : tag;
         await this.prisma.userTodo.create({
           data: {
@@ -240,13 +261,13 @@ export class DailySummariesService {
             description: desc,
             priority: priority || Priority.NORMAL,
             category: type === 'PLAN' ? 'OFFICIAL' : 'FOLLOWUP',
+            completionPercentage: pct,
             isCompleted: true,
             completedAt: new Date(),
           },
         });
+        this.eventsGateway.emitTodoUpdated(userId);
       }
-
-      this.eventsGateway.emitTodoUpdated(userId);
     } catch (err) {
       console.error('Failed to sync summary task to user todo:', err);
     }

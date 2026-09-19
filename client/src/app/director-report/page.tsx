@@ -336,11 +336,16 @@ function DirectorReportContent() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 print:gap-2 p-3.5 print:py-2 print:px-3 rounded-2xl print:rounded-lg bg-[#f4f3ed] print:bg-gray-100 border border-[#d2d1c9] print:border-gray-300 text-center text-xs">
             <div>
               <span className="text-[#5e736e] print:text-gray-700 block mb-0.5 font-semibold text-[11px] print:text-[9px]">
-                معدل الإنجاز العام
+                معدل إنجاز المهام الكلي
               </span>
               <strong className="text-base sm:text-lg print:text-[14px] font-black text-[#0c3e35] print:text-black">
                 {data.stats.averageCompletionRate}%
               </strong>
+              {data.stats.averageDailyFulfillmentRate !== undefined && (
+                <span className="block text-[10px] print:text-[8px] text-[#5e736e] mt-0.5">
+                  (الالتزام اليومي: {data.stats.averageDailyFulfillmentRate}%)
+                </span>
+              )}
             </div>
 
             <div>
@@ -427,7 +432,14 @@ function DirectorReportContent() {
                         <tr key={task.id} className="hover:bg-[#f4f3ed] print:hover:bg-transparent print:even:bg-gray-50/80 print:break-inside-avoid">
                           <td className="p-2 print:py-[3px] print:px-1 font-bold text-[#5e736e] print:text-black text-center">{idx + 1}</td>
                           <td className="p-2 print:py-[3px] print:px-1.5 font-bold text-[#0c3e35] print:text-black">
-                            <p>{task.title}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{task.title}</span>
+                              {task.isMultiDay && (
+                                <span className="inline-block text-[9px] print:text-[7.5px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-900 border border-indigo-200">
+                                  مهمة ممتدة
+                                </span>
+                              )}
+                            </div>
                             {task.description && (
                               <p className="text-[10.5px] print:text-[8px] text-[#5e736e] print:text-gray-700 font-normal mt-0.5">{task.description}</p>
                             )}
@@ -501,7 +513,14 @@ function DirectorReportContent() {
                         <tr key={task.id} className="hover:bg-[#f4f3ed] print:hover:bg-transparent print:even:bg-gray-50/80 print:break-inside-avoid">
                           <td className="p-2 print:py-[3px] print:px-1 font-bold text-[#5e736e] print:text-black text-center">{idx + 1}</td>
                           <td className="p-2 print:py-[3px] print:px-1.5 font-bold text-[#0c3e35] print:text-black">
-                            <p>{task.title}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{task.title}</span>
+                              {task.isMultiDay && (
+                                <span className="inline-block text-[9px] print:text-[7.5px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-900 border border-indigo-200">
+                                  مهمة ممتدة
+                                </span>
+                              )}
+                            </div>
                             {task.description && (
                               <p className="text-[10.5px] print:text-[8px] text-[#5e736e] print:text-gray-700 font-normal mt-0.5">{task.description}</p>
                             )}

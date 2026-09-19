@@ -416,6 +416,7 @@ export class ExecutiveTasksService {
         isCompleted,
         updated.priority,
         updated.description,
+        updated.completionPercentage,
       );
     }
 
@@ -433,10 +434,14 @@ export class ExecutiveTasksService {
     isCompleted: boolean,
     priority: Priority,
     description?: string | null,
+    completionPercentage?: number,
   ) {
     try {
       const cleanTitle = title.trim();
       const execTag = `[تم إسنادها كتكليف تنفيذي] [معرف التكليف: ${taskId}]`;
+      const pct = typeof completionPercentage === 'number'
+        ? completionPercentage
+        : (isCompleted ? 100 : 0);
 
       const existingTodos = await this.prisma.userTodo.findMany({
         where: {
@@ -460,6 +465,7 @@ export class ExecutiveTasksService {
             data: {
               isCompleted,
               completedAt: isCompleted ? (todo.completedAt || new Date()) : null,
+              completionPercentage: pct,
               description: newDesc,
             },
           });
@@ -473,6 +479,7 @@ export class ExecutiveTasksService {
             description: desc,
             priority: priority || Priority.NORMAL,
             category: 'FOLLOWUP',
+            completionPercentage: pct,
             isCompleted: true,
             completedAt: new Date(),
           },

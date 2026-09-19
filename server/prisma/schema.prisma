@@ -120,6 +120,8 @@ model PlanTask {
   completionPercentage Int        @default(0)
   completionNote       String?
   displayOrder         Int        @default(0)
+  isMultiDay           Boolean    @default(false)
+  todayTargetMet       Boolean    @default(false)
   carriedFromTaskId    String?
   carriedFromTask      PlanTask?  @relation("TaskContinuations", fields: [carriedFromTaskId], references: [id], onDelete: SetNull)
   continuations        PlanTask[] @relation("TaskContinuations")
@@ -211,6 +213,7 @@ model ExecutiveTask {
   status               TaskStatus    @default(PENDING)
   completionPercentage Int           @default(0)
   completionNote       String?
+  todayTargetMet       Boolean       @default(false)
 
   // Assigned by (Executive)
   assignedById         String
@@ -243,10 +246,11 @@ model UserTodo {
   dueDate      DateTime?
   isCompleted  Boolean   @default(false)
   completedAt  DateTime?
-  category     String?   @default("GENERAL")
-  displayOrder Int       @default(0)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  category             String?   @default("GENERAL")
+  completionPercentage Int       @default(0)
+  displayOrder         Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([userId])
 }

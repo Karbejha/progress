@@ -77,7 +77,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-3 sm:p-6 lg:p-8 relative overflow-hidden bg-[#031814] font-sans selection:bg-[#d4af37]/30 selection:text-[#d4af37]">
+    <div className="min-h-screen min-h-[100dvh] w-full flex flex-col justify-center items-center py-6 px-3.5 sm:p-6 lg:p-8 relative overflow-x-hidden overflow-y-auto bg-[#031814] font-sans selection:bg-[#d4af37]/30 selection:text-[#d4af37]">
 
       {/* Background Lighting & Nautical Patterns */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -104,257 +104,203 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
         <div className="absolute bottom-0 inset-x-0 h-40 opacity-[0.08] bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-[#d4af37] via-transparent to-transparent" />
       </div>
 
-      {/* Main Luxury Card Container */}
-      <div className="w-full max-w-5xl rounded-[28px] sm:rounded-[36px] border border-[#d4af37]/35 shadow-[0_30px_90px_-20px_rgba(0,0,0,0.75)] backdrop-blur-2xl bg-[#05261e]/90 overflow-hidden grid grid-cols-1 lg:grid-cols-12 relative z-10 animate-fadeIn my-auto">
+      {/* Main Streamlined Luxury Card */}
+      <div className="w-full max-w-[440px] rounded-[32px] border border-[#d4af37]/35 shadow-[0_25px_70px_-15px_rgba(0,0,0,0.85)] backdrop-blur-2xl bg-gradient-to-b from-[#062c23]/95 via-[#041f19]/95 to-[#02130f]/95 p-6 sm:p-8 text-white relative z-10 animate-fadeIn my-auto space-y-6">
 
-        {/* ======================================================== */}
-        {/* RIGHT COLUMN: Institutional Showcase Hero (7 Cols) */}
-        {/* ======================================================== */}
-        <div className="lg:col-span-7 p-6 sm:p-10 lg:p-12 flex flex-col justify-between relative overflow-hidden bg-gradient-to-br from-[#05261e] via-[#072f26] to-[#031814] text-white border-b lg:border-b-0 lg:border-l border-[#d4af37]/25">
+        {/* Ambient Corner Glow */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-[#d4af37]/15 via-transparent to-transparent pointer-events-none blur-2xl rounded-tr-[32px]" />
 
-          {/* Subtle Ambient Light Corner Glow */}
-          <div className="absolute top-0 right-0 w-72 h-72 bg-gradient-to-bl from-[#d4af37]/15 via-transparent to-transparent pointer-events-none blur-2xl" />
+        {/* Header Branding */}
+        <div className="text-center flex flex-col items-center justify-center space-y-3 relative z-10">
 
-          {/* Top Empty Placeholder for spacing balance */}
-          <div className="hidden lg:block h-2" />
+          {/* Sovereign Country Pill */}
+          <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-bold bg-[#0c3e35]/80 text-[#d4af37] border border-[#d4af37]/30 shadow-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#d4af37] animate-ping" />
+            الجمهورية العربية السورية
+          </span>
 
-          {/* Centered Institutional Branding Section */}
-          <div className="my-auto py-6 lg:py-8 text-center flex flex-col items-center justify-center space-y-4 relative z-10">
-
-            {/* Unified Institutional Badge */}
-            <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-bold bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#d4af37] animate-ping" />
-              الجمهورية العربية السورية
-            </span>
-
-            {/* Emblem Capsule */}
-            <div className="relative pt-1">
-              <div className="absolute -inset-1.5 rounded-3xl bg-gradient-to-tr from-[#d4af37]/40 via-[#d4af37]/20 to-transparent blur-sm" />
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#0c3e35] to-[#05261e] border-2 border-[#d4af37] flex items-center justify-center p-3.5 sm:p-4 shadow-2xl relative">
-                <Image
-                  src="/assets/Syrian_logo_icon_gold.svg"
-                  alt="شعار الجمهورية العربية السورية"
-                  width={68}
-                  height={68}
-                  className="object-contain drop-shadow-[0_4px_12px_rgba(212,175,55,0.4)] w-auto h-auto"
-                  priority
-                />
-              </div>
+          {/* Syrian Emblem Capsule */}
+          <div className="relative pt-0.5">
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-[#d4af37]/35 via-[#d4af37]/15 to-transparent blur-xs" />
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-b from-[#0c3e35] to-[#05261e] border-2 border-[#d4af37] flex items-center justify-center p-3 shadow-xl relative">
+              <Image
+                src="/assets/Syrian_logo_icon_gold.svg"
+                alt="شعار الجمهورية العربية السورية"
+                width={56}
+                height={56}
+                className="object-contain drop-shadow-[0_4px_10px_rgba(212,175,55,0.35)] w-11 h-11"
+                priority
+              />
             </div>
-
-            {/* Main Institutional Header Titles */}
-            <div className="space-y-1.5 max-w-md mx-auto pt-1">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight">
-                المديرية العامة للموانئ
-              </h1>
-              <p className="text-xs sm:text-sm font-bold text-[#d4af37] flex items-center justify-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[#d4af37] shrink-0" />
-                <span>منظومة متابعة الخطط الصباحية والإنجاز اليومي</span>
-              </p>
-
-            </div>
-
           </div>
 
-          {/* Bottom Security / Trust Seal */}
-          <div className="pt-4 mt-auto border-t border-white/[0.08] flex items-center justify-center text-[11px] text-[#8daaa2] relative z-10">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              <span className="font-semibold text-white/90">بوابة الاتصال الحكومية الموحدة</span>
-            </div>
+          {/* Directorate Title */}
+          <div className="space-y-1">
+            <h1 className="text-2xl font-black text-white tracking-tight leading-tight">
+              المديرية العامة للموانئ
+            </h1>
+            <p className="text-xs font-semibold text-[#d4af37] flex items-center justify-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#d4af37] shrink-0" />
+              <span>منظومة متابعة الخطط الصباحية والإنجاز اليومي</span>
+            </p>
           </div>
 
         </div>
 
-        {/* ======================================================== */}
-        {/* LEFT COLUMN: Modern Executive Login Form Card (5 Cols) */}
-        {/* ======================================================== */}
-        <div className="lg:col-span-5 p-6 sm:p-8 lg:p-9 flex flex-col justify-between bg-[#f4f3ed] relative">
+        {/* Error Message */}
+        {error && (
+          <div className="p-3 rounded-2xl bg-red-950/70 border border-red-500/50 text-red-200 text-xs flex items-start gap-2.5 animate-fadeIn shadow-md font-medium">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{error}</span>
+          </div>
+        )}
 
-          <div className="space-y-5">
+        {/* Login Form */}
+        <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
 
-            {/* Form Header */}
-            <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#edece4] border border-[#d2d1c9] text-[#0c3e35] text-xs font-bold mb-1">
-                <Lock className="w-3.5 h-3.5 text-[#0c3e35]" />
-                <span>الوصول المصرح به</span>
+          {/* Username Field */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-white/90">
+              اسم المستخدم <span className="text-[#d4af37]">*</span>
+            </label>
+            <div className="relative group">
+              <input
+                type="text"
+                required
+                autoComplete="username"
+                placeholder="اسم المستخدم أو البريد الإلكتروني"
+                value={usernameOrEmail}
+                onChange={(e) => setUsernameOrEmail(e.target.value)}
+                disabled={loading}
+                className="w-full pl-4 pr-11 py-3.5 rounded-2xl bg-black/40 border border-white/15 text-white text-xs sm:text-sm placeholder-[#8daaa2]/50 focus:outline-none focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 transition duration-200 font-medium shadow-inner group-hover:border-[#d4af37]/40 disabled:opacity-60"
+              />
+              <div className="absolute right-3.5 top-3.5 w-5 h-5 flex items-center justify-center text-[#8daaa2] group-focus-within:text-[#d4af37] transition">
+                <UserIcon className="w-4 h-4" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-black text-[#0c3e35] tracking-tight">
-                تسجيل الدخول
-              </h2>
-              <p className="text-xs text-[#5e736e] font-medium leading-relaxed">
-                أدخل بيانات الاعتماد الخاصة بحسابك للوصول إلى المنظومة.
-              </p>
             </div>
+          </div>
 
-            {/* Error Message Box */}
-            {error && (
-              <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200/90 text-red-900 text-xs flex items-start gap-2.5 animate-fadeIn shadow-xs font-medium">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                <span className="leading-relaxed">{error}</span>
+          {/* Password Field */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-white/90">
+              كلمة المرور <span className="text-[#d4af37]">*</span>
+            </label>
+            <div className="relative group">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                className="w-full pl-11 pr-11 py-3.5 rounded-2xl bg-black/40 border border-white/15 text-white text-xs sm:text-sm placeholder-[#8daaa2]/50 focus:outline-none focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 transition duration-200 font-medium shadow-inner group-hover:border-[#d4af37]/40 disabled:opacity-60"
+              />
+              <div className="absolute right-3.5 top-3.5 w-5 h-5 flex items-center justify-center text-[#8daaa2] group-focus-within:text-[#d4af37] transition">
+                <Lock className="w-4 h-4" />
               </div>
-            )}
-
-            {/* Login Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-
-              {/* Username / Email Field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-[#0c3e35]">
-                  اسم المستخدم أو البريد الإلكتروني <span className="text-red-500">*</span>
-                </label>
-                <div className="relative group">
-                  <input
-                    type="text"
-                    required
-                    autoComplete="username"
-                    placeholder="اسم المستخدم أو البريد الإلكتروني"
-                    value={usernameOrEmail}
-                    onChange={(e) => setUsernameOrEmail(e.target.value)}
-                    disabled={loading}
-                    className="w-full pl-4 pr-11 py-3.5 rounded-2xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 transition duration-200 font-medium shadow-2xs group-hover:border-[#0c3e35]/50 disabled:opacity-60 disabled:cursor-not-allowed"
-                  />
-                  <div className="absolute right-3.5 top-3.5 w-5 h-5 flex items-center justify-center text-[#5e736e] group-focus-within:text-[#0c3e35] transition">
-                    <UserIcon className="w-4 h-4" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Password Field */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-[#0c3e35]">
-                  كلمة المرور <span className="text-red-500">*</span>
-                </label>
-                <div className="relative group">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                    className="w-full pl-11 pr-11 py-3.5 rounded-2xl bg-white border border-[#d2d1c9] text-[#0c3e35] text-xs placeholder-[#8daaa2] focus:outline-none focus:border-[#d4af37] focus:ring-4 focus:ring-[#d4af37]/15 transition duration-200 font-medium shadow-2xs group-hover:border-[#0c3e35]/50 disabled:opacity-60 disabled:cursor-not-allowed"
-                  />
-                  <div className="absolute right-3.5 top-3.5 w-5 h-5 flex items-center justify-center text-[#5e736e] group-focus-within:text-[#0c3e35] transition">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute left-3.5 top-3.5 text-[#5e736e] hover:text-[#0c3e35] p-0.5 rounded-lg hover:bg-black/5 transition cursor-pointer"
-                    tabIndex={-1}
-                    title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
-                    aria-label="إظهار وإخفاء كلمة المرور"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Submit Action Button */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3.5 sm:py-4 px-5 rounded-2xl bg-gradient-to-r from-[#0c3e35] via-[#0e483e] to-[#05261e] hover:from-[#165b4f] hover:to-[#0c3e35] text-white font-bold text-xs sm:text-[13px] shadow-lg shadow-[#0c3e35]/25 hover:shadow-xl hover:shadow-[#0c3e35]/35 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2 cursor-pointer border border-[#d4af37]/35 group"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-[#d4af37]" />
-                      <span>جاري التحقق والدخول...</span>
-                    </>
-                  ) : (
-                    <>
-                      <LogIn className="w-4 h-4 text-[#d4af37] group-hover:translate-x-[-2px] transition-transform duration-200" />
-                      <span>تسجيل الدخول</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-            </form>
-
-            {/* Help & IT Support Note */}
-            <div className="p-3 sm:p-3.5 rounded-2xl bg-[#edece4] border border-[#d2d1c9] text-[10.5px] sm:text-[11px] text-[#5e736e] leading-relaxed">
-              <p className="font-semibold text-[#0c3e35] mb-0.5">ملاحظة هامة للمستخدمين:</p>
-              في حال تعثر تسجيل الدخول أو الحاجة لتحديث بيانات الحساب، يرجى مراجعة إدارة المنظومة وقسم المعلوماتية.
-            </div>
-
-            {/* Server Settings Link for Mobile App */}
-            <div className="pt-2 text-center">
               <button
                 type="button"
-                onClick={() => {
-                  setCustomServerUrl(getApiBaseUrl());
-                  setShowServerModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 text-[11px] text-[#5e736e] hover:text-[#0c3e35] transition py-1 px-3 rounded-lg hover:bg-black/5 cursor-pointer font-medium"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute left-3.5 top-3.5 text-[#8daaa2] hover:text-[#d4af37] p-0.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
+                tabIndex={-1}
+                title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                aria-label="إظهار وإخفاء كلمة المرور"
               >
-                <Server className="w-3.5 h-3.5 text-[#d4af37]" />
-                <span>إعدادات اتصال السيرفر</span>
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-
           </div>
 
-          {/* Institutional Footer */}
-          <div className="pt-4 mt-4 border-t border-[#d2d1c9] text-center">
-            <p className="text-[10.5px] text-[#5e736e] font-semibold">
-              الجمهورية العربية السورية • المديرية العامة للموانئ
-            </p>
-            <p className="text-[10px] text-[#8daaa2] mt-0.5 font-medium">
-              جميع الحقوق محفوظة © {new Date().getFullYear()}
-            </p>
+          {/* Submit Action Button */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 sm:py-4 px-5 rounded-2xl bg-gradient-to-r from-[#d4af37] via-[#e2c15c] to-[#c5a059] hover:brightness-105 active:scale-[0.98] text-[#031814] font-black text-xs sm:text-sm shadow-lg shadow-[#d4af37]/20 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer border border-[#f5e3a3]/50 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none group"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#031814]" />
+                  <span>جاري التحقق والدخول...</span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4 text-[#031814] group-hover:translate-x-[-2px] transition-transform duration-200" />
+                  <span>تسجيل الدخول</span>
+                </>
+              )}
+            </button>
           </div>
 
+        </form>
+
+        {/* Minimal Actions & Support Row */}
+        <div className="flex items-center justify-between text-[11px] text-[#8daaa2] pt-2 border-t border-white/10 relative z-10">
+          <button
+            type="button"
+            onClick={() => {
+              setCustomServerUrl(getApiBaseUrl());
+              setShowServerModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 hover:text-[#d4af37] transition cursor-pointer"
+          >
+            <Server className="w-3.5 h-3.5 text-[#d4af37]" />
+            <span>إعدادات السيرفر</span>
+          </button>
+
+          <span className="text-[#8daaa2]/60 text-[10.5px]">
+            الدعم الفني: قسم المعلوماتية
+          </span>
+        </div>
+
+        {/* Subtle Copyright */}
+        <div className="text-center pt-1 text-[10px] text-[#8daaa2]/50 font-medium">
+          المديرية العامة للموانئ © {new Date().getFullYear()}
         </div>
 
       </div>
 
       {/* Server Config Modal */}
       {showServerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md rounded-2xl bg-[#ffffff] border border-[#d4af37]/40 shadow-2xl p-6 text-right space-y-4">
-            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-[#0c3e35]/10 text-[#0c3e35]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl bg-[#062921] border border-[#d4af37]/40 shadow-2xl p-5 sm:p-6 text-right space-y-4 text-white">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30">
                   <Server className="w-5 h-5 text-[#d4af37]" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-[#0c3e35]">عنوان خادم المنظومة (Server URL)</h3>
-                  <p className="text-[11px] text-[#5e736e]">حدد عنوان الـ IP أو الدومين للربط مع قاعدة البيانات</p>
+                  <h3 className="text-sm font-bold text-white">عنوان خادم المنظومة (Server URL)</h3>
+                  <p className="text-[11px] text-[#8daaa2]">حدد عنوان الـ IP أو الدومين للربط مع السيرفر</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowServerModal(false)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg text-lg cursor-pointer"
+                className="text-white/50 hover:text-white p-1 rounded-lg text-lg cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-[#0c3e35]">رابط الخادم المباشر (API URL)</label>
+              <label className="block text-xs font-semibold text-white/90">رابط الخادم المباشر (API URL)</label>
               <input
                 type="text"
                 value={customServerUrl}
                 onChange={(e) => setCustomServerUrl(e.target.value)}
                 placeholder="مثال: http://192.168.1.50:4000 أو https://api.ports.gov.sy"
-                className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border border-[#d2d1c9] focus:border-[#0c3e35] focus:ring-1 focus:ring-[#0c3e35] outline-none text-left"
+                className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl bg-black/40 border border-white/15 focus:border-[#d4af37] focus:ring-2 focus:ring-[#d4af37]/20 outline-none text-left text-white"
                 dir="ltr"
               />
-              <p className="text-[10px] text-[#5e736e] leading-relaxed">
+              <p className="text-[10.5px] text-[#8daaa2] leading-relaxed">
                 * عند استخدام التطبيق على الهاتف المحمول، أدخل عنوان IP السيرفر المحلي أو الدومين الخارجي (وليس localhost).
               </p>
             </div>
 
             {serverSavedSuccess && (
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-2">
-                <Check className="w-4 h-4 text-emerald-600" />
+              <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-semibold flex items-center justify-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400" />
                 تم حفظ عنوان السيرفر بنجاح!
               </div>
             )}
@@ -363,14 +309,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
               <button
                 type="button"
                 onClick={() => setShowServerModal(false)}
-                className="px-4 py-2 rounded-xl border border-[#d2d1c9] text-xs font-semibold text-[#5e736e] hover:bg-gray-50 cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-white/15 text-xs font-semibold text-[#8daaa2] hover:text-white hover:bg-white/5 cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="button"
                 onClick={handleSaveServerUrl}
-                className="px-5 py-2 rounded-xl bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#165b4f] transition shadow-md cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#d4af37] to-[#c5a059] text-[#031814] text-xs font-black hover:brightness-105 transition shadow-md cursor-pointer"
               >
                 حفظ وتطبيق
               </button>
