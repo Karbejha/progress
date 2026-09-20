@@ -51,22 +51,25 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    const handleUpdated = () => {
-      if (isOpen) loadTodos();
+    const handleUpdated = (e?: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent?.detail?.source === 'QuickTodoDrawer') return;
+      if (isOpen) loadTodos({ silent: true });
     };
     window.addEventListener('ports:todos_updated', handleUpdated);
     return () => window.removeEventListener('ports:todos_updated', handleUpdated);
   }, [isOpen]);
 
-  const loadTodos = async () => {
+  const loadTodos = async (options?: { silent?: boolean }) => {
+    const isSilent = options?.silent ?? (todos.length > 0);
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const res = await api.getTodos();
       setTodos(res.todos || []);
     } catch (err) {
       console.error('Failed to load drawer todos', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -83,7 +86,7 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
       });
       setTodos((prev) => [created, ...prev]);
       setNewTitle('');
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'QuickTodoDrawer' } }));
     } catch (err) {
       console.error('Failed to quick add todo', err);
     } finally {
@@ -104,10 +107,10 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
       );
       const updated = await api.toggleTodo(todo.id);
       setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'QuickTodoDrawer' } }));
     } catch (err) {
       console.error('Failed to toggle todo', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -118,10 +121,10 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
     );
     try {
       await api.updateTodo(todoId, { dueDate: cleanDate });
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'QuickTodoDrawer' } }));
     } catch (err) {
       console.error('Failed to update due date in drawer', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 

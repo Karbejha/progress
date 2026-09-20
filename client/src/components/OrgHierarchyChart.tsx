@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { DirectorateOverviewItem } from '../types';
+import { getDirectorateStatus } from '../lib/directorateStatus';
 import { Shield, Anchor, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { DynamicIcon } from './Icons';
 
@@ -26,9 +27,10 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
     const dir = getDir(code);
     if (!dir) return null;
 
-    const isDone = dir.hasSummary || (dir.completionRate === 100 && dir.tasksCount > 0);
-    const inProgress = dir.hasPlan || (dir.executiveTasks && dir.executiveTasks.length > 0 && dir.completionRate > 0);
-    const isUrgent = dir.urgentFlag;
+    const dirStatus = getDirectorateStatus(dir);
+    const isDone = dirStatus === 'COMPLETED';
+    const inProgress = dirStatus === 'IN_PROGRESS';
+    const isUrgent = dirStatus === 'URGENT';
 
     return (
       <div

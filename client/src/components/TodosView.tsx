@@ -77,6 +77,7 @@ export const getCleanTodoDescription = (desc?: string | null): string => {
 export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashboard }) => {
   const [todos, setTodos] = useState<UserTodo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [directorates, setDirectorates] = useState<Directorate[]>([]);
   
   // Quick Add Form State
@@ -215,13 +216,17 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     currentUser.role === 'GENERAL_DIRECTOR' || currentUser.role === 'ASSISTANT_DIRECTOR';
 
   useEffect(() => {
-    loadTodos();
+    loadTodos({ isInitial: true });
     if (isGeneralDirector) {
       loadDirectorates();
     }
 
-    const handleTodosUpdated = () => {
-      loadTodos();
+    const handleTodosUpdated = (e?: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent?.detail?.source === 'TodosView') {
+        return; // Ignore events triggered by TodosView itself to prevent redundant re-fetching and flicker
+      }
+      loadTodos({ silent: true });
     };
 
     window.addEventListener('ports:todos_updated', handleTodosUpdated);
@@ -254,16 +259,24 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     return [...pending, ...completed];
   };
 
-  const loadTodos = async () => {
+  const loadTodos = async (options?: { isInitial?: boolean; silent?: boolean }) => {
+    const isSilent = options?.silent ?? (!options?.isInitial && todosRef.current.length > 0);
     try {
-      setLoading(true);
+      if (!isSilent) {
+        setLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       const res = await api.getTodos();
       const sorted = sortWithCompletedAtBottom(res.todos || []);
       setTodos(sorted);
     } catch (err) {
       console.error('Failed to load todos', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) {
+        setLoading(false);
+      }
+      setIsRefreshing(false);
     }
   };
 
@@ -294,7 +307,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       setNewCategory('GENERAL');
       setNewDueDate('');
 
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to create todo', err);
     } finally {
@@ -307,17 +320,20 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     try {
       const nextCompleted = !todo.isCompleted;
       const nextPercentage = nextCompleted ? 100 : 0;
-      const updatedItem: UserTodo = {
-        ...todo,
-        isCompleted: nextCompleted,
-        completionPercentage: nextPercentage,
-        completedAt: nextCompleted ? new Date().toISOString() : null,
-      };
+      let sortedList: UserTodo[] = [];
 
       // Optimistic update: place completed at bottom or restore to pending
-      const updatedList = todos.map((t) => (t.id === todo.id ? updatedItem : t));
-      const sorted = sortWithCompletedAtBottom(updatedList);
-      setTodos(sorted);
+      setTodos((prev) => {
+        const updatedItem: UserTodo = {
+          ...todo,
+          isCompleted: nextCompleted,
+          completionPercentage: nextPercentage,
+          completedAt: nextCompleted ? new Date().toISOString() : null,
+        };
+        const updatedList = prev.map((t) => (t.id === todo.id ? updatedItem : t));
+        sortedList = sortWithCompletedAtBottom(updatedList);
+        return sortedList;
+      });
 
       await api.updateTodo(todo.id, {
         isCompleted: nextCompleted,
@@ -325,12 +341,14 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       });
 
       // Persist the new order in backend
-      api.reorderTodos(sorted.map((t) => t.id)).catch(() => {});
+      if (sortedList.length > 0) {
+        api.reorderTodos(sortedList.map((t) => t.id)).catch(() => {});
+      }
 
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to toggle todo', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -356,30 +374,33 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const handleSliderCommit = async (todo: UserTodo, newPercentage: number) => {
     try {
       const isCompleted = newPercentage === 100;
-      const updatedItem: UserTodo = {
-        ...todo,
-        completionPercentage: newPercentage,
-        isCompleted,
-        completedAt: isCompleted ? (todo.completedAt || new Date().toISOString()) : null,
-      };
+      let sortedList: UserTodo[] = [];
 
-      const updatedList = todos.map((t) => (t.id === todo.id ? updatedItem : t));
-      const sorted = sortWithCompletedAtBottom(updatedList);
-      setTodos(sorted);
+      setTodos((prev) => {
+        const updatedItem: UserTodo = {
+          ...todo,
+          completionPercentage: newPercentage,
+          isCompleted,
+          completedAt: isCompleted ? (todo.completedAt || new Date().toISOString()) : null,
+        };
+        const updatedList = prev.map((t) => (t.id === todo.id ? updatedItem : t));
+        sortedList = sortWithCompletedAtBottom(updatedList);
+        return sortedList;
+      });
 
       await api.updateTodo(todo.id, {
         completionPercentage: newPercentage,
         isCompleted,
       });
 
-      if (isCompleted !== todo.isCompleted) {
-        api.reorderTodos(sorted.map((t) => t.id)).catch(() => {});
+      if (isCompleted !== todo.isCompleted && sortedList.length > 0) {
+        api.reorderTodos(sortedList.map((t) => t.id)).catch(() => {});
       }
 
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to update todo percentage', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -422,10 +443,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     );
     try {
       await api.updateTodo(todoId, { priority: newPriority });
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to update priority', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -437,10 +458,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     );
     try {
       await api.updateTodo(todoId, { category: newCategory });
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to update category', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -452,10 +473,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     );
     try {
       await api.updateTodo(todoId, { dueDate: cleanDate });
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to update due date', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -655,10 +676,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         description: finalDesc !== null ? finalDesc : '',
       });
       showToastMsg('تم التحديث', 'تم حفظ تعديلات المهمة والتفاصيل بنجاح.');
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to save inline edit', err);
-      loadTodos();
+      loadTodos({ silent: true });
     }
   };
 
@@ -904,10 +925,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       setTodos((prev) => prev.filter((t) => t.id !== targetId));
       await api.deleteTodo(targetId);
       setDeleteConfirmTodo(null);
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to delete todo', err);
-      loadTodos();
+      loadTodos({ silent: true });
     } finally {
       setIsDeletingTodo(false);
     }
@@ -959,7 +980,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       setEditingTodo(null);
       showToastMsg('تم التحديث', 'تم حفظ تعديلات المهمة بنجاح.');
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to update todo', err);
     } finally {
@@ -980,9 +1001,9 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       const res = await api.convertTodoToPlanTask(planConversionTodo.id);
       showToastMsg('تم الإدراج بالخطة اليومية', res.message);
       setPlanConversionTodo(null);
-      // Reload todos to reflect update
-      loadTodos();
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      // Reload todos silently in background
+      await loadTodos({ silent: true });
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err: any) {
       console.error('Failed to convert to plan task', err);
       alert(err.message || 'تعذر تحويل المهمة إلى الخطة اليومية');
@@ -1016,8 +1037,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
       showToastMsg('تم إصدار التكليف التنفيذي', res.message);
       setConvertingTodo(null);
-      loadTodos();
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+      await loadTodos({ silent: true });
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err: any) {
       console.error('Failed to convert to executive task', err);
       alert(err.message || 'تعذر تحويل المهمة إلى تكليف تنفيذي');
@@ -1128,10 +1149,10 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
           <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap w-full md:w-auto justify-between sm:justify-start">
             <button
-              onClick={loadTodos}
+              onClick={() => loadTodos({ silent: true })}
               className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] hover:bg-[#0c4237] border border-[#d4af37]/40 text-[#d4af37] transition cursor-pointer active:scale-95"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing || loading ? 'animate-spin' : ''}`} />
               <span>تحديث</span>
             </button>
 
@@ -1436,7 +1457,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
       {/* Todos List */}
       <div className="space-y-3">
-        {loading ? (
+        {loading && todos.length === 0 ? (
           <div className="rounded-3xl border border-[#d2d1c9] bg-white p-12 text-center space-y-3">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#0c3e35]" />
             <p className="text-sm font-bold text-[#5e736e]">جاري تحميل قائمة المهام...</p>

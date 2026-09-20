@@ -602,12 +602,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     const handleTodoUpdated = (payload: any) => {
       if (payload?.userId === currentUser.id) {
-        loadTodayData();
+        loadTodayData({ silent: true });
       }
     };
 
-    const handleWindowTodosUpdated = () => {
-      loadTodayData();
+    const handleWindowTodosUpdated = (e?: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent?.detail?.source === 'DirectorPortal') return;
+      loadTodayData({ silent: true });
     };
 
     window.addEventListener('ports:todos_updated', handleWindowTodosUpdated);
@@ -1012,9 +1014,10 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     );
   };
 
-  const loadTodayData = async () => {
+  const loadTodayData = async (options?: { silent?: boolean }) => {
+    const isSilent = options?.silent ?? (!isInitialPlanLoadRef.current && plan !== null);
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const [currentPlan, anns, incTasks] = await Promise.all([
         api.getMyTodayPlan(),
         api.getAnnouncements().catch(() => []),
@@ -1095,7 +1098,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     } catch (err) {
       console.error('Failed to load director plan', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
       isInitialPlanLoadRef.current = false;
     }
   };
@@ -1336,11 +1339,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       if (res && res.tasks && res.tasks.length > 0) {
         setGeneralFocus(res.generalFocus || '');
         setTasks(
-          res.tasks.map((t) => ({
+          res.tasks.map((t: any) => ({
             title: t.title,
             description: t.description || '',
             priority: (t.priority as Priority) || 'NORMAL',
             estimatedHours: t.estimatedHours || 1.5,
+            carriedFromTaskId: t.carriedFromTaskId || t.id,
+            carriedFromDate: res.previousDate,
+            initialCompletionPercentage: t.completionPercentage ?? 0,
+            completionPercentage: t.completionPercentage ?? 0,
+            status: ((t.completionPercentage ?? 0) > 0 ? 'IN_PROGRESS' : (t.status || 'PENDING')) as TaskStatus,
+            completionNote: '',
+            isMultiDay: true,
+            todayTargetMet: false,
           }))
         );
         showToast('تم استيراد مهام آخر خطة سابقة بنجاح!');
@@ -2156,7 +2167,12 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               {/* Plan Status */}
               <div className="bg-[#05261e]/80 md:bg-transparent p-2 sm:p-2.5 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 border border-white/5 md:border-0 shadow-xs">
                 <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-[#8daaa2]">خطة اليوم:</span>
-                {plan ? (
+                {loading ? (
+                  <span className="text-slate-300 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
+                    <Loader2 className="w-3.5 h-3.5 text-[#d4af37] animate-spin shrink-0" />
+                    <span>جاري التحميل...</span>
+                  </span>
+                ) : plan ? (
                   <span className="text-emerald-400 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>تم الاعتماد</span>
@@ -2172,7 +2188,12 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               {/* Summary Status */}
               <div className="bg-[#05261e]/80 md:bg-transparent p-2 sm:p-2.5 md:p-0 rounded-lg md:rounded-none flex flex-col md:flex-row md:items-center md:justify-between gap-1 border border-white/5 md:border-0 shadow-xs">
                 <span className="text-[10px] sm:text-[11px] md:text-xs font-bold text-[#8daaa2]">ملخص الإنجاز:</span>
-                {plan?.dailySummary ? (
+                {loading ? (
+                  <span className="text-slate-300 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
+                    <Loader2 className="w-3.5 h-3.5 text-[#d4af37] animate-spin shrink-0" />
+                    <span>جاري التحميل...</span>
+                  </span>
+                ) : plan?.dailySummary ? (
                   <span className="text-emerald-400 font-extrabold flex items-center gap-1 text-[10.5px] sm:text-xs">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>منجز ({plan.dailySummary.overallCompletionRate}%)</span>
@@ -2473,7 +2494,22 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
         {/* Tab 1: Morning Plan Builder */}
         {activeTab === 'PLAN' && (
-          <form onSubmit={handleSubmitPlan} className="bg-[#edece4] p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6">
+          loading ? (
+            <div className="bg-[#edece4] p-8 sm:p-14 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card text-center space-y-4 animate-in fade-in duration-200">
+              <div className="w-12 h-12 rounded-2xl bg-[#0c3e35]/10 text-[#0c3e35] flex items-center justify-center mx-auto shadow-xs">
+                <Loader2 className="w-6 h-6 animate-spin text-[#0c3e35]" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm sm:text-base font-extrabold text-[#0c3e35]">
+                  جاري تحميل الخطة والمهام اليومية...
+                </h3>
+                <p className="text-xs text-[#5e736e]">
+                  يتم التحقق من خطة اليوم والتكليفات الرسمية المعتمدة لمديريتكم
+                </p>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitPlan} className="bg-[#edece4] p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6">
             <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-3 flex-wrap gap-2.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm sm:text-base font-bold text-[#0c3e35] flex items-center gap-2">
@@ -2562,9 +2598,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   >
                     <ArrowRightLeft className="w-3.5 h-3.5 text-[#d4af37]" />
                     <span className="whitespace-nowrap">المهام المعلقة</span>
-                    {incompleteTasks.length > 0 && (
+                    {incompleteTasks.filter((t) => !tasks.some((curr) => curr.title.trim().toLowerCase() === t.title.trim().toLowerCase())).length > 0 && (
                       <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-[#d4af37] text-[#05261e] shrink-0">
-                        {incompleteTasks.length}
+                        {incompleteTasks.filter((t) => !tasks.some((curr) => curr.title.trim().toLowerCase() === t.title.trim().toLowerCase())).length}
                       </span>
                     )}
                   </button>
@@ -2894,11 +2930,24 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               </div>
             )}
           </form>
+          )
         )}
 
         {/* Tab 3: End-of-Day Summary Wizard (Streamlined & Simplified) */}
         {activeTab === 'SUMMARY' && (
-          <form onSubmit={handleSubmitSummary} className="bg-[#edece4] p-4 sm:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6 pb-12 sm:pb-6 animate-fadeIn">
+          loading ? (
+            <div className="bg-[#edece4] p-8 sm:p-14 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card text-center space-y-4 animate-in fade-in duration-200">
+              <div className="w-12 h-12 rounded-2xl bg-[#0c3e35]/10 text-[#0c3e35] flex items-center justify-center mx-auto shadow-xs">
+                <Loader2 className="w-6 h-6 animate-spin text-[#0c3e35]" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm sm:text-base font-extrabold text-[#0c3e35]">
+                  جاري تحميل ملخص الإنجاز...
+                </h3>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitSummary} className="bg-[#edece4] p-4 sm:p-7 rounded-2xl sm:rounded-[28px] border border-[#d2d1c9] shadow-brand-card space-y-5 sm:space-y-6 pb-12 sm:pb-6 animate-fadeIn">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#d2d1c9] pb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -3119,6 +3168,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               )}
             </div>
           </form>
+          )
         )}
 
         {/* Tab 3: Executive Tasks (تكليفات وتوجيهات المدير العام) */}

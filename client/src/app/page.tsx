@@ -111,16 +111,19 @@ export default function Home() {
 
       {/* Main Content View based on Active View and Role */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-8">
-        {activeView === 'TODOS' ? (
+        <div className={activeView === 'TODOS' ? 'block' : 'hidden'}>
           <TodosView
             currentUser={currentUser}
             onBackToDashboard={() => setActiveView('DASHBOARD')}
           />
-        ) : isExecutiveOrObserver ? (
-          <ExecutiveDashboard currentUser={currentUser} />
-        ) : (
-          <DirectorPortal currentUser={currentUser} />
-        )}
+        </div>
+        <div className={activeView === 'DASHBOARD' ? 'block' : 'hidden'}>
+          {isExecutiveOrObserver ? (
+            <ExecutiveDashboard currentUser={currentUser} />
+          ) : (
+            <DirectorPortal currentUser={currentUser} />
+          )}
+        </div>
       </main>
 
     </div>

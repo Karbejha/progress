@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { User, ExecutiveOverviewResponse, DirectorateOverviewItem, Announcement } from '../types';
 import { api } from '../services/api';
 import { DirectorateCard } from './DirectorateCard';
 import { OrgHierarchyChart } from './OrgHierarchyChart';
 import { DirectorateDetailModal } from './DirectorateDetailModal';
+import { getDirectorateStatus, DirectorateSemanticStatus } from '../lib/directorateStatus';
 import {
   Shield,
   BarChart3,
@@ -26,6 +27,7 @@ import {
   Plus,
   Eye,
   ListTodo,
+  RotateCcw,
 } from 'lucide-react';
 
 import { UsersManagementModal } from './UsersManagementModal';
@@ -48,6 +50,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   );
   const [viewMode, setViewMode] = useState<'GRID' | 'CHART' | 'URGENT'>('GRID');
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | DirectorateSemanticStatus>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDirectorate, setSelectedDirectorate] = useState<DirectorateOverviewItem | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -258,24 +261,69 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
     }
   };
 
-  const filteredDirectorates = (data?.directorates || []).filter((dir) => {
-    const matchesSearch =
-      dir.directorateName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (dir.director?.fullName && dir.director.fullName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (dir.generalFocus && dir.generalFocus.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Category directorates counts for the tabs
+  const categoryCounts = useMemo(() => {
+    const list = data?.directorates || [];
+    return {
+      ALL: list.length,
+      OPERATIONAL: list.filter((d) => d.category === 'OPERATIONAL').length,
+      ADMINISTRATIVE: list.filter((d) => d.category === 'ADMINISTRATIVE').length,
+      TECHNICAL: list.filter((d) => d.category === 'TECHNICAL').length,
+      AUDIT_LEGAL: list.filter((d) => d.category === 'AUDIT_LEGAL').length,
+      LOGISTICS: list.filter((d) => d.category === 'LOGISTICS').length,
+      EXECUTIVE_OFFICE: list.filter((d) => d.category === 'EXECUTIVE_OFFICE').length,
+    };
+  }, [data?.directorates]);
 
-    if (!matchesSearch) return false;
+  // Semantic status counts (scoped to current category if selected, otherwise all)
+  const statusCounts = useMemo(() => {
+    const list = data?.directorates || [];
+    const scopedList = activeCategory === 'ALL'
+      ? list
+      : list.filter((d) => d.category === activeCategory);
 
-    if (viewMode === 'URGENT') {
-      return dir.urgentFlag || (dir.challenges && dir.challenges.length > 0);
-    }
+    return {
+      COMPLETED: scopedList.filter((d) => getDirectorateStatus(d) === 'COMPLETED').length,
+      IN_PROGRESS: scopedList.filter((d) => getDirectorateStatus(d) === 'IN_PROGRESS').length,
+      PENDING: scopedList.filter((d) => getDirectorateStatus(d) === 'PENDING').length,
+      URGENT: scopedList.filter((d) => getDirectorateStatus(d) === 'URGENT').length,
+      total: scopedList.length,
+    };
+  }, [data?.directorates, activeCategory]);
 
-    if (activeCategory === 'ALL') return true;
-    if (activeCategory === 'URGENT') return dir.urgentFlag;
-    if (activeCategory === 'SUBMITTED') return dir.hasSummary;
-    if (activeCategory === 'PENDING') return !dir.hasPlan;
-    return dir.category === activeCategory;
-  });
+  const filteredDirectorates = useMemo(() => {
+    return (data?.directorates || []).filter((dir) => {
+      // 1. Search Query
+      const query = searchQuery.trim().toLowerCase();
+      if (query) {
+        const matchesSearch =
+          dir.directorateName.toLowerCase().includes(query) ||
+          (dir.director?.fullName && dir.director.fullName.toLowerCase().includes(query)) ||
+          (dir.generalFocus && dir.generalFocus.toLowerCase().includes(query));
+        if (!matchesSearch) return false;
+      }
+
+      // 2. Urgent / Obstacles View Mode
+      if (viewMode === 'URGENT') {
+        return dir.urgentFlag || (dir.challenges && dir.challenges.length > 0);
+      }
+
+      // 3. Sector / Category Filter
+      if (activeCategory !== 'ALL' && dir.category !== activeCategory) {
+        return false;
+      }
+
+      // 4. Status Filter
+      if (statusFilter !== 'ALL') {
+        const dirStatus = getDirectorateStatus(dir);
+        if (dirStatus !== statusFilter) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [data?.directorates, searchQuery, viewMode, activeCategory, statusFilter]);
 
   const kpis = data?.kpis;
 
@@ -603,9 +651,18 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
             placeholder="ابحث باسم المديرية، اسم المدير، أو طبيعة المهمة..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
+            className="w-full pl-9 pr-10 py-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] placeholder-[#8daaa2] text-xs focus:outline-none focus:border-[#0c3e35] transition font-medium"
           />
           <Search className="w-4 h-4 text-[#5e736e] absolute right-3.5 top-3" />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute left-3 top-3 text-[#8daaa2] hover:text-[#0c3e35] transition cursor-pointer"
+              title="مسح البحث"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* View Mode Buttons */}
@@ -662,7 +719,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                   : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
               }`}
             >
-              كافة المديريات ({data?.directorates.length || 20})
+              كافة المديريات ({categoryCounts.ALL})
             </button>
             <button
               onClick={() => setActiveCategory('OPERATIONAL')}
@@ -672,7 +729,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                   : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
               }`}
             >
-              التشغيلية والبحرية
+              التشغيلية والبحرية ({categoryCounts.OPERATIONAL})
             </button>
             <button
               onClick={() => setActiveCategory('ADMINISTRATIVE')}
@@ -682,7 +739,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                   : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
               }`}
             >
-              الإدارية والتنظيمية
+              الإدارية والتنظيمية ({categoryCounts.ADMINISTRATIVE})
             </button>
             <button
               onClick={() => setActiveCategory('TECHNICAL')}
@@ -692,7 +749,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                   : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
               }`}
             >
-              الفنية والتقنية
+              الفنية والتقنية ({categoryCounts.TECHNICAL})
             </button>
             <button
               onClick={() => setActiveCategory('AUDIT_LEGAL')}
@@ -702,7 +759,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                   : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
               }`}
             >
-              الرقابة والشؤون القانونية
+              الرقابة والشؤون القانونية ({categoryCounts.AUDIT_LEGAL})
             </button>
             <button
               onClick={() => setActiveCategory('LOGISTICS')}
@@ -712,89 +769,172 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                   : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
               }`}
             >
-              الدعم والآليات
+              الدعم والآليات ({categoryCounts.LOGISTICS})
+            </button>
+            <button
+              onClick={() => setActiveCategory('EXECUTIVE_OFFICE')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+                activeCategory === 'EXECUTIVE_OFFICE'
+                  ? 'bg-[#0c3e35] text-white shadow-xs'
+                  : 'bg-white text-[#5e736e] hover:text-[#0c3e35] border border-[#d2d1c9]'
+              }`}
+            >
+              المكاتب التنفيذية ({categoryCounts.EXECUTIVE_OFFICE})
             </button>
           </div>
 
           {/* Status Quick Filter & Color Legend */}
           <div className="flex items-center justify-between flex-wrap gap-2 text-xs bg-[#edece4]/70 p-2.5 rounded-xl border border-[#d2d1c9]">
-            <div className="flex items-center gap-1.5 font-bold text-[#0c3e35] text-xs">
-              <span className="text-[#5e736e]">دلالات ألوان البطاقات:</span>
+            <div className="flex items-center gap-2 font-bold text-[#0c3e35] text-xs">
+              <span className="text-[#5e736e]">دلالات ألوان وتصفية البطاقات:</span>
+              {(statusFilter !== 'ALL' || activeCategory !== 'ALL' || searchQuery.trim() !== '') && (
+                <button
+                  onClick={() => {
+                    setActiveCategory('ALL');
+                    setStatusFilter('ALL');
+                    setSearchQuery('');
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-bold text-[#5e736e] hover:text-red-700 bg-white px-2 py-0.5 rounded-md border border-[#d2d1c9] transition cursor-pointer"
+                  title="إلغاء كافة الفلاتر والبحث"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>إلغاء التصفية</span>
+                </button>
+              )}
             </div>
+
             <div className="flex items-center gap-2 flex-wrap text-[11px] font-medium">
+              {/* Completed Status */}
               <button
-                onClick={() => setActiveCategory(activeCategory === 'SUBMITTED' ? 'ALL' : 'SUBMITTED')}
+                onClick={() => setStatusFilter(statusFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                  activeCategory === 'SUBMITTED'
-                    ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                  statusFilter === 'COMPLETED'
+                    ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-400/30'
                     : 'bg-emerald-50/90 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
                 }`}
-                title="تصفية حسب المديريات التي أنجزت ورفعت ملخصها اليومي"
+                title={statusFilter === 'COMPLETED' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات التي أنجزت ملخصها اليومي'}
               >
-                <span className={`w-2 h-2 rounded-full ${activeCategory === 'SUBMITTED' ? 'bg-white' : 'bg-emerald-600'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${statusFilter === 'COMPLETED' ? 'bg-white' : 'bg-emerald-600'}`}></span>
                 <span>ملخص منجز / مكتملة</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  activeCategory === 'SUBMITTED' ? 'bg-white/20 text-white' : 'bg-emerald-200/70 text-emerald-900'
+                  statusFilter === 'COMPLETED' ? 'bg-white/20 text-white' : 'bg-emerald-200/70 text-emerald-900'
                 }`}>
-                  {data?.directorates.filter(d => d.hasSummary).length || 0}
+                  {statusCounts.COMPLETED}
                 </span>
               </button>
 
+              {/* In Progress Status */}
               <button
-                onClick={() => setActiveCategory('ALL')}
+                onClick={() => setStatusFilter(statusFilter === 'IN_PROGRESS' ? 'ALL' : 'IN_PROGRESS')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                  activeCategory === 'ALL'
-                    ? 'bg-[#0c3e35] text-white border-[#0c3e35]'
-                    : 'bg-white border-[#0c3e35]/20 text-[#0c3e35] hover:bg-[#f4f7f6]'
+                  statusFilter === 'IN_PROGRESS'
+                    ? 'bg-[#0c3e35] text-white border-[#0c3e35] shadow-xs ring-2 ring-[#0c3e35]/30'
+                    : 'bg-white border-[#0c3e35]/25 text-[#0c3e35] hover:bg-[#0c3e35]/5'
                 }`}
-                title="عرض كافة المديريات النشطة"
+                title={statusFilter === 'IN_PROGRESS' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات قيد العمل ولديها خطة أو تكليفات جارية'}
               >
-                <span className={`w-2 h-2 rounded-full ${activeCategory === 'ALL' ? 'bg-[#d4af37]' : 'bg-[#0c3e35]'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${statusFilter === 'IN_PROGRESS' ? 'bg-[#d4af37]' : 'bg-[#0c3e35]'}`}></span>
                 <span>قيد العمل والمتابعة</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  activeCategory === 'ALL' ? 'bg-white/20 text-white' : 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                  statusFilter === 'IN_PROGRESS' ? 'bg-white/20 text-white' : 'bg-[#0c3e35]/10 text-[#0c3e35]'
                 }`}>
-                  {data?.directorates.filter(d => d.hasPlan && !d.hasSummary && !d.urgentFlag).length || 0}
+                  {statusCounts.IN_PROGRESS}
                 </span>
               </button>
 
+              {/* Pending Status */}
               <button
-                onClick={() => setActiveCategory(activeCategory === 'PENDING' ? 'ALL' : 'PENDING')}
+                onClick={() => setStatusFilter(statusFilter === 'PENDING' ? 'ALL' : 'PENDING')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                  activeCategory === 'PENDING'
-                    ? 'bg-amber-700 text-white border-amber-700 shadow-xs'
+                  statusFilter === 'PENDING'
+                    ? 'bg-amber-700 text-white border-amber-700 shadow-xs ring-2 ring-amber-400/30'
                     : 'bg-amber-50/90 border-dashed border-amber-300 text-amber-800 hover:bg-amber-100'
                 }`}
-                title="تصفية حسب المديريات التي لم تسجل خطة صباحية بعد"
+                title={statusFilter === 'PENDING' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات التي لم تسجل خطة صباحية بعد'}
               >
-                <span className={`w-2 h-2 rounded-full ${activeCategory === 'PENDING' ? 'bg-white' : 'bg-amber-500'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${statusFilter === 'PENDING' ? 'bg-white' : 'bg-amber-500'}`}></span>
                 <span>بانتظار الخطة الصباحية</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  activeCategory === 'PENDING' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-900'
+                  statusFilter === 'PENDING' ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-900'
                 }`}>
-                  {data?.directorates.filter(d => !d.hasPlan).length || 0}
+                  {statusCounts.PENDING}
                 </span>
               </button>
 
+              {/* Urgent Status */}
               <button
-                onClick={() => setActiveCategory(activeCategory === 'URGENT' ? 'ALL' : 'URGENT')}
+                onClick={() => setStatusFilter(statusFilter === 'URGENT' ? 'ALL' : 'URGENT')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                  activeCategory === 'URGENT'
-                    ? 'bg-rose-700 text-white border-rose-700 shadow-xs'
+                  statusFilter === 'URGENT'
+                    ? 'bg-rose-700 text-white border-rose-700 shadow-xs ring-2 ring-rose-400/30'
                     : 'bg-rose-50/90 border-rose-200 text-rose-800 hover:bg-rose-100'
                 }`}
-                title="تصفية حسب المديريات التي لديها تنبيه عاجل أو معوقات"
+                title={statusFilter === 'URGENT' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات التي لديها تنبيه عاجل أو معوقات'}
               >
-                <span className={`w-2 h-2 rounded-full ${activeCategory === 'URGENT' ? 'bg-white' : 'bg-red-500 animate-ping'}`}></span>
+                <span className={`w-2 h-2 rounded-full ${statusFilter === 'URGENT' ? 'bg-white' : 'bg-red-500 animate-ping'}`}></span>
                 <span>تنبيه عاجل</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  activeCategory === 'URGENT' ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-900'
+                  statusFilter === 'URGENT' ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-900'
                 }`}>
-                  {data?.directorates.filter(d => d.urgentFlag).length || 0}
+                  {statusCounts.URGENT}
                 </span>
               </button>
             </div>
           </div>
+
+          {/* Active Filters Summary Strip */}
+          {(activeCategory !== 'ALL' || statusFilter !== 'ALL' || searchQuery.trim() !== '') && (
+            <div className="flex items-center justify-between flex-wrap gap-2 px-3.5 py-2 rounded-xl bg-[#edece4] border border-[#d2d1c9] text-xs animate-fadeIn">
+              <div className="flex items-center gap-2 flex-wrap text-[#0c3e35]">
+                <span className="font-bold">التصفية النشطة:</span>
+                <span className="text-[#5e736e] font-medium">
+                  عرض <strong className="text-[#0c3e35] font-extrabold">{filteredDirectorates.length}</strong> من أصل {categoryCounts.ALL} مديرية
+                </span>
+                {activeCategory !== 'ALL' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-[#d2d1c9] text-[11px] font-bold text-[#0c3e35] shadow-2xs">
+                    القطاع: {
+                      activeCategory === 'OPERATIONAL' ? 'التشغيلية والبحرية' :
+                      activeCategory === 'ADMINISTRATIVE' ? 'الإدارية والتنظيمية' :
+                      activeCategory === 'TECHNICAL' ? 'الفنية والتقنية' :
+                      activeCategory === 'AUDIT_LEGAL' ? 'الرقابة والشؤون القانونية' :
+                      activeCategory === 'LOGISTICS' ? 'الدعم والآليات' :
+                      activeCategory === 'EXECUTIVE_OFFICE' ? 'المكاتب التنفيذية' : activeCategory
+                    }
+                    <button onClick={() => setActiveCategory('ALL')} className="hover:text-red-700 cursor-pointer p-0.5" title="إلغاء تصفية القطاع"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+                {statusFilter !== 'ALL' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-[#d2d1c9] text-[11px] font-bold text-[#0c3e35] shadow-2xs">
+                    الحالة: {
+                      statusFilter === 'COMPLETED' ? 'ملخص منجز / مكتملة' :
+                      statusFilter === 'IN_PROGRESS' ? 'قيد العمل والمتابعة' :
+                      statusFilter === 'PENDING' ? 'بانتظار الخطة الصباحية' :
+                      statusFilter === 'URGENT' ? 'تنبيه عاجل' : statusFilter
+                    }
+                    <button onClick={() => setStatusFilter('ALL')} className="hover:text-red-700 cursor-pointer p-0.5" title="إلغاء تصفية الحالة"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+                {searchQuery.trim() !== '' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-[#d2d1c9] text-[11px] font-bold text-[#0c3e35] shadow-2xs">
+                    البحث: "{searchQuery}"
+                    <button onClick={() => setSearchQuery('')} className="hover:text-red-700 cursor-pointer p-0.5" title="إلغاء البحث"><X className="w-3 h-3" /></button>
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  setActiveCategory('ALL');
+                  setStatusFilter('ALL');
+                  setSearchQuery('');
+                }}
+                className="flex items-center gap-1 text-[11px] font-bold text-red-700 hover:text-red-900 bg-white/80 hover:bg-white px-2.5 py-1 rounded-lg border border-red-200 transition cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>إلغاء التصفية بالكامل</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -810,9 +950,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
           onSelectDirectorate={(item) => setSelectedDirectorate(item)}
         />
       ) : filteredDirectorates.length === 0 ? (
-        <div className="text-center py-16 text-[#5e736e] bg-white rounded-2xl border border-[#d2d1c9]">
-          <AlertTriangle className="w-8 h-8 text-[#d4af37] mx-auto mb-2" />
-          <p className="text-sm font-bold">لا توجد مديريات مطابقة لمعايير البحث المحددة</p>
+        <div className="text-center py-16 text-[#5e736e] bg-white rounded-2xl border border-[#d2d1c9] p-6 shadow-xs">
+          <AlertTriangle className="w-10 h-10 text-[#d4af37] mx-auto mb-3" />
+          <p className="text-base font-bold text-[#0c3e35] mb-1">لا توجد مديريات مطابقة لمعايير البحث والتصفية المحددة</p>
+          <p className="text-xs text-[#5e736e] mb-4">جرب تغيير القطاع المختار أو حالة البطاقات أو مسح كلمات البحث.</p>
+          <button
+            onClick={() => {
+              setActiveCategory('ALL');
+              setStatusFilter('ALL');
+              setSearchQuery('');
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] transition cursor-pointer shadow-xs active:scale-95"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>إعادة ضبط كافة الفلاتر وعرض الجميع</span>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">

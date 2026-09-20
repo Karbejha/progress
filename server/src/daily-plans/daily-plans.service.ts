@@ -829,10 +829,14 @@ export class DailyPlansService {
       previousDate: previousPlan.planDate,
       generalFocus: previousPlan.generalFocus,
       tasks: previousPlan.tasks.map((t) => ({
+        id: t.id,
         title: t.title,
         description: t.description || '',
         priority: t.priority,
         estimatedHours: t.estimatedHours,
+        status: t.status,
+        completionPercentage: t.completionPercentage,
+        carriedFromTaskId: t.id,
       })),
     };
   }
@@ -844,13 +848,42 @@ export class DailyPlansService {
 
     const targetDate = this.normalizeDate(excludeDateStr);
 
-    // Fetch prior plans before targetDate
+    // 1. Fetch current/today's plan (planDate >= targetDate) to identify tasks already in progress or completed today
+    const currentPlans = await this.prisma.dailyPlan.findMany({
+      where: {
+        directorateId: user.directorateId,
+        planDate: { gte: targetDate },
+      },
+      include: {
+        tasks: true,
+      },
+    });
+
+    // Titles of tasks active or completed in the current plan
+    const activeTodayTitles = new Set<string>();
+    for (const cp of currentPlans) {
+      for (const t of cp.tasks) {
+        const norm = t.title.trim().toLowerCase();
+        if (norm) {
+          activeTodayTitles.add(norm);
+        }
+      }
+    }
+
+    // 2. Fetch prior plans before targetDate, ordered descending by planDate
     const priorPlans = await this.prisma.dailyPlan.findMany({
       where: {
         directorateId: user.directorateId,
         planDate: { lt: targetDate },
       },
-      select: { id: true, planDate: true },
+      include: {
+        tasks: {
+          include: {
+            continuations: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
       orderBy: { planDate: 'desc' },
     });
 
@@ -858,32 +891,52 @@ export class DailyPlansService {
       return [];
     }
 
-    const planIds = priorPlans.map((p) => p.id);
-    const planDateMap = new Map(priorPlans.map((p) => [p.id, p.planDate]));
-
-    // Find incomplete tasks in these plans:
-    // completionPercentage < 100, status not COMPLETED/CANCELLED,
-    // and not already continued (continuations: { none: {} })
-    const tasks = await this.prisma.planTask.findMany({
-      where: {
-        dailyPlanId: { in: planIds },
-        completionPercentage: { lt: 100 },
-        status: { notIn: [TaskStatus.COMPLETED, TaskStatus.CANCELLED] },
-        continuations: { none: {} },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Deduplicate by title to ensure only the latest occurrence is shown
-    const seen = new Set<string>();
+    // Deduplicate by title traversing from the newest prior plan to the oldest
+    const seenTitles = new Set<string>();
     const result = [];
-
     const now = new Date().getTime();
-    for (const task of tasks) {
-      const normalizedTitle = task.title.trim().toLowerCase();
-      if (!seen.has(normalizedTitle)) {
-        seen.add(normalizedTitle);
-        const planDate = planDateMap.get(task.dailyPlanId);
+
+    for (const plan of priorPlans) {
+      for (const task of plan.tasks) {
+        const normalizedTitle = task.title.trim().toLowerCase();
+        if (!normalizedTitle) continue;
+
+        // If already active in today's plan, skip it completely
+        if (activeTodayTitles.has(normalizedTitle)) {
+          continue;
+        }
+
+        // If we already saw a newer occurrence of this task title, skip older occurrences
+        if (seenTitles.has(normalizedTitle)) {
+          continue;
+        }
+
+        seenTitles.add(normalizedTitle);
+
+        // If the latest prior occurrence of this task is COMPLETED, CANCELLED, or reached 100%,
+        // it is finished and must NEVER appear as pending/incomplete
+        const isCompleted =
+          task.status === TaskStatus.COMPLETED ||
+          task.status === TaskStatus.CANCELLED ||
+          task.completionPercentage >= 100;
+
+        if (isCompleted) {
+          continue;
+        }
+
+        // Also check if any continuation of this task was completed or cancelled
+        const continuationCompleted = task.continuations?.some(
+          (c) =>
+            c.status === TaskStatus.COMPLETED ||
+            c.status === TaskStatus.CANCELLED ||
+            c.completionPercentage >= 100
+        );
+
+        if (continuationCompleted) {
+          continue;
+        }
+
+        const planDate = plan.planDate;
         const diffMs = Math.abs(now - (planDate ? new Date(planDate).getTime() : now));
         const daysAgo = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 

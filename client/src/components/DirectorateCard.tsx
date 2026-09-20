@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { DirectorateOverviewItem } from '../types';
+import { getDirectorateStatus } from '../lib/directorateStatus';
 import { DynamicIcon } from './Icons';
 import { CheckCircle2, Clock, AlertTriangle, MessageSquare, Eye } from 'lucide-react';
 
@@ -33,17 +34,11 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
   const catInfo = getCategoryLabel(item.category);
 
   // 1. Semantic Status Classification
-  const isUrgent = !!item.urgentFlag;
-  const isCompleted =
-    !isUrgent &&
-    (item.hasSummary ||
-      (item.completionRate === 100 &&
-        ((item.tasksCount ?? 0) > 0 || ((item.executiveTasks?.length ?? 0) > 0))));
-  const isInProgress =
-    !isUrgent &&
-    !isCompleted &&
-    (item.hasPlan || ((item.executiveTasks?.length ?? 0) > 0));
-  const isAwaitingPlan = !isUrgent && !isCompleted && !isInProgress;
+  const status = getDirectorateStatus(item);
+  const isUrgent = status === 'URGENT';
+  const isCompleted = status === 'COMPLETED';
+  const isInProgress = status === 'IN_PROGRESS';
+  const isAwaitingPlan = status === 'PENDING';
 
   // 2. Semantic Themes (Subtle tints, premium borders, and expressive indicators)
   const getTheme = () => {
