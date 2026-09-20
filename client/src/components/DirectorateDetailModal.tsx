@@ -345,7 +345,15 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                     <div className="space-y-1 bg-[#f4f3ed] p-2 rounded-lg">
                       <div className="flex items-center justify-between text-[11px] font-bold text-[#0c3e35]">
                         <span>نسبة الإنجاز:</span>
-                        <span>{t.completionPercentage}%</span>
+                        <div className="flex items-center gap-1.5">
+                          {t.todayTargetMet && t.completionPercentage < 100 && (
+                            <span className="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>مستهدف اليوم مكتمل</span>
+                            </span>
+                          )}
+                          <span>{t.completionPercentage}%</span>
+                        </div>
                       </div>
                       <div className="w-full h-1.5 bg-[#d2d1c9]/60 rounded-full overflow-hidden">
                         <div

@@ -24,6 +24,7 @@ export interface UpdateExecutiveTaskDto {
   completionNote?: string;
   directorateId?: string;
   assignedToUserId?: string;
+  todayTargetMet?: boolean;
 }
 
 @Injectable()
@@ -75,6 +76,7 @@ export class ExecutiveTasksService {
           status: s.status,
           completionPercentage: s.completionPercentage,
           completionNote: s.completionNote || null,
+          todayTargetMet: s.todayTargetMet || false,
         }));
 
         return {
@@ -113,8 +115,8 @@ export class ExecutiveTasksService {
         where: { directorateId },
       });
       const allPcts = [
-        ...planTasks.map((t) => t.completionPercentage),
-        ...allExecTasks.map((t) => t.completionPercentage),
+        ...planTasks.map((t) => (t.isMultiDay && t.todayTargetMet ? 100 : t.completionPercentage)),
+        ...allExecTasks.map((t) => (t.todayTargetMet ? 100 : t.completionPercentage)),
       ];
       const newRate = allPcts.length > 0
         ? Math.round((allPcts.reduce((sum, p) => sum + p, 0) / allPcts.length) * 10) / 10
@@ -327,14 +329,17 @@ export class ExecutiveTasksService {
       if (dto.completionNote !== undefined) dataToUpdate.completionNote = dto.completionNote;
       if (dto.directorateId !== undefined) dataToUpdate.directorateId = dto.directorateId;
       if (dto.assignedToUserId !== undefined) dataToUpdate.assignedToUserId = dto.assignedToUserId || null;
+      if (dto.todayTargetMet !== undefined) dataToUpdate.todayTargetMet = dto.todayTargetMet;
     } else {
-      // Directorate Director can update status, completion %, and response note
+      // Directorate Director can update status, completion %, response note, and todayTargetMet
       if (dto.status !== undefined) dataToUpdate.status = dto.status;
       if (dto.completionPercentage !== undefined) dataToUpdate.completionPercentage = dto.completionPercentage;
       if (dto.completionNote !== undefined) dataToUpdate.completionNote = dto.completionNote;
+      if (dto.todayTargetMet !== undefined) dataToUpdate.todayTargetMet = dto.todayTargetMet;
 
-      if (dto.completionPercentage === 100 && !dto.status) {
-        dataToUpdate.status = TaskStatus.COMPLETED;
+      if (dto.completionPercentage === 100) {
+        if (!dto.status) dataToUpdate.status = TaskStatus.COMPLETED;
+        dataToUpdate.todayTargetMet = true;
       }
     }
 
@@ -345,8 +350,9 @@ export class ExecutiveTasksService {
     const hasDescChanged = dataToUpdate.description !== undefined && dataToUpdate.description !== existingTask.description;
     const hasPriorityChanged = dataToUpdate.priority !== undefined && dataToUpdate.priority !== existingTask.priority;
     const hasDueDateChanged = dataToUpdate.dueDate !== undefined && (dataToUpdate.dueDate?.toISOString() !== existingTask.dueDate?.toISOString());
+    const hasTodayTargetMetChanged = dataToUpdate.todayTargetMet !== undefined && dataToUpdate.todayTargetMet !== existingTask.todayTargetMet;
 
-    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged;
+    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged || hasTodayTargetMetChanged;
 
     const updated = await this.prisma.executiveTask.update({
       where: { id },
@@ -376,12 +382,17 @@ export class ExecutiveTasksService {
 
       // If a DIRECTOR updated the task, persist notification for executives
       if (user.role === Role.DIRECTOR) {
+        let notificationMsg = `قامت (${updated.directorate.name}) بتحديث التكليف "${updated.title}" إلى (${updated.completionPercentage}%).`;
+        if (updated.todayTargetMet && updated.completionPercentage < 100) {
+          notificationMsg += ' وتم توثيق إنجاز مستهدف اليوم بنجاح ✔️';
+        }
+
         this.notificationsService.createNotificationForRoles(
           [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
           {
             type: 'executive-task-update',
             title: 'تحديث إنجاز تكليف المدير العام',
-            message: `قامت (${updated.directorate.name}) بتحديث التكليف "${updated.title}" إلى (${updated.completionPercentage}%).`,
+            message: notificationMsg,
             referenceId: `exec-task-update-${updated.id}-${updated.updatedAt.toISOString()}`,
             metadata: {
               taskId: updated.id,
@@ -390,6 +401,7 @@ export class ExecutiveTasksService {
               directorateName: updated.directorate.name,
               completionPercentage: updated.completionPercentage,
               status: updated.status,
+              todayTargetMet: updated.todayTargetMet,
             },
           },
         );

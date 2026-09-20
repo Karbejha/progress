@@ -742,13 +742,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         completionNote: local.completionNote,
         todayTargetMet: local.todayTargetMet,
       });
-      showToast('تم إرسال تقرير إنجاز التكليف وتحديثه في أجندة المهام اليومية بنجاح!');
+      const toastMsg = local.todayTargetMet
+        ? 'تم حفظ مستهدف اليوم وتحديث تقرير التكليف بنجاح! ✔️'
+        : 'تم إرسال تقرير إنجاز التكليف وتحديثه في أجندة المهام اليومية بنجاح!';
+      showToast(toastMsg);
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
       setTaskLocalState((prev) => ({
         ...prev,
         [taskId]: { ...prev[taskId], isModified: false },
       }));
-      loadExecutiveTasks();
+      await loadExecutiveTasks();
     } catch (err: any) {
       console.error('Failed to update executive task', err);
       if (err?.message?.includes('غير موجود')) {
@@ -767,6 +770,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       status: task.status,
       completionPercentage: task.completionPercentage,
       completionNote: task.completionNote || '',
+      todayTargetMet: task.todayTargetMet || false,
       isModified: false,
     };
     const isCompleted = local.status === 'COMPLETED' || local.completionPercentage === 100;
@@ -831,6 +835,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     ? 'متأخرة'
                     : 'قيد الانتظار'}
             </span>
+
+            {!isCompleted && (Boolean(local.todayTargetMet) || Boolean(task.todayTargetMet)) && (
+              <span
+                className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-md flex items-center gap-1 transition-all ${
+                  local.isModified
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                    : 'bg-emerald-600 text-white shadow-2xs'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                <span>{local.isModified ? 'مستهدف اليوم: بانتظار الحفظ ⏳' : 'مستهدف اليوم: منجز ومحفوظ ✓'}</span>
+              </span>
+            )}
           </div>
 
           {dueDateStr && (
@@ -916,28 +933,84 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           </div>
 
           {/* Today's target met control for multi-day executive task */}
-          <div className="flex items-center justify-between gap-2 flex-wrap bg-indigo-50/40 p-2 rounded-xl border border-indigo-100">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={Boolean(local.todayTargetMet) || isCompleted}
-                disabled={isCompleted}
-                onChange={(e) =>
-                  handleLocalExecTaskChange(task.id, 'todayTargetMet', e.target.checked)
-                }
-                className="w-4 h-4 rounded accent-[#0c3e35] cursor-pointer"
-              />
-              <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1">
-                <CheckCircle2 className={`w-3.5 h-3.5 ${local.todayTargetMet || isCompleted ? 'text-emerald-600' : 'text-slate-400'}`} />
-                <span>تم إنجاز المطلوب لهذا اليوم بنجاح ✔️</span>
-              </span>
-            </label>
-            <span className="text-[10.5px] text-[#5e736e] font-medium">
-              {local.todayTargetMet || isCompleted
-                ? '✨ تُحسب 100% في معدل اليوم دون المساس بنسبتها الكلية'
-                : 'فعّل هذا الخيار إذا حققت مستهدف اليوم'}
-            </span>
-          </div>
+          {(() => {
+            const isTargetMet = Boolean(local.todayTargetMet) || isCompleted;
+            const isUnsavedChange = local.isModified && (Boolean(local.todayTargetMet) !== Boolean(task.todayTargetMet));
+            const isConfirmedSaved = Boolean(task.todayTargetMet) && !local.isModified;
+
+            return (
+              <div
+                className={`flex items-center justify-between gap-2 flex-wrap p-2.5 rounded-xl border transition-all duration-200 ${
+                  isCompleted
+                    ? 'bg-emerald-50/50 border-emerald-200'
+                    : isUnsavedChange
+                    ? 'bg-amber-50/90 border-amber-300 ring-2 ring-amber-300/50 shadow-xs'
+                    : isConfirmedSaved
+                    ? 'bg-emerald-50/90 border-emerald-300 ring-1 ring-emerald-400/30 shadow-xs'
+                    : 'bg-[#f8f7f2] border-[#d2d1c9]/70 hover:border-[#0c3e35]/30'
+                }`}
+              >
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isTargetMet}
+                    disabled={isCompleted}
+                    onChange={(e) =>
+                      handleLocalExecTaskChange(task.id, 'todayTargetMet', e.target.checked)
+                    }
+                    className="w-4 h-4 rounded accent-[#0c3e35] cursor-pointer"
+                  />
+                  <span
+                    className={`text-xs flex items-center gap-1.5 transition-colors ${
+                      isConfirmedSaved
+                        ? 'font-black text-emerald-950'
+                        : isUnsavedChange
+                        ? 'font-black text-amber-950'
+                        : isTargetMet
+                        ? 'font-extrabold text-[#0c3e35]'
+                        : 'font-bold text-[#3e5550]'
+                    }`}
+                  >
+                    <CheckCircle2
+                      className={`w-4 h-4 shrink-0 transition-colors ${
+                        isConfirmedSaved
+                          ? 'text-emerald-600 fill-emerald-100'
+                          : isUnsavedChange
+                          ? 'text-amber-600'
+                          : isTargetMet
+                          ? 'text-emerald-600'
+                          : 'text-slate-400'
+                      }`}
+                    />
+                    <span>تم إنجاز المطلوب لهذا اليوم بنجاح ✔️</span>
+                  </span>
+                </label>
+
+                {/* Clear Visual Indicators for Saved vs Unsaved */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isConfirmedSaved && (
+                    <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-850 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
+                      <Check className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
+                      <span>محفوظ ومُعتمد اليوم (100% بمعدل اليوم)</span>
+                    </span>
+                  )}
+                  {isUnsavedChange && (
+                    <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-850 border border-amber-300 flex items-center gap-1.5 animate-pulse shadow-2xs">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>تعديل غير محفوظ - اضغط زر «حفظ» أدناه</span>
+                    </span>
+                  )}
+                  {!isConfirmedSaved && !isUnsavedChange && (
+                    <span className="text-[10.5px] text-[#5e736e] font-medium">
+                      {isCompleted
+                        ? '✨ التكليف منجز بالكامل بنسبة 100%'
+                        : 'فعّل هذا الخيار إذا حققت مستهدف اليوم (يُحسب 100% بمعدل اليوم)'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Row 2: Note Input & Quick Save Button */}
           <div className="flex items-center gap-2">
@@ -956,13 +1029,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 type="button"
                 disabled={isSaving}
                 onClick={() => handleSaveExecutiveTask(task.id)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer shrink-0 shadow-xs active:scale-95 animate-pulse border border-[#d4af37]/40"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer shrink-0 shadow-xs active:scale-95 animate-pulse border border-[#d4af37]/60"
               >
                 {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" /> : <Save className="w-3.5 h-3.5 text-[#d4af37]" />}
                 <span>حفظ</span>
               </button>
             ) : (
-              <span className="text-[11px] text-emerald-700 font-bold px-2.5 py-1 bg-emerald-50 rounded-lg border border-emerald-200 shrink-0 hidden sm:inline-flex items-center gap-1">
+              <span className="text-[11px] text-emerald-700 font-bold px-2.5 py-1 bg-emerald-50 rounded-lg border border-emerald-200 shrink-0 inline-flex items-center gap-1">
                 <Check className="w-3 h-3 text-emerald-600" />
                 <span>محفوظ</span>
               </span>
@@ -2830,30 +2903,60 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       </div>
 
                       {/* Multi-day Today's Target Met Control */}
-                      {(task.isMultiDay || task.carriedFromTaskId) && (
-                        <div className="pt-2 border-t border-dashed border-[#edece4] flex flex-wrap items-center justify-between gap-2 bg-indigo-50/40 p-2.5 rounded-xl border border-indigo-100">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(task.todayTargetMet) || task.completionPercentage === 100 || task.status === 'COMPLETED'}
-                              disabled={task.completionPercentage === 100 || task.status === 'COMPLETED'}
-                              onChange={(e) => {
-                                handleTaskChange(idx, 'todayTargetMet', e.target.checked);
-                              }}
-                              className="w-4 h-4 rounded accent-[#0c3e35] cursor-pointer"
-                            />
-                            <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1">
-                              <CheckCircle2 className={`w-3.5 h-3.5 ${task.todayTargetMet || task.completionPercentage === 100 ? 'text-emerald-600' : 'text-slate-400'}`} />
-                              <span>تم إنجاز مستهدف اليوم بنجاح ✔️</span>
-                            </span>
-                          </label>
-                          <span className="text-[10.5px] text-[#5e736e] font-medium">
-                            {task.todayTargetMet || task.completionPercentage === 100
-                              ? '✨ تُحسب 100% في معدل اليوم دون المساس بنسبتها الكلية'
-                              : 'فعّل هذا الخيار إذا أنجزت المطلوب لهذا اليوم وفق الخطة'}
-                          </span>
-                        </div>
-                      )}
+                      {(task.isMultiDay || task.carriedFromTaskId) && (() => {
+                        const isTargetMet = Boolean(task.todayTargetMet) || task.completionPercentage === 100 || task.status === 'COMPLETED';
+                        const isCompleted = task.completionPercentage === 100 || task.status === 'COMPLETED';
+
+                        return (
+                          <div
+                            className={`pt-2 border-t border-dashed border-[#edece4] flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl border transition-all duration-200 ${
+                              isCompleted
+                                ? 'bg-emerald-50/50 border-emerald-200'
+                                : isTargetMet
+                                ? 'bg-emerald-50/90 border-emerald-300 ring-1 ring-emerald-400/30 shadow-xs'
+                                : 'bg-[#f8f7f2] border-[#d2d1c9]/70 hover:border-[#0c3e35]/30'
+                            }`}
+                          >
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isTargetMet}
+                                disabled={isCompleted}
+                                onChange={(e) => {
+                                  handleTaskChange(idx, 'todayTargetMet', e.target.checked);
+                                }}
+                                className="w-4 h-4 rounded accent-[#0c3e35] cursor-pointer"
+                              />
+                              <span
+                                className={`text-xs flex items-center gap-1.5 transition-colors ${
+                                  isTargetMet ? 'font-black text-emerald-950' : 'font-bold text-[#3e5550]'
+                                }`}
+                              >
+                                <CheckCircle2
+                                  className={`w-4 h-4 shrink-0 transition-colors ${
+                                    isTargetMet ? 'text-emerald-600 fill-emerald-100' : 'text-slate-400'
+                                  }`}
+                                />
+                                <span>تم إنجاز مستهدف اليوم بنجاح ✔️</span>
+                              </span>
+                            </label>
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {task.todayTargetMet && !isCompleted && (
+                                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-850 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
+                                  <Check className="w-3.5 h-3.5 text-emerald-700 stroke-[2.5]" />
+                                  <span>مستهدف اليوم محقق ومحسوب 100%</span>
+                                </span>
+                              )}
+                              <span className="text-[10.5px] text-[#5e736e] font-medium hidden sm:inline">
+                                {isTargetMet
+                                  ? '✨ تُحسب 100% في معدل اليوم دون المساس بنسبتها الكلية'
+                                  : 'فعّل هذا الخيار إذا أنجزت المطلوب لهذا اليوم وفق الخطة'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
