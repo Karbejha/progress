@@ -250,7 +250,7 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`relative border-2 border-dashed rounded-2xl transition cursor-pointer text-center ${
+          className={`relative border-2 border-dashed rounded-2xl transition cursor-pointer text-center select-none active:scale-[0.99] touch-manipulation ${
             isDragOver
               ? 'border-[#0c3e35] bg-[#0c3e35]/5 shadow-sm'
               : 'border-[#d2d1c9] bg-white hover:border-[#0c3e35]/60 hover:bg-[#fcfbf7]'
@@ -259,7 +259,7 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
               ? 'p-2.5 sm:p-3 flex items-center justify-center gap-2'
               : compact
               ? 'p-3'
-              : 'p-4 sm:p-5'
+              : 'p-3.5 sm:p-5'
           }`}
         >
           {hasFiles ? (
@@ -271,17 +271,23 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
               </span>
             </div>
           ) : (
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#edece4] text-[#0c3e35] flex items-center justify-center shrink-0 border border-[#d2d1c9]">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-3.5 py-1">
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-[#0c3e35]/5 text-[#0c3e35] flex items-center justify-center shrink-0 border border-[#0c3e35]/15 shadow-2xs">
                 <UploadCloud className="w-5 h-5 text-[#0c3e35]" />
               </div>
-              <div className="text-center sm:text-right">
-                <p className="text-xs font-bold text-[#0c3e35]">
-                  انقر لاختيار مستندات PDF (يمكنك تحديد عدة ملفات) أو اسحبها إلى هنا
+              <div className="text-center sm:text-right space-y-1">
+                <p className="text-xs font-extrabold text-[#0c3e35] leading-snug">
+                  <span className="sm:hidden">اضغط لاختيار مستندات PDF</span>
+                  <span className="hidden sm:inline">انقر لاختيار مستندات PDF أو اسحبها إلى هنا</span>
+                  <span className="text-[11px] font-medium text-[#5e736e] block sm:inline sm:mr-1.5">
+                    (يمكنك تحديد عدة ملفات)
+                  </span>
                 </p>
-                <p className="text-[10.5px] text-[#8daaa2] mt-0.5 font-medium">
-                  {hint}
-                </p>
+                {hint && (
+                  <p className="text-[10px] sm:text-[10.5px] text-[#8daaa2] font-medium leading-relaxed">
+                    {hint}
+                  </p>
+                )}
               </div>
             </div>
           )}
