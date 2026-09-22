@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { X, Calendar, User, AlertTriangle, CheckCircle2, Eye, Clock, CheckCheck, Building2, Users } from 'lucide-react';
+import { X, Calendar, User, AlertTriangle, CheckCircle2, Eye, Clock, CheckCheck, Building2, Users, FileText } from 'lucide-react';
 import { api } from '../services/api';
-import { User as UserType, AnnouncementReadersResponse } from '../types';
+import { User as UserType, AnnouncementReadersResponse, Attachment } from '../types';
+import { PdfAttachmentCard } from './PdfAttachmentCard';
 
 export interface AnnouncementModalData {
   id?: string;
@@ -17,6 +18,7 @@ export interface AnnouncementModalData {
   createdAt?: string;
   type?: 'announcement' | 'feedback' | 'task' | string;
   isAnnouncement?: boolean;
+  attachments?: Attachment[];
 }
 
 interface AnnouncementDetailsModalProps {
@@ -260,6 +262,27 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
                 <div className="text-xs sm:text-sm text-[#0c3e35] leading-relaxed whitespace-pre-line font-medium text-justify">
                   {data.content}
                 </div>
+
+                {/* Official PDF Document Card if attached */}
+                {data.attachments && data.attachments.length > 0 && (
+                  <div className="pt-4 border-t border-[#e5e4dc] space-y-2">
+                    <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-red-600" />
+                      <span>النسخة الرسمية المعتمدة والموقعة (PDF):</span>
+                    </span>
+                    <div className="space-y-2">
+                      {data.attachments.map((att) => (
+                        <PdfAttachmentCard
+                          key={att.id}
+                          attachment={att}
+                          badgeText="نسخة رسمية مختومة وموقعة"
+                          title="الكتاب الإداري أو القرار الرسمي"
+                          variant="paper"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-6 border-t border-[#e5e4dc] flex items-center justify-between text-xs text-[#5e736e]">
                   <span className="font-bold text-[#0c3e35]">المديرية العامة للموانئ - مكتب المدير العام</span>

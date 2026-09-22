@@ -4,6 +4,17 @@ export type PlanStatus = 'DRAFT' | 'SUBMITTED' | 'REVIEWED';
 export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED' | 'CANCELLED';
 export type SummaryStatus = 'DRAFT' | 'SUBMITTED' | 'ACKNOWLEDGED' | 'FEEDBACK_GIVEN';
 
+export interface Attachment {
+  id: string;
+  fileName: string;
+  fileUrl?: string;
+  fileSize: number;
+  mimeType: string;
+  category?: string;
+  uploadedById?: string;
+  createdAt: string;
+}
+
 export interface Directorate {
   id: string;
   code: string;
@@ -98,6 +109,7 @@ export interface DailySummary {
   status: SummaryStatus;
   submittedAt: string;
   feedbacks?: ExecutiveFeedback[];
+  attachments?: Attachment[];
 }
 
 export interface ExecutiveFeedback {
@@ -149,6 +161,7 @@ export interface Announcement {
     directorateName?: string | null;
     readAt: string;
   }>;
+  attachments?: Attachment[];
 }
 
 export interface AnnouncementReadersResponse {
@@ -159,6 +172,7 @@ export interface AnnouncementReadersResponse {
     priority: Priority;
     authorName?: string;
     createdAt?: string;
+    attachments?: Attachment[];
   };
   stats: {
     totalDirectorates: number;
@@ -245,6 +259,7 @@ export interface ExecutiveTask {
   coTasks?: ExecutiveCoTask[];
   createdAt: string;
   updatedAt: string;
+  attachments?: Attachment[];
 }
 
 export interface GroupedExecutiveTask {
@@ -310,6 +325,7 @@ export interface DirectorateOverviewItem {
   tasks: PlanTask[];
   feedbacks: ExecutiveFeedback[];
   executiveTasks?: ExecutiveTask[];
+  summaryAttachments?: Attachment[];
 }
 
 export interface ExecutiveOverviewResponse {

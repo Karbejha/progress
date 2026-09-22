@@ -24,7 +24,9 @@ import {
 } from 'lucide-react';
 import { Eye } from 'lucide-react';
 import { DynamicIcon } from './Icons';
-import { User } from '../types';
+import { User, Attachment } from '../types';
+import { PdfAttachmentPicker } from './PdfAttachmentPicker';
+import { PdfAttachmentCard } from './PdfAttachmentCard';
 
 interface DirectorateDetailModalProps {
   item: DirectorateOverviewItem | null;
@@ -61,6 +63,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
     priority: 'NORMAL',
     dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
+  const [taskAttachments, setTaskAttachments] = useState<Attachment[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
 
   useEffect(() => {
@@ -114,6 +117,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
         priority: taskForm.priority,
         dueDate: taskForm.dueDate,
         directorateIds: [item.directorateId],
+        attachmentIds: taskAttachments.length > 0 ? taskAttachments.map((a) => a.id) : undefined,
       });
       setTaskForm({
         title: '',
@@ -121,6 +125,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
         priority: 'NORMAL',
         dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       });
+      setTaskAttachments([]);
       setShowAssignTaskForm(false);
       loadDirectorateTasks();
       onFeedbackSent();
@@ -301,6 +306,14 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                   />
                 </div>
 
+                <PdfAttachmentPicker
+                  attachments={taskAttachments}
+                  onAttachmentsChange={setTaskAttachments}
+                  category="EXECUTIVE_TASK"
+                  label="إرفاق كتب وقرارات التكليف الوزاري / الرئاسي (PDF)"
+                  compact
+                />
+
                 <div className="flex items-center justify-end gap-2 pt-1">
                   <button
                     type="button"
@@ -368,6 +381,19 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                         </div>
                       )}
                     </div>
+
+                    {t.attachments && t.attachments.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {t.attachments.map((att) => (
+                          <PdfAttachmentCard
+                            key={att.id}
+                            attachment={att}
+                            variant="compact"
+                            title={att.category === 'TASK_COMPLETION' ? 'وثيقة ومحضر إنجاز التكليف' : 'كتاب التكليف الرسمي'}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -489,6 +515,25 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                   <div>
                     <strong className="text-[#0c3e35] font-bold block mb-1">مقترحات وتوصيات المدير:</strong>
                     <p className="text-[#5e736e]">{item.directorNotes}</p>
+                  </div>
+                )}
+
+                {item.summaryAttachments && item.summaryAttachments.length > 0 && (
+                  <div className="pt-2 border-t border-[#f0eee6]">
+                    <strong className="text-[#0c3e35] font-bold block mb-2 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-red-600" />
+                      <span>المستندات والتقارير الرسمية المرفقة مع الإنجاز:</span>
+                    </strong>
+                    <div className="space-y-2">
+                      {item.summaryAttachments.map((att) => (
+                        <PdfAttachmentCard
+                          key={att.id}
+                          attachment={att}
+                          badgeText="وثيقة رسمية معتمدة"
+                          title="تقرير أو محضر الإنجاز اليومي"
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

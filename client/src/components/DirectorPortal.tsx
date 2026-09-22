@@ -39,6 +39,7 @@ import {
   Pencil,
   AlertCircle,
   Crown,
+  Paperclip,
 } from 'lucide-react';
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -46,10 +47,12 @@ import { IncompleteTasksModal } from './IncompleteTasksModal';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { CustomMonthPicker } from './CustomMonthPicker';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
-import { Announcement } from '../types';
+import { Announcement, Attachment } from '../types';
 import { Capacitor } from '@capacitor/core';
 import { getSocket } from '../lib/socket';
 import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
+import { PdfAttachmentPicker } from './PdfAttachmentPicker';
+import { PdfAttachmentCard } from './PdfAttachmentCard';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -65,6 +68,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [saving, setSaving] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
+  const [summaryAttachments, setSummaryAttachments] = useState<Attachment[]>([]);
+  const [execTaskAttachments, setExecTaskAttachments] = useState<{ [taskId: string]: Attachment[] }>({});
 
   // Feedback replies state
   const [replyOpenPlanId, setReplyOpenPlanId] = useState<string | null>(null);
@@ -736,12 +741,21 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     try {
       setUpdatingTaskId(taskId);
+      const taskAtts = execTaskAttachments[taskId];
       await api.updateExecutiveTask(taskId, {
         status: local.status,
         completionPercentage: local.completionPercentage,
         completionNote: local.completionNote,
         todayTargetMet: local.todayTargetMet,
+        attachmentIds: taskAtts && taskAtts.length > 0 ? taskAtts.map((a) => a.id) : undefined,
       });
+      if (taskAtts && taskAtts.length > 0) {
+        setExecTaskAttachments((prev) => {
+          const next = { ...prev };
+          delete next[taskId];
+          return next;
+        });
+      }
       const toastMsg = local.todayTargetMet
         ? 'تم حفظ مستهدف اليوم وتحديث تقرير التكليف بنجاح! ✔️'
         : 'تم إرسال تقرير إنجاز التكليف وتحديثه في أجندة المهام اليومية بنجاح!';
@@ -867,6 +881,26 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             <p className="text-xs text-[#5e736e] mt-1 bg-[#fcfbf7] p-2 rounded-lg border border-[#edece4] leading-relaxed">
               {task.description}
             </p>
+          )}
+
+          {/* Attached Official Documents (Decrees & Completion proofs) */}
+          {task.attachments && task.attachments.length > 0 && (
+            <div className="space-y-1.5 pt-2">
+              <span className="text-[10.5px] font-bold text-[#0c3e35] flex items-center gap-1">
+                <Paperclip className="w-3 h-3 text-[#d4af37]" />
+                <span>المستندات الرسمية المرفقة بالتكليف ({task.attachments.length}):</span>
+              </span>
+              <div className="space-y-1.5">
+                {task.attachments.map((att) => (
+                  <PdfAttachmentCard
+                    key={att.id}
+                    attachment={att}
+                    variant="compact"
+                    title={att.category === 'TASK_COMPLETION' ? 'وثيقة ومحضر إنجاز التكليف' : 'كتاب التكليف والتوجيه الرسمي'}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -1041,6 +1075,31 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               </span>
             )}
           </div>
+
+          {/* Row 3: Official Completion / Proof Documents (PDF) */}
+          <div className="pt-2 border-t border-[#f4f3ed]">
+            <PdfAttachmentPicker
+              attachments={execTaskAttachments[task.id] || []}
+              onAttachmentsChange={(newAtts) => {
+                setExecTaskAttachments((prev) => ({ ...prev, [task.id]: newAtts }));
+                setTaskLocalState((prev) => ({
+                  ...prev,
+                  [task.id]: {
+                    ...(prev[task.id] || {
+                      status: task.status,
+                      completionPercentage: task.completionPercentage,
+                      completionNote: task.completionNote || '',
+                      todayTargetMet: task.todayTargetMet || false,
+                    }),
+                    isModified: true,
+                  },
+                }));
+              }}
+              category="TASK_COMPLETION"
+              label="إرفاق كتب ومحاضر إنجاز التكليف (PDF)"
+              hint="يمكنك إرفاق عدة مستندات رسمية لتوثيق وإثبات إنجاز التكليف"
+            />
+          </div>
         </div>
       </div>
     );
@@ -1139,6 +1198,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           setDirectorNotes(s.directorNotes || '');
           setUrgentFlag(s.urgentFlag || false);
           setTomorrowPlanPreview(s.tomorrowPlanPreview || '');
+          if (s.attachments && s.attachments.length > 0) {
+            setSummaryAttachments(s.attachments);
+          } else {
+            setSummaryAttachments([]);
+          }
         } else {
           // Check for summary draft
           const rawSummaryDraft = localStorage.getItem(summaryDraftKey);
@@ -2072,10 +2136,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   // Summary submission with auto-generation fallback & duplicate prevention
   const hasSummary = Boolean(plan?.dailySummary);
+  const currentSummaryAttIds = summaryAttachments.map((a) => a.id).sort().join(',');
+  const savedSummaryAttIds = (plan?.dailySummary?.attachments || []).map((a) => a.id).sort().join(',');
   const isSummaryModified = !hasSummary || (
     summaryText.trim() !== (plan?.dailySummary?.summaryText || '').trim() ||
     challenges.trim() !== (plan?.dailySummary?.challenges || '').trim() ||
-    urgentFlag !== (plan?.dailySummary?.urgentFlag || false)
+    urgentFlag !== (plan?.dailySummary?.urgentFlag || false) ||
+    currentSummaryAttIds !== savedSummaryAttIds
   );
 
   const handleSubmitSummary = async (e: React.FormEvent) => {
@@ -2165,6 +2232,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         urgentFlag,
         tomorrowPlanPreview: tomorrowPlanPreview.trim() || undefined,
         taskUpdates,
+        attachmentIds: summaryAttachments.length > 0 ? summaryAttachments.map((a) => a.id) : undefined,
       });
 
       // Clear local summary draft
@@ -3234,6 +3302,17 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   />
                 </div>
               )}
+            </div>
+
+            {/* 4. PDF Attachments for Evening Report */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-[#d2d1c9] shadow-xs space-y-2">
+              <PdfAttachmentPicker
+                attachments={summaryAttachments}
+                onAttachmentsChange={setSummaryAttachments}
+                category="DAILY_SUMMARY"
+                label="إرفاق التقارير الرسمية ومحاضر الكشف الثبوتية (PDF)"
+                hint="يمكنك إرفاق عدة مستندات رسمية (تقارير تفصيلية، ضبوط ممسوحة، جداول)"
+              />
             </div>
 
             {/* Submit Action */}

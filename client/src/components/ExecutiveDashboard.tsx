@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { User, ExecutiveOverviewResponse, DirectorateOverviewItem, Announcement } from '../types';
+import { User, ExecutiveOverviewResponse, DirectorateOverviewItem, Announcement, Attachment } from '../types';
 import { api } from '../services/api';
 import { DirectorateCard } from './DirectorateCard';
 import { OrgHierarchyChart } from './OrgHierarchyChart';
@@ -28,7 +28,10 @@ import {
   Eye,
   ListTodo,
   RotateCcw,
+  FileText,
 } from 'lucide-react';
+
+import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 
 import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
@@ -63,6 +66,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   const [activeTasksCount, setActiveTasksCount] = useState(0);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementModalData | null>(null);
   const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '', priority: 'NORMAL' });
+  const [announcementAttachments, setAnnouncementAttachments] = useState<Attachment[]>([]);
   const [submittingAnnouncement, setSubmittingAnnouncement] = useState(false);
   const [liveToast, setLiveToast] = useState<{ title: string; desc: string } | null>(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>([]);
@@ -245,8 +249,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
     try {
       setSubmittingAnnouncement(true);
       const title = announcementForm.title;
-      await api.createAnnouncement(announcementForm);
+      await api.createAnnouncement({
+        ...announcementForm,
+        attachmentIds: announcementAttachments.length > 0 ? announcementAttachments.map((a) => a.id) : undefined,
+      });
       setAnnouncementForm({ title: '', content: '', priority: 'NORMAL' });
+      setAnnouncementAttachments([]);
       setShowAnnouncementModal(false);
       loadAnnouncements();
       setLiveToast({
@@ -1046,6 +1054,14 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                 />
               </div>
 
+              <PdfAttachmentPicker
+                attachments={announcementAttachments}
+                onAttachmentsChange={setAnnouncementAttachments}
+                category="ANNOUNCEMENT"
+                label="إرفاق نسخ التعميم المعتمدة والموقعة (PDF)"
+                hint="يمكنك إرفاق عدة مستندات رسمية (نص التعميم الموقع، الجداول الملحقة، التعليمات التنفيذية)"
+              />
+
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#d2d1c9]">
                 <button
                   type="button"
@@ -1121,6 +1137,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#f4f3ed] text-[#0c3e35] border border-[#d2d1c9]">
                             {ann.priority === 'URGENT' ? '🚨 عاجل' : '📌 عادي'}
                           </span>
+                          {ann.attachments && ann.attachments.length > 0 && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 flex items-center gap-1 shadow-2xs">
+                              <FileText className="w-3 h-3 text-red-600" />
+                              <span>مرفق رسمي (PDF){ann.attachments.length > 1 ? ` (${ann.attachments.length})` : ''}</span>
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11px] text-[#8daaa2]">
                           {new Date(ann.createdAt).toLocaleDateString('ar-SY', {
@@ -1164,6 +1186,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                               authorTitle: ann.author?.title || 'المدير العام',
                               priority: ann.priority,
                               createdAt: ann.createdAt,
+                              attachments: ann.attachments,
                             });
                           }}
                           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0c3e35] text-white hover:bg-[#072923] text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"

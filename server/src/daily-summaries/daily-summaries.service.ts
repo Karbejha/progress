@@ -13,6 +13,7 @@ export interface SubmitSummaryDto {
   directorNotes?: string;
   urgentFlag?: boolean;
   tomorrowPlanPreview?: string;
+  attachmentIds?: string[];
   taskUpdates?: {
     taskId: string;
     status: TaskStatus;
@@ -155,8 +156,16 @@ export class DailySummariesService {
         },
         directorate: true,
         feedbacks: true,
+        attachments: true,
       },
     });
+
+    if (dto.attachmentIds && dto.attachmentIds.length > 0) {
+      await this.prisma.attachment.updateMany({
+        where: { id: { in: dto.attachmentIds } },
+        data: { dailySummaryId: summary.id, category: 'DAILY_SUMMARY' },
+      });
+    }
 
     // Synchronize all plan tasks and executive tasks with their actual completion percentage to the director's agenda (UserTodo)
     for (const pt of tasks) {
@@ -291,6 +300,7 @@ export class DailySummariesService {
       include: {
         dailySummary: {
           include: {
+            attachments: true,
             feedbacks: {
               include: { fromUser: { select: { fullName: true, title: true } } },
             },

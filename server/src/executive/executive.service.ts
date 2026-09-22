@@ -17,6 +17,7 @@ export interface CreateAnnouncementDto {
   title: string;
   content: string;
   priority?: Priority;
+  attachmentIds?: string[];
 }
 
 @Injectable()
@@ -54,6 +55,7 @@ export class ExecutiveService {
           include: {
             assignedBy: { select: { id: true, fullName: true, title: true, role: true } },
             assignedToUser: { select: { id: true, fullName: true, title: true } },
+            attachments: true,
           },
           orderBy: { createdAt: 'desc' },
         },
@@ -61,7 +63,9 @@ export class ExecutiveService {
           where: { planDate: targetDate },
           include: {
             tasks: { orderBy: { displayOrder: 'asc' } },
-            dailySummary: true,
+            dailySummary: {
+              include: { attachments: true },
+            },
             feedbacks: {
               include: {
                 fromUser: { select: { fullName: true, title: true, role: true } },
@@ -175,6 +179,7 @@ export class ExecutiveService {
         tasks: planTasks,
         executiveTasks: execTasks,
         feedbacks,
+        summaryAttachments: summary?.attachments || [],
       };
     });
 
@@ -211,6 +216,7 @@ export class ExecutiveService {
           include: {
             assignedBy: { select: { fullName: true, title: true, role: true } },
             assignedToUser: { select: { fullName: true, title: true } },
+            attachments: true,
           },
           orderBy: { createdAt: 'desc' },
         },
@@ -231,7 +237,9 @@ export class ExecutiveService {
       },
       include: {
         tasks: { orderBy: { displayOrder: 'asc' } },
-        dailySummary: true,
+        dailySummary: {
+          include: { attachments: true },
+        },
         feedbacks: {
           include: { fromUser: { select: { fullName: true, title: true, role: true } } },
           orderBy: { createdAt: 'asc' },
@@ -247,7 +255,9 @@ export class ExecutiveService {
       },
       include: {
         tasks: true,
-        dailySummary: true,
+        dailySummary: {
+          include: { attachments: true },
+        },
       },
       orderBy: { planDate: 'desc' },
       take: 7,
@@ -382,6 +392,7 @@ export class ExecutiveService {
         author: {
           select: { fullName: true, title: true },
         },
+        attachments: true,
         reads: {
           include: {
             user: {
@@ -413,6 +424,7 @@ export class ExecutiveService {
         authorId: ann.authorId,
         author: ann.author,
         createdAt: ann.createdAt,
+        attachments: ann.attachments || [],
         isReadByMe,
         readCount,
         totalDirectorates,
@@ -466,6 +478,7 @@ export class ExecutiveService {
       where: { id: announcementId },
       include: {
         author: { select: { fullName: true, title: true } },
+        attachments: true,
         reads: {
           include: {
             user: {
@@ -535,6 +548,7 @@ export class ExecutiveService {
         priority: ann.priority,
         authorName: ann.author?.fullName,
         createdAt: ann.createdAt,
+        attachments: ann.attachments || [],
       },
       stats: {
         totalDirectorates,
@@ -557,17 +571,33 @@ export class ExecutiveService {
       },
       include: {
         author: { select: { fullName: true, title: true } },
+        attachments: true,
+      },
+    });
+
+    if (dto.attachmentIds && dto.attachmentIds.length > 0) {
+      await this.prisma.attachment.updateMany({
+        where: { id: { in: dto.attachmentIds } },
+        data: { announcementId: ann.id, category: 'ANNOUNCEMENT' },
+      });
+    }
+
+    const updatedAnn = await this.prisma.announcement.findUnique({
+      where: { id: ann.id },
+      include: {
+        author: { select: { fullName: true, title: true } },
+        attachments: true,
       },
     });
 
     this.eventsGateway.emitAnnouncementCreated({
-      id: ann.id,
-      title: ann.title,
-      content: ann.content,
-      priority: ann.priority,
+      id: updatedAnn?.id || ann.id,
+      title: updatedAnn?.title || ann.title,
+      content: updatedAnn?.content || ann.content,
+      priority: updatedAnn?.priority || ann.priority,
       authorId: user.id,
       authorName: user.fullName,
-      createdAt: ann.createdAt.toISOString(),
+      createdAt: (updatedAnn?.createdAt || ann.createdAt).toISOString(),
     });
 
     // Persist notification for all users except the author
@@ -583,11 +613,12 @@ export class ExecutiveService {
           authorName: user.fullName,
           authorTitle: user.title,
           priority: ann.priority,
+          attachments: updatedAnn?.attachments || [],
         },
       },
       user.id,
     );
 
-    return ann;
+    return updatedAnn || ann;
   }
 }

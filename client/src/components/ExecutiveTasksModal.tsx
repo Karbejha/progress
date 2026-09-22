@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Directorate, ExecutiveTask, Priority, TaskStatus, GroupedExecutiveTask } from '../types';
+import { User, Directorate, ExecutiveTask, Priority, TaskStatus, GroupedExecutiveTask, Attachment } from '../types';
 import { api } from '../services/api';
 import { getSocket } from '../lib/socket';
 import { DynamicIcon } from './Icons';
+import { PdfAttachmentPicker } from './PdfAttachmentPicker';
+import { PdfAttachmentCard } from './PdfAttachmentCard';
 import {
   X,
   Plus,
@@ -100,12 +102,14 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
     dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     selectedDirectorateIds: initialDirectorateId ? [initialDirectorateId] : [],
   });
+  const [taskAttachments, setTaskAttachments] = useState<Attachment[]>([]);
 
   // Edit / Details modal state
   const [editingTask, setEditingTask] = useState<ExecutiveTask | null>(null);
   const [editStatus, setEditStatus] = useState<TaskStatus>('PENDING');
   const [editProgress, setEditProgress] = useState<number>(0);
   const [editNote, setEditNote] = useState<string>('');
+  const [editAttachments, setEditAttachments] = useState<Attachment[]>([]);
 
   // Custom Delete Confirmation Dialog state
   const [deleteConfirmState, setDeleteConfirmState] = useState<{
@@ -246,6 +250,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
         priority: form.priority,
         dueDate: form.dueDate,
         directorateIds: form.selectedDirectorateIds,
+        attachmentIds: taskAttachments.length > 0 ? taskAttachments.map((a) => a.id) : undefined,
       });
 
       showToast(
@@ -260,6 +265,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
         dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         selectedDirectorateIds: [],
       });
+      setTaskAttachments([]);
       setIsCreating(false);
       loadData(false);
     } catch (err: any) {
@@ -331,7 +337,9 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
         status: editStatus,
         completionPercentage: editProgress,
         completionNote: editNote,
+        attachmentIds: editAttachments.length > 0 ? editAttachments.map((a) => a.id) : undefined,
       });
+      setEditAttachments([]);
       showToast('تم حفظ التعديلات بنجاح');
       setEditingTask(null);
       loadData(false);
@@ -746,6 +754,14 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   className="w-full p-3 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35] leading-relaxed"
                 />
               </div>
+
+              <PdfAttachmentPicker
+                attachments={taskAttachments}
+                onAttachmentsChange={setTaskAttachments}
+                category="EXECUTIVE_TASK"
+                label="إرفاق كتب وقرارات التكليف الرسمية (PDF)"
+                hint="يمكنك إرفاق عدة مستندات رسمية، كتب وزارية، أو قرارات إدارية معتمدة"
+              />
 
               {/* Form Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#d2d1c9]">
@@ -1228,6 +1244,20 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                               {task.description}
                             </p>
                           )}
+
+                          {/* Attached Official Documents */}
+                          {task.attachments && task.attachments.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              {task.attachments.map((att) => (
+                                <PdfAttachmentCard
+                                  key={att.id}
+                                  attachment={att}
+                                  variant="compact"
+                                  title={att.category === 'TASK_COMPLETION' ? 'وثيقة ومحضر إنجاز التكليف' : 'كتاب التكليف والتوجيه الرسمي'}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* Co-Tasks Partner preview if shared */}
@@ -1408,6 +1438,30 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                   className="w-full p-2.5 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9] text-xs text-[#0c3e35]"
                 />
               </div>
+
+              {editingTask.attachments && editingTask.attachments.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-[#0c3e35] block">
+                    المستندات المرفقة بالتكليف:
+                  </span>
+                  {editingTask.attachments.map((att) => (
+                    <PdfAttachmentCard
+                      key={att.id}
+                      attachment={att}
+                      variant="compact"
+                      title={att.category === 'TASK_COMPLETION' ? 'وثيقة إنجاز التكليف' : 'كتاب التكليف الرسمي'}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <PdfAttachmentPicker
+                attachments={editAttachments}
+                onAttachmentsChange={setEditAttachments}
+                category="TASK_COMPLETION"
+                label="إرفاق كتب رد أو محاضر إنجاز جديدة (PDF)"
+                compact
+              />
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#d2d1c9]">

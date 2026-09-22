@@ -4,7 +4,7 @@ import React from 'react';
 import { DirectorateOverviewItem } from '../types';
 import { getDirectorateStatus } from '../lib/directorateStatus';
 import { DynamicIcon } from './Icons';
-import { CheckCircle2, Clock, AlertTriangle, MessageSquare, Eye } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, MessageSquare, Eye, FileText } from 'lucide-react';
 
 interface DirectorateCardProps {
   item: DirectorateOverviewItem;
@@ -152,7 +152,18 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             {catInfo.label}
           </span>
 
-          <div>{theme.statusBadge}</div>
+          <div className="flex items-center gap-1.5">
+            {item.summaryAttachments && item.summaryAttachments.length > 0 && (
+              <span
+                className="flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 shadow-2xs"
+                title={`مرفق تقرير رسمي PDF (${item.summaryAttachments.length})`}
+              >
+                <FileText className="w-3 h-3 text-red-600" />
+                <span>PDF{item.summaryAttachments.length > 1 ? ` (${item.summaryAttachments.length})` : ''}</span>
+              </span>
+            )}
+            {theme.statusBadge}
+          </div>
         </div>
 
         {/* Title & Icon */}

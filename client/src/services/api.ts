@@ -13,6 +13,7 @@ import {
   UpdateTodoDto,
   IncompleteTask,
   AchievementsReportResponse,
+  Attachment,
 } from '../types';
 
 export const getApiBaseUrl = (): string => {
@@ -96,9 +97,12 @@ class ApiService {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = this.getToken();
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+
+    if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -259,7 +263,7 @@ class ApiService {
     return this.request<any>(`/executive/announcements/${id}/readers`);
   }
 
-  async createAnnouncement(payload: { title: string; content: string; priority?: string }) {
+  async createAnnouncement(payload: { title: string; content: string; priority?: string; attachmentIds?: string[] }) {
     return this.request<Announcement>('/executive/announcements', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -421,6 +425,7 @@ class ApiService {
     directorNotes?: string;
     urgentFlag?: boolean;
     tomorrowPlanPreview?: string;
+    attachmentIds?: string[];
     taskUpdates?: {
       taskId: string;
       status: string;
@@ -485,6 +490,7 @@ class ApiService {
     dueDate?: string;
     directorateIds: string[];
     assignedToUserId?: string;
+    attachmentIds?: string[];
   }): Promise<ExecutiveTask[]> {
     return this.request<ExecutiveTask[]>('/executive-tasks', {
       method: 'POST',
@@ -505,6 +511,7 @@ class ApiService {
       todayTargetMet?: boolean;
       directorateId?: string;
       assignedToUserId?: string;
+      attachmentIds?: string[];
     },
   ): Promise<ExecutiveTask> {
     return this.request<ExecutiveTask>(`/executive-tasks/${id}`, {
@@ -563,10 +570,41 @@ class ApiService {
     });
   }
 
-  async reorderTodos(orderedIds: string[]): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>('/todos/reorder', {
+  async updateTodoOrder(orderedIds: string[]): Promise<boolean> {
+    const res = await this.request<{ success: boolean }>('/todos/reorder', {
       method: 'PATCH',
       body: JSON.stringify({ orderedIds }),
+    });
+    return res.success;
+  }
+
+  async reorderTodos(orderedIds: string[]): Promise<boolean> {
+    return this.updateTodoOrder(orderedIds);
+  }
+
+  // --- Attachments APIs ---
+  async uploadAttachment(file: File, category = 'GENERAL'): Promise<Attachment> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request<Attachment>(`/attachments/upload?category=${category}`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  getAttachmentUrl(attachmentId: string, download = false): string {
+    const baseUrl = getApiBaseUrl();
+    const token = this.getToken() || '';
+    const qs = new URLSearchParams();
+    if (token) qs.append('token', token);
+    if (download) qs.append('download', '1');
+    const query = qs.toString() ? `?${qs.toString()}` : '';
+    return `${baseUrl}/attachments/${attachmentId}/download${query}`;
+  }
+
+  async deleteAttachment(attachmentId: string): Promise<{ success: boolean; id: string }> {
+    return this.request<{ success: boolean; id: string }>(`/attachments/${attachmentId}`, {
+      method: 'DELETE',
     });
   }
 

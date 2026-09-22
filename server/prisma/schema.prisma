@@ -86,6 +86,7 @@ model User {
   todos         UserTodo[]
   notificationReads NotificationRead[]
   notifications Notification[]
+  attachments   Attachment[]
 }
 
 model DailyPlan {
@@ -151,6 +152,7 @@ model DailySummary {
   updatedAt             DateTime            @updatedAt
 
   feedbacks             ExecutiveFeedback[]
+  attachments           Attachment[]
 }
 
 model ExecutiveFeedback {
@@ -179,6 +181,7 @@ model Announcement {
   createdAt DateTime @default(now())
 
   reads     AnnouncementRead[]
+  attachments Attachment[]
 }
 
 model AnnouncementRead {
@@ -232,6 +235,7 @@ model ExecutiveTask {
 
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+  attachments          Attachment[]
 
   @@index([sharedGroupId])
 }
@@ -278,5 +282,32 @@ model Notification {
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt(sort: Desc)])
+}
+
+model Attachment {
+  id              String         @id @default(uuid())
+  fileName        String
+  fileUrl         String
+  fileSize        Int
+  mimeType        String         @default("application/pdf")
+  category        String?        @default("GENERAL") // DAILY_SUMMARY | EXECUTIVE_TASK | TASK_COMPLETION | ANNOUNCEMENT
+  uploadedById    String
+  uploadedBy      User           @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  announcementId  String?
+  announcement    Announcement?  @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  dailySummaryId  String?
+  dailySummary    DailySummary?  @relation(fields: [dailySummaryId], references: [id], onDelete: Cascade)
+
+  executiveTaskId String?
+  executiveTask   ExecutiveTask? @relation(fields: [executiveTaskId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime       @default(now())
+
+  @@index([announcementId])
+  @@index([dailySummaryId])
+  @@index([executiveTaskId])
+  @@index([uploadedById])
 }
 

@@ -12,6 +12,7 @@ export interface CreateExecutiveTaskDto {
   dueDate?: string;
   directorateIds: string[];
   assignedToUserId?: string;
+  attachmentIds?: string[];
 }
 
 export interface UpdateExecutiveTaskDto {
@@ -25,6 +26,7 @@ export interface UpdateExecutiveTaskDto {
   directorateId?: string;
   assignedToUserId?: string;
   todayTargetMet?: boolean;
+  attachmentIds?: string[];
 }
 
 @Injectable()
@@ -162,6 +164,7 @@ export class ExecutiveTasksService {
         assignedToUser: {
           select: { id: true, fullName: true, title: true },
         },
+        attachments: true,
       },
       orderBy: [
         { status: 'asc' },
@@ -185,6 +188,7 @@ export class ExecutiveTasksService {
         assignedToUser: {
           select: { id: true, fullName: true, title: true },
         },
+        attachments: true,
       },
     });
 
@@ -246,8 +250,35 @@ export class ExecutiveTasksService {
           assignedToUser: {
             select: { id: true, fullName: true, title: true },
           },
+          attachments: true,
         },
       });
+
+      if (dto.attachmentIds && dto.attachmentIds.length > 0) {
+        if (!isJoint) {
+          await this.prisma.attachment.updateMany({
+            where: { id: { in: dto.attachmentIds } },
+            data: { executiveTaskId: task.id, category: 'EXECUTIVE_TASK' },
+          });
+        } else {
+          const originalAttachments = await this.prisma.attachment.findMany({
+            where: { id: { in: dto.attachmentIds } },
+          });
+          for (const att of originalAttachments) {
+            await this.prisma.attachment.create({
+              data: {
+                fileName: att.fileName,
+                fileUrl: att.fileUrl,
+                fileSize: att.fileSize,
+                mimeType: att.mimeType,
+                category: 'EXECUTIVE_TASK',
+                uploadedById: att.uploadedById,
+                executiveTaskId: task.id,
+              },
+            });
+          }
+        }
+      }
 
       createdTasks.push(task);
 
@@ -352,7 +383,16 @@ export class ExecutiveTasksService {
     const hasDueDateChanged = dataToUpdate.dueDate !== undefined && (dataToUpdate.dueDate?.toISOString() !== existingTask.dueDate?.toISOString());
     const hasTodayTargetMetChanged = dataToUpdate.todayTargetMet !== undefined && dataToUpdate.todayTargetMet !== existingTask.todayTargetMet;
 
-    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged || hasTodayTargetMetChanged;
+    const hasAttachmentsChanged = !!(dto.attachmentIds && dto.attachmentIds.length > 0);
+    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged || hasTodayTargetMetChanged || hasAttachmentsChanged;
+
+    if (hasAttachmentsChanged) {
+      const category = user.role === Role.DIRECTOR ? 'TASK_COMPLETION' : 'EXECUTIVE_TASK';
+      await this.prisma.attachment.updateMany({
+        where: { id: { in: dto.attachmentIds } },
+        data: { executiveTaskId: id, category },
+      });
+    }
 
     const updated = await this.prisma.executiveTask.update({
       where: { id },
@@ -367,6 +407,7 @@ export class ExecutiveTasksService {
         assignedToUser: {
           select: { id: true, fullName: true, title: true },
         },
+        attachments: true,
       },
     });
 

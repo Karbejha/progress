@@ -681,6 +681,7 @@ export const Header: React.FC<HeaderProps> = ({
         authorTitle: n.authorTitle || 'المدير العام',
         priority: n.fullPayload?.priority || n.priority || 'NORMAL',
         createdAt: n.createdAt,
+        attachments: n.fullPayload?.attachments || (n as any).attachments,
       });
       setShowNotifications(false);
     } else if (n.type === 'feedback') {
