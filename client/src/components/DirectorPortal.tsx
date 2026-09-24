@@ -559,14 +559,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     // Real-time synchronization of daily plan tasks (including when updated from personal agenda)
     const handlePlanTaskUpdated = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
+        const matchesTask = (t: any) =>
+          t.id === payload.taskId ||
+          (payload.taskTitle && t.title && t.title.trim().toLowerCase() === payload.taskTitle.trim().toLowerCase());
+
         setPlan((prevPlan) => {
           if (!prevPlan) return prevPlan;
           return {
             ...prevPlan,
             tasks: prevPlan.tasks.map((t) =>
-              t.id === payload.taskId
+              matchesTask(t)
                 ? {
                   ...t,
+                  id: payload.taskId,
                   status: payload.status,
                   completionPercentage: payload.completionPercentage,
                   completionNote: payload.completionNote !== undefined ? payload.completionNote : t.completionNote,
@@ -576,18 +581,21 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           };
         });
 
-        setTasks((prevTasks) =>
-          prevTasks.map((t) =>
-            t.id === payload.taskId
+        setTasks((prevTasks) => {
+          const nextTasks = prevTasks.map((t) =>
+            matchesTask(t)
               ? {
                 ...t,
+                id: payload.taskId,
                 status: payload.status,
                 completionPercentage: payload.completionPercentage,
                 completionNote: payload.completionNote !== undefined ? payload.completionNote : t.completionNote,
               }
               : t,
-          ),
-        );
+          );
+          lastSavedPlanHashRef.current = getPlanHash(generalFocus, nextTasks);
+          return nextTasks;
+        });
 
         setTrackedTasks((prev) => ({
           ...prev,

@@ -471,74 +471,103 @@ export class TodosService {
         ? TaskStatus.COMPLETED
         : (nextPercentage > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
 
-      // 1. Check if linked to a PlanTask
-      const planMatch = todo.description?.match(/\[معرف المهمة:\s*([^\]]+)\]/);
-      let planTaskId = planMatch && planMatch[1] ? planMatch[1].trim() : null;
+      // 1. Extract ALL explicit PlanTask IDs from todo.description
+      const planMatches = [...(todo.description?.matchAll(/\[معرف المهمة:\s*([^\]]+)\]/g) || [])];
+      const explicitPlanTaskIds = new Set<string>(
+        planMatches.map((m) => m[1].trim()).filter(Boolean)
+      );
 
-      let planTask = planTaskId
-        ? await this.prisma.planTask.findUnique({
-            where: { id: planTaskId },
-            include: { dailyPlan: { include: { directorate: true } } },
-          })
-        : null;
-
-      // Fallback: If no explicit ID tag in description, try matching by clean title in today's daily plan
-      if (!planTask && todo.title && todo.userId) {
+      // Find user and their directorate
+      let directorateId: string | null = null;
+      if (todo.userId) {
         const user = await this.prisma.user.findUnique({
           where: { id: todo.userId },
           select: { directorateId: true },
         });
+        directorateId = user?.directorateId || null;
+      }
 
-        if (user?.directorateId) {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
+      // Check today's plan
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-          const todayPlan = await this.prisma.dailyPlan.findUnique({
+      const todayPlan = directorateId
+        ? await this.prisma.dailyPlan.findUnique({
             where: {
               directorateId_planDate: {
-                directorateId: user.directorateId,
+                directorateId,
                 planDate: today,
               },
             },
-            include: { tasks: true, directorate: true },
-          });
+            include: {
+              tasks: {
+                include: {
+                  dailyPlan: { include: { directorate: true } },
+                },
+              },
+              directorate: true,
+            },
+          })
+        : null;
 
-          if (todayPlan) {
-            const cleanTodoTitle = todo.title.trim().toLowerCase();
-            const matched = todayPlan.tasks.find(
-              (t) => t.title.trim().toLowerCase() === cleanTodoTitle,
-            );
-            if (matched) {
-              planTask = {
-                ...matched,
-                dailyPlan: todayPlan,
-              } as any;
-              planTaskId = matched.id;
+      const tasksToUpdateMap = new Map<string, any>();
 
-              // Ensure todo description has the explicit ID tag for subsequent fast queries
-              const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${matched.id}]`;
-              if (!todo.description?.includes(matched.id)) {
-                const newDesc = todo.description ? `${todo.description}\n${planTag}` : planTag;
-                await this.prisma.userTodo.update({
-                  where: { id: todo.id },
-                  data: { description: newDesc },
-                });
-              }
+      // A. Match tasks in today's daily plan first (highest priority)
+      if (todayPlan && todayPlan.tasks && todayPlan.tasks.length > 0) {
+        const cleanTodoTitle = (todo.title || '').trim().toLowerCase();
+
+        for (const task of todayPlan.tasks) {
+          const taskTitle = (task.title || '').trim().toLowerCase();
+          const isExplicitId = explicitPlanTaskIds.has(task.id);
+          const isCarriedId = task.carriedFromTaskId && explicitPlanTaskIds.has(task.carriedFromTaskId);
+          const isTitleMatch =
+            cleanTodoTitle &&
+            (taskTitle === cleanTodoTitle ||
+              cleanTodoTitle.includes(taskTitle) ||
+              taskTitle.includes(cleanTodoTitle));
+
+          if (isExplicitId || isCarriedId || isTitleMatch) {
+            tasksToUpdateMap.set(task.id, task);
+            explicitPlanTaskIds.add(task.id);
+
+            // Ensure todo description has today's task ID for fast subsequent lookups
+            if (!todo.description?.includes(task.id)) {
+              const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${task.id}]`;
+              const newDesc = todo.description ? `${todo.description}\n${planTag}` : planTag;
+              await this.prisma.userTodo.update({
+                where: { id: todo.id },
+                data: { description: newDesc },
+              });
+              todo.description = newDesc;
             }
           }
         }
       }
 
-      if (planTask && planTaskId) {
+      // B. Also load and update all remaining explicit PlanTask IDs (e.g. from previous days or carry-overs)
+      for (const pId of explicitPlanTaskIds) {
+        if (!tasksToUpdateMap.has(pId)) {
+          const pTask = await this.prisma.planTask.findUnique({
+            where: { id: pId },
+            include: { dailyPlan: { include: { directorate: true } } },
+          });
+          if (pTask) {
+            tasksToUpdateMap.set(pTask.id, pTask);
+          }
+        }
+      }
+
+      // Update all matched PlanTasks
+      for (const [taskId, planTask] of tasksToUpdateMap) {
         await this.prisma.planTask.update({
-          where: { id: planTaskId },
+          where: { id: taskId },
           data: {
             status: nextStatus,
             completionPercentage: nextPercentage,
           },
         });
 
-        // Recalculate summary overall completion rate if daily summary exists
+        // Recalculate summary overall rate if daily summary exists
         const allPlanTasks = await this.prisma.planTask.findMany({
           where: { dailyPlanId: planTask.dailyPlanId },
         });
@@ -546,7 +575,7 @@ export class TodosService {
           where: { directorateId: planTask.dailyPlan.directorateId },
         });
         const allPcts = [
-          ...allPlanTasks.map((t) => (t.id === planTaskId ? nextPercentage : t.completionPercentage)),
+          ...allPlanTasks.map((t) => (t.id === taskId ? nextPercentage : t.completionPercentage)),
           ...allExecTasks.map((t) => t.completionPercentage),
         ];
 
@@ -566,7 +595,7 @@ export class TodosService {
         this.eventsGateway.emitTaskUpdated({
           directorateId: planTask.dailyPlan.directorateId,
           directorateName: planTask.dailyPlan.directorate.name,
-          taskId: planTaskId,
+          taskId: planTask.id,
           taskTitle: planTask.title,
           status: nextStatus,
           completionPercentage: nextPercentage,
@@ -575,28 +604,50 @@ export class TodosService {
 
       // 2. Check if linked to ExecutiveTask(s)
       const execMatches = [...(todo.description?.matchAll(/\[معرف التكليف:\s*([^\]]+)\]/g) || [])];
-      for (const m of execMatches) {
-        if (m[1]) {
-          const execTaskId = m[1].trim();
-          const execTask = await this.prisma.executiveTask.findUnique({
-            where: { id: execTaskId },
+      const execTaskIds = new Set<string>(execMatches.map((m) => m[1].trim()).filter(Boolean));
+
+      // Also if user has directorate, check active executive tasks for this directorate with matching title
+      if (directorateId) {
+        const cleanTodoTitle = (todo.title || '').trim().toLowerCase();
+        if (cleanTodoTitle) {
+          const activeExecs = await this.prisma.executiveTask.findMany({
+            where: {
+              directorateId,
+            },
             include: { directorate: true },
           });
-          if (execTask) {
-            const updated = await this.prisma.executiveTask.update({
-              where: { id: execTaskId },
-              data: {
-                status: nextStatus,
-                completionPercentage: nextPercentage,
-              },
-            });
-            this.eventsGateway.emitExecutiveTaskUpdated({
-              task: updated,
-              directorateId: execTask.directorateId,
-              directorateName: execTask.directorate.name,
-              updatedByRole: 'DIRECTOR',
-            });
+          for (const ext of activeExecs) {
+            const extTitle = (ext.title || '').trim().toLowerCase();
+            if (
+              extTitle === cleanTodoTitle ||
+              extTitle.includes(cleanTodoTitle) ||
+              cleanTodoTitle.includes(extTitle)
+            ) {
+              execTaskIds.add(ext.id);
+            }
           }
+        }
+      }
+
+      for (const execTaskId of execTaskIds) {
+        const execTask = await this.prisma.executiveTask.findUnique({
+          where: { id: execTaskId },
+          include: { directorate: true },
+        });
+        if (execTask) {
+          const updated = await this.prisma.executiveTask.update({
+            where: { id: execTaskId },
+            data: {
+              status: nextStatus,
+              completionPercentage: nextPercentage,
+            },
+          });
+          this.eventsGateway.emitExecutiveTaskUpdated({
+            task: updated,
+            directorateId: execTask.directorateId,
+            directorateName: execTask.directorate.name,
+            updatedByRole: 'DIRECTOR',
+          });
         }
       }
     } catch (err) {
