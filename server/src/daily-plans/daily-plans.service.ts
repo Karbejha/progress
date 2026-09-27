@@ -616,16 +616,25 @@ export class DailyPlansService {
         ? completionPercentage
         : (isCompleted ? 100 : 0);
 
-      // Find existing todo by taskId in description or by title (case-insensitive)
+      // Check if plan task description contains linked UserTodo ID
+      const todoIdMatch = description?.match(/\[معرف المفكرة:\s*([^\]]+)\]/);
+      const linkedTodoId = todoIdMatch ? todoIdMatch[1].trim() : null;
+
+      const orConditions: any[] = [
+        { description: { contains: taskId } },
+        {
+          userId,
+          title: { equals: cleanTitle, mode: 'insensitive' },
+        },
+      ];
+      if (linkedTodoId) {
+        orConditions.push({ id: linkedTodoId });
+      }
+
+      // Find existing todo by taskId in description, linked todo ID, or title
       const existingTodos = await this.prisma.userTodo.findMany({
         where: {
-          OR: [
-            { description: { contains: taskId } },
-            {
-              userId,
-              title: { equals: cleanTitle, mode: 'insensitive' },
-            },
-          ],
+          OR: orConditions,
         },
       });
 
@@ -640,6 +649,8 @@ export class DailyPlansService {
           await this.prisma.userTodo.update({
             where: { id: todo.id },
             data: {
+              title: cleanTitle,
+              priority: priority || todo.priority,
               isCompleted: willBeCompleted,
               completedAt: willBeCompleted ? (todo.completedAt || new Date()) : null,
               completionPercentage: pct,

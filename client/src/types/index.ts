@@ -348,6 +348,7 @@ export interface UserTodo {
   completedAt?: string | null;
   category: TodoCategory | string;
   displayOrder: number;
+  isIncludedInTodayPlan?: boolean;
   createdAt: string;
   updatedAt: string;
 }

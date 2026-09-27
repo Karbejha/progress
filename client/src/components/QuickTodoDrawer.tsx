@@ -246,12 +246,17 @@ export const QuickTodoDrawer: React.FC<QuickTodoDrawerProps> = ({
                                 عاجل
                               </span>
                             )}
-                            {todo.description?.includes('الخطة اليومية') && (
+                            {todo.isIncludedInTodayPlan ? (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-800 text-[9px] font-black border border-emerald-200">
                                 <FileText className="w-2.5 h-2.5 text-emerald-600" />
-                                <span>بالخطة اليومية</span>
+                                <span>بخطة اليوم</span>
                               </span>
-                            )}
+                            ) : todo.description?.includes('الخطة اليومية') ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-700 text-[9px] font-bold border border-slate-200" title="أُدرجت بخطة سابقة">
+                                <FileText className="w-2.5 h-2.5 text-slate-500" />
+                                <span>أُدرجت سابقاً</span>
+                              </span>
+                            ) : null}
                             {todo.description?.includes('تكليف تنفيذي') && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-900 text-[9px] font-black border border-amber-200">
                                 <Layers className="w-2.5 h-2.5 text-amber-700" />

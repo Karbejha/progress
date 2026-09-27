@@ -66,11 +66,12 @@ export const getCleanTodoDescription = (desc?: string | null): string => {
   if (!desc) return '';
   return desc
     .replace(/\[تم تحويلها إلى الخطة اليومية الصباحية\]/g, '')
-    .replace(/\[تم إدراجها في الخطة اليومية\]/g, '')
+    .replace(/\[تم إدراجها في الخطة اليومية(?: بتاريخ:[^\]]+)?\]/g, '')
     .replace(/\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g, '')
     .replace(/\[تم إسنادها كتكليف تنفيذي\]/g, '')
     .replace(/\[معرف المهمة:\s*[^\]]+\]/g, '')
     .replace(/\[معرف التكليف:\s*[^\]]+\]/g, '')
+    .replace(/\[معرف المفكرة:\s*[^\]]+\]/g, '')
     .trim();
 };
 
@@ -230,15 +231,21 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     };
 
     window.addEventListener('ports:todos_updated', handleTodosUpdated);
+    window.addEventListener('ports:plan_updated', handleTodosUpdated);
     const s = getSocket();
     if (s) {
       s.on('todo:updated', handleTodosUpdated);
+      s.on('task:updated', () => loadTodos({ silent: true }));
+      s.on('plan:updated', () => loadTodos({ silent: true }));
     }
 
     return () => {
       window.removeEventListener('ports:todos_updated', handleTodosUpdated);
+      window.removeEventListener('ports:plan_updated', handleTodosUpdated);
       if (s) {
         s.off('todo:updated', handleTodosUpdated);
+        s.off('task:updated');
+        s.off('plan:updated');
       }
     };
   }, []);
@@ -990,20 +997,30 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
 
   // Open Daily Plan Task Conversion Dialog (For Directorate Directors)
   const handleConvertToPlan = (todo: UserTodo) => {
+    if (todo.isIncludedInTodayPlan) return;
     setPlanConversionTodo(todo);
   };
 
   const handleConfirmPlanConversion = async () => {
-    if (!planConversionTodo) return;
+    if (!planConversionTodo || planConversionTodo.isIncludedInTodayPlan) return;
 
     try {
       setIsConvertingToPlan(true);
       const res = await api.convertTodoToPlanTask(planConversionTodo.id);
       showToastMsg('تم الإدراج بالخطة اليومية', res.message);
+      
+      // Optimistically update status to disabled immediately
+      setTodos((prev) =>
+        prev.map((t) =>
+          t.id === planConversionTodo.id ? { ...t, isIncludedInTodayPlan: true } : t
+        )
+      );
+
       setPlanConversionTodo(null);
       // Reload todos silently in background
       await loadTodos({ silent: true });
       window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
+      window.dispatchEvent(new CustomEvent('ports:plan_updated'));
     } catch (err: any) {
       console.error('Failed to convert to plan task', err);
       alert(err.message || 'تعذر تحويل المهمة إلى الخطة اليومية');
@@ -1903,23 +1920,31 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                               )}
 
                               {/* Badges for Plan / Executive Linking */}
-                              {todo.description?.includes('الخطة اليومية') && (
+                              {todo.isIncludedInTodayPlan ? (
                                 <span
                                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
                                     todo.isCompleted
                                       ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
                                       : 'bg-emerald-50 text-emerald-800 border-emerald-300'
                                   }`}
-                                  title="هذه المهمة مدرجة في الخطة اليومية للمديرية"
+                                  title="هذه المهمة مدرجة في الخطة اليومية الرسمية لليوم"
                                 >
                                   {todo.isCompleted ? (
                                     <CheckCircle2 className="w-3 h-3 text-emerald-700 shrink-0" />
                                   ) : (
                                     <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
                                   )}
-                                  <span>{todo.isCompleted ? 'مكتملة بالخطة اليومية' : 'مدرجة بالخطة اليومية'}</span>
+                                  <span>{todo.isCompleted ? 'مكتملة بخطة اليوم' : 'مدرجة بخطة اليوم'}</span>
                                 </span>
-                              )}
+                              ) : todo.description?.includes('الخطة اليومية') ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs bg-slate-100 text-slate-700 border-slate-300"
+                                  title="تم إدراج هذه المهمة في خطة يومية سابقة، ويمكنك إدراجها مجدداً في خطة اليوم"
+                                >
+                                  <FileText className="w-3 h-3 text-slate-500 shrink-0" />
+                                  <span>أُدرجت بخطة سابقة</span>
+                                </span>
+                              ) : null}
 
                               {todo.description?.includes('تكليف تنفيذي') && (
                                 <span
@@ -2033,20 +2058,25 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                           <button
                             type="button"
                             onClick={() => handleConvertToPlan(todo)}
-                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer min-h-[32px] ${
-                              todo.description?.includes('الخطة اليومية')
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 shadow-xs'
-                                : 'bg-[#0c3e35]/10 hover:bg-[#0c3e35] text-[#0c3e35] hover:text-white border-[#0c3e35]/20'
+                            disabled={Boolean(todo.isIncludedInTodayPlan)}
+                            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-extrabold transition border min-h-[32px] ${
+                              todo.isIncludedInTodayPlan
+                                ? 'bg-emerald-50 text-emerald-700/80 border-emerald-300/80 cursor-not-allowed opacity-85 select-none shadow-none'
+                                : 'bg-[#0c3e35]/10 hover:bg-[#0c3e35] text-[#0c3e35] hover:text-white border-[#0c3e35]/20 cursor-pointer shadow-xs hover:shadow-md'
                             }`}
                             title={
-                              todo.description?.includes('الخطة اليومية')
-                                ? 'المهمة مدرجة مسبقاً في الخطة اليومية (انقر لإدراج نسخة إضافية)'
+                              todo.isIncludedInTodayPlan
+                                ? 'المهمة مدرجة بالفعل في خطة اليوم ولا يمكن تكرارها في نفس اليوم (يمكن إدراجها مجدداً في أي يوم آخر)'
                                 : 'إدراج هذه المهمة في الخطة الصباحية الرسمية لليوم مع الحفاظ عليها في أجندتك'
                             }
                           >
-                            <FileText className="w-3.5 h-3.5" />
+                            {todo.isIncludedInTodayPlan ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            ) : (
+                              <FileText className="w-3.5 h-3.5 shrink-0" />
+                            )}
                             <span>
-                              {todo.description?.includes('الخطة اليومية') ? 'مدرجة بالخطة ✓' : 'إدراج بالخطة'}
+                              {todo.isIncludedInTodayPlan ? 'مدرجة بالخطة ✓' : 'إدراج بالخطة'}
                             </span>
                           </button>
                         )}
@@ -2555,11 +2585,17 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                   <p className="text-[11px] font-bold text-emerald-800 mt-1">
                     ✓ ستبقى المهمة محفوظة ونشطة في مفكرتك وأجندتك الخاصة كما هي دون أي حذف.
                   </p>
-                  {planConversionTodo.description?.includes('الخطة اليومية') && (
-                    <p className="text-[11px] font-bold text-amber-800 bg-amber-100/70 p-1.5 rounded-lg mt-2 border border-amber-300/50">
-                      ملاحظة: هذه المهمة مدرجة مسبقاً في الخطة. سيؤدي هذا الإجراء لإدراج نسخة إضافية منها في الخطة اليومية.
+                  {planConversionTodo.isIncludedInTodayPlan ? (
+                    <p className="text-[11px] font-bold text-red-800 bg-red-100/80 p-2 rounded-xl mt-2 border border-red-300/60 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                      <span>تنبيه: هذه المهمة مدرجة بالفعل في خطة اليوم ولا يمكن تكرار إدراجها في نفس اليوم.</span>
                     </p>
-                  )}
+                  ) : planConversionTodo.description?.includes('الخطة اليومية') ? (
+                    <p className="text-[11px] font-bold text-sky-800 bg-sky-100/80 p-2 rounded-xl mt-2 border border-sky-300/60 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                      <span>ملاحظة: سبق إدراج هذه المهمة في خطة سابقة. سيتم إدراجها الآن في الخطة الرسمية لليوم.</span>
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2577,8 +2613,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
               <button
                 type="button"
                 onClick={handleConfirmPlanConversion}
-                disabled={isConvertingToPlan}
-                className="flex items-center gap-1.5 px-5 py-2 text-xs font-extrabold rounded-xl bg-[#0c3e35] text-white hover:bg-[#05261e] transition shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+                disabled={isConvertingToPlan || Boolean(planConversionTodo.isIncludedInTodayPlan)}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-extrabold rounded-xl bg-[#0c3e35] text-white hover:bg-[#05261e] transition shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isConvertingToPlan ? (
                   <>

@@ -60,6 +60,59 @@ export class TodosService {
       ],
     });
 
+    // Fetch today's plan tasks if user is associated with a directorate to check for today's duplicates
+    const todayPlanTaskTitles = new Set<string>();
+    const todayPlanTaskTodoIds = new Set<string>();
+    const todayPlanTaskIds = new Set<string>();
+
+    if (user.directorateId) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const todayPlan = await this.prisma.dailyPlan.findUnique({
+        where: {
+          directorateId_planDate: {
+            directorateId: user.directorateId,
+            planDate: today,
+          },
+        },
+        include: {
+          tasks: {
+            select: { id: true, title: true, description: true },
+          },
+        },
+      });
+
+      if (todayPlan?.tasks) {
+        for (const t of todayPlan.tasks) {
+          if (t.title) {
+            todayPlanTaskTitles.add(t.title.trim().toLowerCase());
+          }
+          todayPlanTaskIds.add(t.id);
+          const match = t.description?.match(/\[معرف المفكرة:\s*([^\]]+)\]/);
+          if (match && match[1]) {
+            todayPlanTaskTodoIds.add(match[1].trim());
+          }
+        }
+      }
+    }
+
+    const enhancedTodos = todos.map((todo) => {
+      const cleanTitle = todo.title.trim().toLowerCase();
+      const inPlanByTitle = todayPlanTaskTitles.has(cleanTitle);
+      const inPlanByTodoId = todayPlanTaskTodoIds.has(todo.id);
+      const inPlanByTaskId = Array.from(todayPlanTaskIds).some((taskId) =>
+        todo.description?.includes(taskId)
+      );
+
+      const isIncludedInTodayPlan = inPlanByTitle || inPlanByTodoId || inPlanByTaskId;
+
+      return {
+        ...todo,
+        isIncludedInTodayPlan,
+      };
+    });
+
     // Compute user stats across all their todos
     const allUserTodos = await this.prisma.userTodo.findMany({
       where: { userId: user.id },
@@ -93,7 +146,7 @@ export class TodosService {
     };
 
     return {
-      todos,
+      todos: enhancedTodos,
       stats,
     };
   }
@@ -107,7 +160,37 @@ export class TodosService {
       throw new NotFoundException('المهمة غير موجودة أو لا تملك صلاحية الوصول إليها');
     }
 
-    return todo;
+    let isIncludedInTodayPlan = false;
+    if (user.directorateId) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayPlan = await this.prisma.dailyPlan.findUnique({
+        where: {
+          directorateId_planDate: {
+            directorateId: user.directorateId,
+            planDate: today,
+          },
+        },
+        include: {
+          tasks: { select: { id: true, title: true, description: true } },
+        },
+      });
+
+      if (todayPlan?.tasks) {
+        const cleanTitle = todo.title.trim().toLowerCase();
+        isIncludedInTodayPlan = todayPlan.tasks.some((t) => {
+          const titleMatch = t.title.trim().toLowerCase() === cleanTitle;
+          const descMatch = t.description?.includes(`[معرف المفكرة: ${todo.id}]`);
+          const todoTagMatch = todo.description?.includes(`[معرف المهمة: ${t.id}]`);
+          return titleMatch || descMatch || todoTagMatch;
+        });
+      }
+    }
+
+    return {
+      ...todo,
+      isIncludedInTodayPlan,
+    };
   }
 
   async createTodo(user: any, dto: CreateTodoDto) {
@@ -135,7 +218,8 @@ export class TodosService {
       },
     });
 
-    return todo;
+    this.eventsGateway.emitTodoUpdated(user.id);
+    return this.getTodoById(user, todo.id);
   }
 
   async updateTodo(user: any, id: string, dto: UpdateTodoDto) {
@@ -174,12 +258,13 @@ export class TodosService {
       data,
     });
 
-    if (dto.isCompleted !== undefined || dto.completionPercentage !== undefined) {
-      await this.syncLinkedEntities(updated, updated.isCompleted, updated.completionPercentage);
-    }
+    await this.syncLinkedEntities(updated, updated.isCompleted, updated.completionPercentage, {
+      title: dto.title,
+      priority: dto.priority,
+    });
 
     this.eventsGateway.emitTodoUpdated(user.id);
-    return updated;
+    return this.getTodoById(user, id);
   }
 
   async toggleTodo(user: any, id: string) {
@@ -198,7 +283,7 @@ export class TodosService {
 
     await this.syncLinkedEntities(updated, nextCompleted, nextPercentage);
     this.eventsGateway.emitTodoUpdated(user.id);
-    return updated;
+    return this.getTodoById(user, id);
   }
 
   async deleteTodo(user: any, id: string) {
@@ -266,6 +351,18 @@ export class TodosService {
       });
     }
 
+    // Check if task is already included in today's daily plan
+    const alreadyInPlan = plan.tasks.some((t) => {
+      const titleMatch = t.title.trim().toLowerCase() === todo.title.trim().toLowerCase();
+      const descMatch = t.description?.includes(`[معرف المفكرة: ${todo.id}]`);
+      const todoTagMatch = todo.description?.includes(`[معرف المهمة: ${t.id}]`);
+      return titleMatch || descMatch || todoTagMatch;
+    });
+
+    if (alreadyInPlan) {
+      throw new BadRequestException('هذه المهمة مدرجة بالفعل في الخطة اليومية لليوم ولا يمكن تكرارها في نفس اليوم');
+    }
+
     const maxOrder = plan.tasks.reduce((max, t) => Math.max(max, t.displayOrder), 0);
 
     // Synchronize initial percentage and status from the todo
@@ -276,11 +373,26 @@ export class TodosService {
       ? TaskStatus.COMPLETED
       : (currentPct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
 
+    const cleanDesc = todo.description
+      ? todo.description
+          .replace(/\[تم تحويلها إلى الخطة اليومية الصباحية\]/g, '')
+          .replace(/\[تم إدراجها في الخطة اليومية(?: بتاريخ:[^\]]+)?\]/g, '')
+          .replace(/\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g, '')
+          .replace(/\[تم إسنادها كتكليف تنفيذي\]/g, '')
+          .replace(/\[معرف المهمة:\s*[^\]]+\]/g, '')
+          .replace(/\[معرف التكليف:\s*[^\]]+\]/g, '')
+          .replace(/\[معرف المفكرة:\s*[^\]]+\]/g, '')
+          .trim()
+      : '';
+    const planTaskDesc = cleanDesc
+      ? `${cleanDesc}\n[معرف المفكرة: ${todo.id}]`
+      : `[معرف المفكرة: ${todo.id}]`;
+
     const planTask = await this.prisma.planTask.create({
       data: {
         dailyPlanId: plan.id,
         title: todo.title,
-        description: todo.description,
+        description: planTaskDesc,
         priority: todo.priority,
         estimatedHours: 1.0,
         status: initialStatus,
@@ -289,14 +401,10 @@ export class TodosService {
       },
     });
 
-    // Keep the todo active in the user's agenda and tag it with plan task ID
-    const planTag = `[تم إدراجها في الخطة اليومية] [معرف المهمة: ${planTask.id}]`;
-    const alreadyTagged = todo.description?.includes('الخطة اليومية');
-    const updatedDesc = alreadyTagged
-      ? todo.description.includes(planTask.id)
-        ? todo.description
-        : `${todo.description} [معرف المهمة: ${planTask.id}]`
-      : todo.description
+    // Keep the todo active in the user's agenda and tag it with plan task ID and today's date
+    const todayDateStr = today.toISOString().split('T')[0];
+    const planTag = `[تم إدراجها في الخطة اليومية بتاريخ: ${todayDateStr}] [معرف المهمة: ${planTask.id}]`;
+    const updatedDesc = todo.description
       ? `${todo.description}\n${planTag}`
       : planTag;
 
@@ -460,9 +568,14 @@ export class TodosService {
   }
 
   /**
-   * Sync completion of linked PlanTask or ExecutiveTask when todo completion is changed
+   * Sync completion of linked PlanTask or ExecutiveTask when todo completion or details are changed
    */
-  private async syncLinkedEntities(todo: any, isCompleted: boolean, percentage?: number) {
+  private async syncLinkedEntities(
+    todo: any,
+    isCompleted: boolean,
+    percentage?: number,
+    options?: { title?: string; priority?: Priority },
+  ) {
     try {
       const nextPercentage = typeof percentage === 'number'
         ? Math.min(100, Math.max(0, Math.round(percentage)))
@@ -520,13 +633,14 @@ export class TodosService {
           const taskTitle = (task.title || '').trim().toLowerCase();
           const isExplicitId = explicitPlanTaskIds.has(task.id);
           const isCarriedId = task.carriedFromTaskId && explicitPlanTaskIds.has(task.carriedFromTaskId);
+          const isTodoIdMatch = task.description?.includes(`[معرف المفكرة: ${todo.id}]`);
           const isTitleMatch =
             cleanTodoTitle &&
             (taskTitle === cleanTodoTitle ||
               cleanTodoTitle.includes(taskTitle) ||
               taskTitle.includes(cleanTodoTitle));
 
-          if (isExplicitId || isCarriedId || isTitleMatch) {
+          if (isExplicitId || isCarriedId || isTodoIdMatch || isTitleMatch) {
             tasksToUpdateMap.set(task.id, task);
             explicitPlanTaskIds.add(task.id);
 
@@ -559,12 +673,20 @@ export class TodosService {
 
       // Update all matched PlanTasks
       for (const [taskId, planTask] of tasksToUpdateMap) {
+        const updateData: any = {
+          status: nextStatus,
+          completionPercentage: nextPercentage,
+        };
+        if (options?.title !== undefined && options.title.trim()) {
+          updateData.title = options.title.trim();
+        }
+        if (options?.priority !== undefined) {
+          updateData.priority = options.priority;
+        }
+
         await this.prisma.planTask.update({
           where: { id: taskId },
-          data: {
-            status: nextStatus,
-            completionPercentage: nextPercentage,
-          },
+          data: updateData,
         });
 
         // Recalculate summary overall rate if daily summary exists
@@ -596,7 +718,7 @@ export class TodosService {
           directorateId: planTask.dailyPlan.directorateId,
           directorateName: planTask.dailyPlan.directorate.name,
           taskId: planTask.id,
-          taskTitle: planTask.title,
+          taskTitle: updateData.title || planTask.title,
           status: nextStatus,
           completionPercentage: nextPercentage,
         });

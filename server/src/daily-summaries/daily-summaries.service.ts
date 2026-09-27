@@ -253,6 +253,8 @@ export class DailySummariesService {
           await this.prisma.userTodo.update({
             where: { id: todo.id },
             data: {
+              title: cleanTitle,
+              priority: priority || todo.priority,
               isCompleted: willBeCompleted,
               completedAt: willBeCompleted ? (todo.completedAt || new Date()) : null,
               completionPercentage: pct,
