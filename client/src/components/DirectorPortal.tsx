@@ -53,6 +53,7 @@ import { getSocket } from '../lib/socket';
 import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
 import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
+import { getCleanTodoDescription } from './TodosView';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -885,9 +886,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           <h4 className="text-sm sm:text-base font-extrabold text-[#05261e] leading-snug">
             {task.title}
           </h4>
-          {task.description && (
+          {task.description && getCleanTodoDescription(task.description) && (
             <p className="text-xs text-[#5e736e] mt-1 bg-[#fcfbf7] p-2 rounded-lg border border-[#edece4] leading-relaxed">
-              {task.description}
+              {getCleanTodoDescription(task.description)}
             </p>
           )}
 
@@ -1180,7 +1181,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           const mappedTasks = currentPlan.tasks.map((t) => ({
             id: t.id,
             title: t.title,
-            description: t.description || '',
+            description: getCleanTodoDescription(t.description),
             priority: t.priority,
             estimatedHours: t.estimatedHours,
             carriedFromTaskId: t.carriedFromTaskId,
@@ -1486,7 +1487,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         setTasks(
           res.tasks.map((t: any) => ({
             title: t.title,
-            description: t.description || '',
+            description: getCleanTodoDescription(t.description),
             priority: (t.priority as Priority) || 'NORMAL',
             estimatedHours: t.estimatedHours || 1.5,
             carriedFromTaskId: t.carriedFromTaskId || t.id,
@@ -1532,7 +1533,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     const newTask = {
       title: incTask.title,
-      description: incTask.description || '',
+      description: getCleanTodoDescription(incTask.description),
       priority: incTask.priority,
       estimatedHours: incTask.estimatedHours || 1.5,
       carriedFromTaskId: incTask.id,
@@ -1559,7 +1560,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       .filter((t) => !currentTitles.has(t.title.trim().toLowerCase()))
       .map((incTask) => ({
         title: incTask.title,
-        description: incTask.description || '',
+        description: getCleanTodoDescription(incTask.description),
         priority: incTask.priority,
         estimatedHours: incTask.estimatedHours || 1.5,
         carriedFromTaskId: incTask.id,
@@ -1853,7 +1854,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const handleStartEditTask = (task: PlanTask) => {
     setEditingTaskId(task.id);
     setEditTaskTitle(task.title);
-    setEditTaskDesc(task.description || '');
+    setEditTaskDesc(getCleanTodoDescription(task.description));
   };
 
   const handleSaveInlineEdit = async (taskId: string) => {

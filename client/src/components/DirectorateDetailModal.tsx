@@ -27,6 +27,7 @@ import { DynamicIcon } from './Icons';
 import { User, Attachment } from '../types';
 import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
+import { getCleanTodoDescription } from './TodosView';
 
 interface DirectorateDetailModalProps {
   item: DirectorateOverviewItem | null;
@@ -352,7 +353,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                         {getStatusBadge(t.status)}
                       </div>
                     </div>
-                    {t.description && <p className="text-[#5e736e] leading-relaxed">{t.description}</p>}
+                    {t.description && getCleanTodoDescription(t.description) && <p className="text-[#5e736e] leading-relaxed">{getCleanTodoDescription(t.description)}</p>}
                     
                     {/* Progress */}
                     <div className="space-y-1 bg-[#f4f3ed] p-2 rounded-lg">
@@ -452,8 +453,8 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                             </span>
                           )}
                         </div>
-                        {task.description && (
-                          <p className="text-[11px] text-[#5e736e]">{task.description}</p>
+                        {task.description && getCleanTodoDescription(task.description) && (
+                          <p className="text-[11px] text-[#5e736e]">{getCleanTodoDescription(task.description)}</p>
                         )}
                       </div>
                     </div>
