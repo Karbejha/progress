@@ -22,7 +22,7 @@ services:
       - ports_network
 
   server:
-    image: ${SERVER_IMAGE:-ghcr.io/karbejha/progress/server:latest}
+    image: ${SERVER_IMAGE:-ports-server:latest}
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -47,7 +47,7 @@ services:
       - ports_network
 
   client:
-    image: ${CLIENT_IMAGE:-ghcr.io/karbejha/progress/client:latest}
+    image: ${CLIENT_IMAGE:-ports-client:latest}
     build:
       context: ./client
       dockerfile: Dockerfile

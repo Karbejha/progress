@@ -7,6 +7,9 @@ const nextConfig = {
     unoptimized: true,
   },
   reactStrictMode: false,
+  experimental: {
+    cpus: 1,
+  },
   ...(isExport
     ? {}
     : {
