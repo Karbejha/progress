@@ -284,6 +284,8 @@ export class NotificationsService implements OnModuleInit {
     try {
       this.logger.log('Checking and backfilling historical notifications...');
 
+      const recentThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
       const execUsers = await this.prisma.user.findMany({
         where: { role: { in: [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER] } },
         select: { id: true, role: true },
@@ -291,8 +293,9 @@ export class NotificationsService implements OnModuleInit {
 
       if (execUsers.length === 0) return;
 
-      // 1. Daily Plans
+      // 1. Daily Plans (Recent 7 days only)
       const plans = await this.prisma.dailyPlan.findMany({
+        where: { createdAt: { gte: recentThreshold } },
         include: { directorate: true, tasks: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -327,8 +330,9 @@ export class NotificationsService implements OnModuleInit {
         }
       }
 
-      // 2. Daily Summaries
+      // 2. Daily Summaries (Recent 7 days only)
       const summaries = await this.prisma.dailySummary.findMany({
+        where: { createdAt: { gte: recentThreshold } },
         include: { directorate: true, user: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -364,8 +368,9 @@ export class NotificationsService implements OnModuleInit {
         }
       }
 
-      // 3. Executive Feedbacks & Replies
+      // 3. Executive Feedbacks & Replies (Recent 7 days only)
       const feedbacks = await this.prisma.executiveFeedback.findMany({
+        where: { createdAt: { gte: recentThreshold } },
         include: { directorate: true, fromUser: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -437,8 +442,9 @@ export class NotificationsService implements OnModuleInit {
         }
       }
 
-      // 4. Announcements
+      // 4. Announcements (Recent 7 days only)
       const announcements = await this.prisma.announcement.findMany({
+        where: { createdAt: { gte: recentThreshold } },
         include: { author: true },
         orderBy: { createdAt: 'desc' },
       });
@@ -473,8 +479,9 @@ export class NotificationsService implements OnModuleInit {
         }
       }
 
-      // 5. Executive Tasks
+      // 5. Executive Tasks (Recent 7 days only)
       const execTasks = await this.prisma.executiveTask.findMany({
+        where: { createdAt: { gte: recentThreshold } },
         include: { directorate: true, assignedBy: true },
         orderBy: { createdAt: 'desc' },
       });

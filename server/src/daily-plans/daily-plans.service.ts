@@ -296,16 +296,16 @@ export class DailyPlansService {
         }
       }
 
-      this.eventsGateway.emitPlanSubmitted({
-        directorateId: updated.directorateId,
-        directorateName: updated.directorate.name,
-        directorName: user.fullName,
-        tasksCount: updated.tasks.length,
-        planDate: updated.planDate.toISOString(),
-      });
-
-      // Persist notification for executive users only if not silent auto-save
+      // Emit real-time notification to executive leadership only if NOT silent auto-save
       if (!dto.isSilent) {
+        this.eventsGateway.emitPlanSubmitted({
+          directorateId: updated.directorateId,
+          directorateName: updated.directorate.name,
+          directorName: user.fullName,
+          tasksCount: updated.tasks.length,
+          planDate: updated.planDate.toISOString(),
+        });
+
         this.notificationsService.createNotificationForRoles(
           [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
           {
@@ -375,31 +375,33 @@ export class DailyPlansService {
       },
     });
 
-    this.eventsGateway.emitPlanSubmitted({
-      directorateId: created.directorateId,
-      directorateName: created.directorate.name,
-      directorName: user.fullName,
-      tasksCount: created.tasks.length,
-      planDate: created.planDate.toISOString(),
-    });
+    if (!dto.isSilent) {
+      this.eventsGateway.emitPlanSubmitted({
+        directorateId: created.directorateId,
+        directorateName: created.directorate.name,
+        directorName: user.fullName,
+        tasksCount: created.tasks.length,
+        planDate: created.planDate.toISOString(),
+      });
 
-    // Persist notification for executive users
-    this.notificationsService.createNotificationForRoles(
-      [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
-      {
-        type: 'plan',
-        title: 'رفع خطة صباحية',
-        message: `قامت (${created.directorate.name}) باعتماد ورفع خطة اليوم (${created.tasks.length} مهام).`,
-        referenceId: `plan-sub-${created.directorateId}-${created.planDate.toISOString().split('T')[0]}`,
-        metadata: {
-          directorateId: created.directorateId,
-          directorateName: created.directorate.name,
-          directorName: user.fullName,
-          tasksCount: created.tasks.length,
-          planDate: created.planDate.toISOString(),
+      // Persist notification for executive users
+      this.notificationsService.createNotificationForRoles(
+        [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+        {
+          type: 'plan',
+          title: 'رفع خطة صباحية',
+          message: `قامت (${created.directorate.name}) باعتماد ورفع خطة اليوم (${created.tasks.length} مهام).`,
+          referenceId: `plan-sub-${created.directorateId}-${created.planDate.toISOString().split('T')[0]}`,
+          metadata: {
+            directorateId: created.directorateId,
+            directorateName: created.directorate.name,
+            directorName: user.fullName,
+            tasksCount: created.tasks.length,
+            planDate: created.planDate.toISOString(),
+          },
         },
-      },
-    );
+      );
+    }
 
     return created;
   }
@@ -487,14 +489,14 @@ export class DailyPlansService {
         completionNote: updatedTask.completionNote || undefined,
       });
 
-      // Persist notification for executive users so it isn't lost on refresh
+      // Persist notification for executive users so it isn't lost on refresh (stable referenceId per task)
       this.notificationsService.createNotificationForRoles(
         [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
         {
           type: 'task',
           title: 'تحديث حالة مهمة',
           message: `قامت (${task.dailyPlan.directorate.name}) بتحديث: "${updatedTask.title}" (${updatedTask.completionPercentage}%).`,
-          referenceId: `task-up-${updatedTask.id}-${new Date().getTime()}`,
+          referenceId: `task-up-${updatedTask.id}`,
           metadata: {
             directorateId: task.dailyPlan.directorateId,
             directorateName: task.dailyPlan.directorate.name,

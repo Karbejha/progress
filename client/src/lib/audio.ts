@@ -36,11 +36,18 @@ export function setSoundEnabled(enabled: boolean): void {
   window.dispatchEvent(new CustomEvent('ports_sound_toggled', { detail: { enabled } }));
 }
 
+let lastChimeTime = 0;
+const CHIME_THROTTLE_MS = 2500;
+
 /**
  * Play a warm, subtle 2-tone chime for executive tasks and official directives
  */
 export function playSubtleChime(): void {
   if (!isSoundEnabled()) return;
+  const nowMs = Date.now();
+  if (nowMs - lastChimeTime < CHIME_THROTTLE_MS) return;
+  lastChimeTime = nowMs;
+
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -58,6 +65,10 @@ export function playSubtleChime(): void {
  */
 export function playUrgentAlert(): void {
   if (!isSoundEnabled()) return;
+  const nowMs = Date.now();
+  if (nowMs - lastChimeTime < CHIME_THROTTLE_MS) return;
+  lastChimeTime = nowMs;
+
   const ctx = getAudioContext();
   if (!ctx) return;
 

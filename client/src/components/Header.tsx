@@ -417,27 +417,44 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const addNotif = (notif: Omit<LiveNotification, 'id' | 'time'> & { id?: string }) => {
+      const notifId = notif.id || Math.random().toString();
+      const currentReads = getReadNotificationIds(currentUser?.id || '');
+      const isAlreadyRead =
+        currentReads.includes(notifId) ||
+        (!!notif.fullPayload?.referenceId && currentReads.includes(notif.fullPayload.referenceId));
+
       const newN: LiveNotification = {
         ...notif,
-        id: notif.id || Math.random().toString(),
+        id: notifId,
         time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
       };
+
       setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 150)]);
-      setUnreadCount((c) => c + 1);
+      if (!isAlreadyRead) {
+        setUnreadCount((c) => c + 1);
+      }
     };
 
     const handlePlanSubmitted = (data: any) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (!isExec) return;
 
+      const dateStr = data.planDate ? data.planDate.split('T')[0] : new Date().toISOString().split('T')[0];
+      const notifId = `plan-sub-${data.directorateId || Math.random()}-${dateStr}`;
+      const currentReads = getReadNotificationIds(currentUser?.id || '');
+      const isAlreadyRead = currentReads.includes(notifId);
+
       addNotif({
-        id: `plan-sub-${data.directorateId || Math.random()}-${new Date().toISOString().split('T')[0]}`,
+        id: notifId,
         title: 'رفع خطة صباحية',
         message: `قامت ${data.directorateName} باعتماد خطة اليوم (${data.tasksCount} مهام).`,
         type: 'plan',
         fullPayload: data,
       });
-      playSubtleChime();
+
+      if (!isAlreadyRead) {
+        playSubtleChime();
+      }
     };
 
     const handleTaskUpdated = (data: any) => {
@@ -457,17 +474,24 @@ export const Header: React.FC<HeaderProps> = ({
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (!isExec) return;
 
+      const notifId = `summary-sub-${data.directorateId || Math.random()}-${new Date().toISOString().split('T')[0]}`;
+      const currentReads = getReadNotificationIds(currentUser?.id || '');
+      const isAlreadyRead = currentReads.includes(notifId);
+
       addNotif({
-        id: `summary-sub-${data.directorateId || Math.random()}-${new Date().toISOString().split('T')[0]}`,
+        id: notifId,
         title: 'تسليم ملخص الإنجاز',
         message: `سلّمت ${data.directorateName} ملخص نهاية الدوام بنسبة ${data.overallCompletionRate}%.`,
         type: 'summary',
         fullPayload: data,
       });
-      if (data.urgentFlag) {
-        playUrgentAlert();
-      } else {
-        playSubtleChime();
+
+      if (!isAlreadyRead) {
+        if (data.urgentFlag) {
+          playUrgentAlert();
+        } else {
+          playSubtleChime();
+        }
       }
     };
 
@@ -520,6 +544,9 @@ export const Header: React.FC<HeaderProps> = ({
     const handleAnnouncementCreated = (data: any) => {
       if (data.authorId && data.authorId === currentUser?.id) return;
 
+      const currentReads = getReadNotificationIds(currentUser?.id || '');
+      const isAlreadyRead = currentReads.includes(data.id);
+
       addNotif({
         id: data.id,
         title: 'تعميم إداري رسمي',
@@ -533,27 +560,33 @@ export const Header: React.FC<HeaderProps> = ({
         fullPayload: data,
       });
 
-      if (data.priority === 'URGENT' || data.priority === 'HIGH') {
-        playUrgentAlert();
-      } else {
-        playSubtleChime();
-      }
+      if (!isAlreadyRead) {
+        if (data.priority === 'URGENT' || data.priority === 'HIGH') {
+          playUrgentAlert();
+        } else {
+          playSubtleChime();
+        }
 
-      notifyCircular({
-        id: data.id,
-        title: data.title,
-        content: data.content,
-        authorName: data.authorName || 'المدير العام للموانئ',
-        authorTitle: data.authorTitle || 'المدير العام',
-        priority: data.priority || 'NORMAL',
-        createdAt: data.createdAt || new Date().toISOString(),
-      });
+        notifyCircular({
+          id: data.id,
+          title: data.title,
+          content: data.content,
+          authorName: data.authorName || 'المدير العام للموانئ',
+          authorTitle: data.authorTitle || 'المدير العام',
+          priority: data.priority || 'NORMAL',
+          createdAt: data.createdAt || new Date().toISOString(),
+        });
+      }
     };
 
     const handleExecutiveTaskCreated = (data: any) => {
       if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId === data.directorateId) {
+        const notifId = `exec-task-${data.task?.id || Math.random()}`;
+        const currentReads = getReadNotificationIds(currentUser?.id || '');
+        const isAlreadyRead = currentReads.includes(notifId);
+
         addNotif({
-          id: `exec-task-${data.task?.id || Math.random()}`,
+          id: notifId,
           title: data.task?.isShared ? 'تكليف مشترك من المدير العام' : 'تكليف جديد من المدير العام',
           message: `وردك تكليف من المدير العام: "${data.task?.title}"`,
           content: data.task?.description || data.task?.title,
@@ -562,29 +595,39 @@ export const Header: React.FC<HeaderProps> = ({
           type: 'feedback',
           fullPayload: data,
         });
-        playUrgentAlert();
 
-        notifyExecutiveTask({
-          id: data.task?.id || `${Date.now()}`,
-          title: data.task?.title,
-          directorateName: data.directorateName,
-          assignedByName: data.assignedByName,
-          isShared: data.task?.isShared,
-        });
+        if (!isAlreadyRead) {
+          playUrgentAlert();
+
+          notifyExecutiveTask({
+            id: data.task?.id || `${Date.now()}`,
+            title: data.task?.title,
+            directorateName: data.directorateName,
+            assignedByName: data.assignedByName,
+            isShared: data.task?.isShared,
+          });
+        }
       }
     };
 
     const handleExecutiveTaskUpdated = (data: any) => {
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (isExec && data.updatedByRole === 'DIRECTOR') {
+        const notifId = `exec-task-update-${data.task?.id || Math.random()}`;
+        const currentReads = getReadNotificationIds(currentUser?.id || '');
+        const isAlreadyRead = currentReads.includes(notifId);
+
         addNotif({
-          id: `exec-task-update-${data.task?.id || Math.random()}-${new Date().getTime()}`,
+          id: notifId,
           title: 'تحديث إنجاز تكليف المدير العام',
           message: `قامت (${data.directorateName}) بتحديث التكليف "${data.task?.title}" إلى (${data.task?.completionPercentage}%).`,
           type: 'task',
           fullPayload: data,
         });
-        playSubtleChime();
+
+        if (!isAlreadyRead) {
+          playSubtleChime();
+        }
       }
     };
 
