@@ -35,12 +35,7 @@ RUN apk add --no-cache curl openssl
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# IMPORTANT:
-# Install project dependencies, including the project's
-# own ts-node/typescript versions used by the seed.
-RUN npm ci --legacy-peer-deps && \
-    npx prisma generate
-
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 COPY docker-entrypoint.sh ./

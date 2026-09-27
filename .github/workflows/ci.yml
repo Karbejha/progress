@@ -63,6 +63,7 @@ jobs:
   docker-build-verification:
     name: Docker Images Build Verification
     runs-on: ubuntu-latest
+    if: github.ref_name != 'main' && github.ref_name != 'master'
     needs: [backend-ci, frontend-ci]
 
     steps:

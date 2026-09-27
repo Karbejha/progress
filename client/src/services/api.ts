@@ -25,7 +25,11 @@ export const getApiBaseUrl = (): string => {
     }
   }
   if (!url) {
-    url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').trim();
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      url = `${window.location.origin}/api`;
+    } else {
+      url = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').trim();
+    }
   }
 
   url = url.replace(/\/+$/, '');

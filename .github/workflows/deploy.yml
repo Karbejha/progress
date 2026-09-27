@@ -1,4 +1,4 @@
-name: CD - Deploy Progress
+name: CD - Build & Deploy Progress
 
 on:
   push:
@@ -12,13 +12,75 @@ concurrency:
   group: progress-production-deployment
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
+  # ========================================================
+  # Job 1: Build Docker images on GitHub Cloud Runners
+  # High CPU/RAM compilation happens in the cloud for free
+  # ========================================================
+  build-and-push:
+    name: Build & Push Images (GitHub Cloud)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Generate Lowercase Image Names
+        id: prep
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "server_image=ghcr.io/${REPO_LOWER}/server" >> $GITHUB_OUTPUT
+          echo "client_image=ghcr.io/${REPO_LOWER}/client" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Backend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.prep.outputs.server_image }}:latest
+            ${{ steps.prep.outputs.server_image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Frontend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://progress.gdp.gov.sy/api
+          tags: |
+            ${{ steps.prep.outputs.client_image }}:latest
+            ${{ steps.prep.outputs.client_image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ========================================================
+  # Job 2: Deploy to Production Windows Server
+  # Only pulls the ready images and restarts (0% build CPU/Disk)
+  # ========================================================
   deploy:
-    name: Deploy to Progress Windows Server
-
+    name: Deploy to Windows Server (Pull & Restart)
     runs-on: [self-hosted, Windows, X64]
-
-    timeout-minutes: 30
+    needs: [build-and-push]
+    timeout-minutes: 15
 
     steps:
       - name: Show deployment information
@@ -84,36 +146,46 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-
           Set-Location "C:\Docker\progress"
-
           docker compose config
-
           if ($LASTEXITCODE -ne 0) {
               throw "docker compose config failed."
           }
 
-      - name: Build and deploy application
+      - name: Log in to GHCR on Server
+        shell: powershell
+        run: |
+          Write-Host "Authenticating Docker with GitHub Container Registry..."
+          $token = "${{ secrets.GITHUB_TOKEN }}"
+          $token | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          if ($LASTEXITCODE -ne 0) {
+              throw "Docker login to GHCR failed."
+          }
+
+      - name: Pull pre-built images and restart containers
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-
           Set-Location "C:\Docker\progress"
 
-          Write-Host "Building server container..."
-          docker compose build server
+          Write-Host "Pulling pre-built containers from GHCR (zero CPU load)..."
+          docker compose pull client server
 
-          Write-Host "Building client container..."
-          docker compose build client
+          if ($LASTEXITCODE -ne 0) {
+              throw "docker compose pull failed."
+          }
 
-          Write-Host "Starting updated application containers..."
+          Write-Host "Applying update (restarting containers)..."
           docker compose up -d client server
 
           if ($LASTEXITCODE -ne 0) {
-              throw "Docker deployment failed."
+              throw "Docker container restart failed."
           }
 
-          Write-Host "Deployment finished successfully."
+          Write-Host "Cleaning up dangling images..."
+          docker image prune -f
+
+          Write-Host "Deployment completed successfully with 0% server build load!"
 
       - name: Show container status
         shell: powershell

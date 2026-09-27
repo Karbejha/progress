@@ -82,15 +82,11 @@ docker compose up -d --build
 - يتحقق من نجاح بناء صور الـ Docker دون أخطاء.
 
 ### ب. مسار النشر التلقائي للسيرفر (`.github/workflows/deploy.yml`):
-- يعمل عند الدمج في فرع `main` أو إصدار Version Tag جديد (`v1.0.0`).
-- يبني صور الـ Docker ويرفعها تلقائياً إلى GitHub Packages Registry (GHCR).
-- يتصل بالسيرفر عبر SSH لتطبيق التحديث وتشغيل الحاويات الجديدة فوراً.
+- يعمل تلقائياً عند أي `push` إلى فرع `main` أو `master` (أو تشغيل يدوي).
+- **المرحلة الأولى (GitHub Cloud Runners):** يتم بناء صور الـ Docker للفرونت إند والباك إند داخل سحابة GitHub المجانية السريعة (`ubuntu-latest`) وتخزينها في مستودع الحزم **GitHub Container Registry (GHCR)** مع كاش طبقات فائق السرعة.
+- **المرحلة الثانية (سيرفر الإنتاج - Windows Self-Hosted Runner):** يقوم السيرفر فقط بسحب الكود عبر `git pull` ثم سحب الصور الجاهزة عبر `docker compose pull` وإعادة تشغيل الحاويات عبر `docker compose up -d`، وحذف الصور القديمة (`docker image prune -f`).
+- **الميزة:** انعدام أي ضغط على معالج أو قرص أو ذاكرة السيرفر أثناء النشر (0% Build CPU/Disk Load)، وسرعة نشر فائقة خلال ثوانٍ معدودة.
 
-### لتفعيل النشر التلقائي عبر SSH، أضف المتغيرات التالية في إعدادات مستودع GitHub (Repository Secrets):
-- `SERVER_HOST`: عنوان IP أو دومين السيرفر الخاص بك.
-- `SERVER_USER`: اسم المستخدم (مثلاً `root` أو `ubuntu`).
-- `SERVER_SSH_KEY`: مفتاح الـ SSH الخاص للاتصال بالسيرفر.
-- `PROD_API_URL`: رابط الـ API الإنتاجي (مثلاً `https://api.ports.gov.sy` أو `http://YOUR_SERVER_IP:4000`).
 
 ---
 
