@@ -320,9 +320,11 @@ export class ExecutiveService {
       });
     }
 
-    // Broadcast through socket
+    // Broadcast through socket (include feedbackId for client deduplication)
     this.eventsGateway.emitFeedbackSent({
+      feedbackId: feedback.id,
       directorateId: feedback.directorateId,
+      fromUserId: user.id,
       fromUserName: user.fullName,
       fromUserTitle: user.title,
       fromRole: user.role,

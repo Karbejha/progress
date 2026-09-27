@@ -429,10 +429,17 @@ export const Header: React.FC<HeaderProps> = ({
         time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setNotifications((prev) => [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 150)]);
-      if (!isAlreadyRead) {
-        setUnreadCount((c) => c + 1);
-      }
+      setNotifications((prev) => {
+        const wasAlreadyInList = prev.some((p) => p.id === newN.id);
+        const updatedList = [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 150)];
+
+        // Only increment unread count if this is a genuinely new notification (not already in list and not already read)
+        if (!isAlreadyRead && !wasAlreadyInList) {
+          setUnreadCount((c) => c + 1);
+        }
+
+        return updatedList;
+      });
     };
 
     const handlePlanSubmitted = (data: any) => {
@@ -461,8 +468,10 @@ export const Header: React.FC<HeaderProps> = ({
       const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
       if (!isExec) return;
 
+      // Use deterministic ID: same task same day = same notification (replaces rather than duplicates)
+      const taskKey = data.taskId || data.id || `unknown-${Date.now()}`;
       addNotif({
-        id: `task-up-${data.taskId || Math.random()}`,
+        id: `task-up-${taskKey}`,
         title: 'تحديث حالة مهمة',
         message: `قامت ${data.directorateName} بتحديث: "${data.taskTitle}" (${data.completionPercentage}%).`,
         type: 'task',
@@ -496,11 +505,18 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleFeedbackSent = (data: any) => {
+      // Use deterministic ID based on feedback data to prevent duplicates on reconnection
+      const feedbackKey = data.feedbackId || data.id || data.createdAt || `${data.fromUserId}-${data.feedbackText?.slice(0, 20)}-${data.dailyPlanId || ''}`;
+
       if (data.isReply || data.fromRole === 'DIRECTOR') {
         const isExecutive = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
         if (isExecutive) {
+          const notifId = `feedback-reply-${feedbackKey}`;
+          const currentReads = getReadNotificationIds(currentUser?.id || '');
+          const isAlreadyRead = currentReads.includes(notifId);
+
           addNotif({
-            id: `feedback-reply-${Math.random()}`,
+            id: notifId,
             title: `رد وتوضيح من ${data.fromUserName} (${data.directorateName || 'المديرية'})`,
             message: data.feedbackText,
             content: data.feedbackText,
@@ -509,19 +525,26 @@ export const Header: React.FC<HeaderProps> = ({
             type: 'feedback',
             fullPayload: data,
           });
-          playSubtleChime();
 
-          notifyFeedback({
-            directorateId: data.directorateId,
-            fromUserName: data.fromUserName,
-            feedbackText: data.feedbackText,
-            rating: data.rating,
-          });
+          if (!isAlreadyRead) {
+            playSubtleChime();
+
+            notifyFeedback({
+              directorateId: data.directorateId,
+              fromUserName: data.fromUserName,
+              feedbackText: data.feedbackText,
+              rating: data.rating,
+            });
+          }
         }
       } else {
         if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
+          const notifId = `feedback-${feedbackKey}`;
+          const currentReads = getReadNotificationIds(currentUser?.id || '');
+          const isAlreadyRead = currentReads.includes(notifId);
+
           addNotif({
-            id: `feedback-${Math.random()}`,
+            id: notifId,
             title: 'توجيه من المدير العام',
             message: data.feedbackText,
             content: data.feedbackText,
@@ -529,14 +552,17 @@ export const Header: React.FC<HeaderProps> = ({
             type: 'feedback',
             fullPayload: data,
           });
-          playSubtleChime();
 
-          notifyFeedback({
-            directorateId: data.directorateId,
-            fromUserName: data.fromUserName,
-            feedbackText: data.feedbackText,
-            rating: data.rating,
-          });
+          if (!isAlreadyRead) {
+            playSubtleChime();
+
+            notifyFeedback({
+              directorateId: data.directorateId,
+              fromUserName: data.fromUserName,
+              feedbackText: data.feedbackText,
+              rating: data.rating,
+            });
+          }
         }
       }
     };

@@ -260,7 +260,9 @@ export class TodosService {
 
     await this.syncLinkedEntities(updated, updated.isCompleted, updated.completionPercentage, {
       title: dto.title,
+      description: dto.description,
       priority: dto.priority,
+      dueDate: dto.dueDate,
     });
 
     this.eventsGateway.emitTodoUpdated(user.id);
@@ -574,7 +576,7 @@ export class TodosService {
     todo: any,
     isCompleted: boolean,
     percentage?: number,
-    options?: { title?: string; priority?: Priority },
+    options?: { title?: string; description?: string; priority?: Priority; dueDate?: string | null },
   ) {
     try {
       const nextPercentage = typeof percentage === 'number'
@@ -680,6 +682,24 @@ export class TodosService {
         if (options?.title !== undefined && options.title.trim()) {
           updateData.title = options.title.trim();
         }
+        if (options?.description !== undefined) {
+          // Clean system tags from the description, then re-append the todo-link tag
+          const cleanDesc = (options.description || '')
+            .replace(/\[تم تحويلها إلى الخطة اليومية الصباحية\]/g, '')
+            .replace(/\[تم إدراجها في الخطة اليومية(?: بتاريخ:[^\]]+)?\]/g, '')
+            .replace(/\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g, '')
+            .replace(/\[تم إسنادها كتكليف تنفيذي\]/g, '')
+            .replace(/\[معرف المهمة:\s*[^\]]+\]/g, '')
+            .replace(/\[معرف التكليف:\s*[^\]]+\]/g, '')
+            .replace(/\[معرف المفكرة:\s*[^\]]+\]/g, '')
+            .trim();
+          // Preserve the todo-link tag in PlanTask description
+          const todoLinkTag = `[معرف المفكرة: ${todo.id}]`;
+          const existingHasTag = planTask.description?.includes(todoLinkTag);
+          updateData.description = cleanDesc
+            ? `${cleanDesc}\n${existingHasTag ? todoLinkTag : todoLinkTag}`
+            : (existingHasTag ? todoLinkTag : null);
+        }
         if (options?.priority !== undefined) {
           updateData.priority = options.priority;
         }
@@ -757,12 +777,35 @@ export class TodosService {
           include: { directorate: true },
         });
         if (execTask) {
+          const execUpdateData: any = {
+            status: nextStatus,
+            completionPercentage: nextPercentage,
+          };
+          if (options?.title !== undefined && options.title.trim()) {
+            execUpdateData.title = options.title.trim();
+          }
+          if (options?.description !== undefined) {
+            // Clean system tags from the description for executive tasks
+            const cleanExecDesc = (options.description || '')
+              .replace(/\[تم تحويلها إلى الخطة اليومية الصباحية\]/g, '')
+              .replace(/\[تم إدراجها في الخطة اليومية(?: بتاريخ:[^\]]+)?\]/g, '')
+              .replace(/\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g, '')
+              .replace(/\[تم إسنادها كتكليف تنفيذي\]/g, '')
+              .replace(/\[معرف المهمة:\s*[^\]]+\]/g, '')
+              .replace(/\[معرف التكليف:\s*[^\]]+\]/g, '')
+              .replace(/\[معرف المفكرة:\s*[^\]]+\]/g, '')
+              .trim();
+            execUpdateData.description = cleanExecDesc || null;
+          }
+          if (options?.priority !== undefined) {
+            execUpdateData.priority = options.priority;
+          }
+          if (options?.dueDate !== undefined) {
+            execUpdateData.dueDate = options.dueDate ? new Date(options.dueDate) : null;
+          }
           const updated = await this.prisma.executiveTask.update({
             where: { id: execTaskId },
-            data: {
-              status: nextStatus,
-              completionPercentage: nextPercentage,
-            },
+            data: execUpdateData,
           });
           this.eventsGateway.emitExecutiveTaskUpdated({
             task: updated,

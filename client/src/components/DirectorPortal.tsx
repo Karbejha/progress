@@ -3546,9 +3546,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   </div>
 
                   <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
-                    <span className="text-gray-300 text-[11px] block mb-1">إجمالي ساعات العمل</span>
-                    <strong className="text-lg sm:text-xl font-black text-white">
-                      {loadingReport ? '...' : `${reportData?.stats.totalHours || 0} س`}
+                    <span className="text-gray-300 text-[11px] block mb-1">مهام قيد المتابعة والتنفيذ</span>
+                    <strong className="text-lg sm:text-xl font-black text-sky-300">
+                      {loadingReport ? '...' : `${reportData?.stats.inProgressTasksCount || 0} مهمة`}
                     </strong>
                   </div>
                 </div>

@@ -368,10 +368,10 @@ function DirectorReportContent() {
 
             <div>
               <span className="text-[#5e736e] print:text-gray-700 block mb-0.5 font-semibold text-[11px] print:text-[9px]">
-                ساعات العمل الموثقة
+                مهام قيد المتابعة والتنفيذ
               </span>
-              <strong className="text-base sm:text-lg print:text-[14px] font-black text-[#0c3e35] print:text-black">
-                {data.stats.totalHours} ساعة
+              <strong className="text-base sm:text-lg print:text-[14px] font-black text-sky-800 print:text-black">
+                {data.stats.inProgressTasksCount} مهمة
               </strong>
             </div>
           </div>
@@ -419,9 +419,8 @@ function DirectorReportContent() {
                     <thead>
                       <tr className="bg-[#edece4] print:bg-gray-200 border-b-2 border-[#0c3e35] print:border-black text-[#0c3e35] print:text-black">
                         <th className="p-2 print:py-1 print:px-1 font-bold print:w-[25px] text-center">#</th>
-                        <th className="p-2 print:py-1 print:px-1.5 font-bold print:w-[220px]">المهمة المنجزة</th>
+                        <th className="p-2 print:py-1 print:px-1.5 font-bold print:w-[240px]">المهمة المنجزة</th>
                         <th className="p-2 print:py-1 print:px-1 text-center print:w-[65px]">الأولوية</th>
-                        <th className="p-2 print:py-1 print:px-1 text-center print:w-[50px]">الساعات</th>
                         <th className="p-2 print:py-1 print:px-1.5 text-center print:w-[80px]">تاريخ الإنجاز</th>
                         <th className="p-2 print:py-1 print:px-1.5 font-bold">ملاحظات ونتائج الإنجاز الفعلي</th>
                         <th className="p-2 print:py-1 print:px-1 text-center print:w-[70px]">المصدر</th>
@@ -448,9 +447,6 @@ function DirectorReportContent() {
                             <span className="px-1.5 py-0.5 rounded text-[10px] print:text-[8px] font-bold bg-gray-100 text-gray-800 print:bg-transparent print:p-0">
                               {getPriorityLabel(task.priority)}
                             </span>
-                          </td>
-                          <td className="p-2 print:py-[3px] print:px-1 text-center text-[#5e736e] print:text-black font-semibold whitespace-nowrap">
-                            {task.estimatedHours} س
                           </td>
                           <td className="p-2 print:py-[3px] print:px-1.5 text-center text-[#5e736e] print:text-black whitespace-nowrap font-medium text-[11px] print:text-[8.5px]">
                             {task.planDate ? new Date(task.planDate).toLocaleDateString('ar-SY') : '-'}

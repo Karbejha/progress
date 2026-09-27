@@ -108,7 +108,9 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   emitFeedbackSent(payload: {
+    feedbackId?: string;
     directorateId: string;
+    fromUserId?: string;
     fromUserName: string;
     feedbackText: string;
     rating?: number;

@@ -641,7 +641,38 @@ export class DailyPlansService {
       if (existingTodos.length > 0) {
         for (const todo of existingTodos) {
           const alreadyHasTag = todo.description?.includes(taskId);
+
+          // Build updated description: merge cleaned PlanTask description with existing TODO tags
           let newDesc = todo.description || '';
+          if (description !== undefined && description !== null) {
+            // Clean PlanTask description from system tags
+            const cleanPlanDesc = (description || '')
+              .replace(/\[معرف المفكرة:\s*[^\]]+\]/g, '')
+              .replace(/\[معرف المهمة:\s*[^\]]+\]/g, '')
+              .replace(/\[معرف التكليف:\s*[^\]]+\]/g, '')
+              .trim();
+
+            // Extract existing system tags from the TODO description to preserve them
+            const existingTags: string[] = [];
+            const tagPatterns = [
+              /\[تم إدراجها في الخطة اليومية[^\]]*\]/g,
+              /\[تم تحويلها إلى الخطة اليومية الصباحية\]/g,
+              /\[تم تحويلها إلى تكليف تنفيذي رسمي\]/g,
+              /\[تم إسنادها كتكليف تنفيذي\]/g,
+              /\[معرف المهمة:\s*[^\]]+\]/g,
+              /\[معرف التكليف:\s*[^\]]+\]/g,
+              /\[معرف المفكرة:\s*[^\]]+\]/g,
+            ];
+            for (const pattern of tagPatterns) {
+              const matches = newDesc.match(pattern);
+              if (matches) existingTags.push(...matches);
+            }
+
+            // Rebuild: clean description + preserved tags
+            const tagsStr = existingTags.length > 0 ? '\n' + existingTags.join(' ') : '';
+            newDesc = cleanPlanDesc ? `${cleanPlanDesc}${tagsStr}` : (existingTags.length > 0 ? existingTags.join(' ') : '');
+          }
+
           if (!alreadyHasTag) {
             newDesc = newDesc ? `${newDesc}\n${planTag}` : planTag;
           }
