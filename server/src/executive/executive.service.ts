@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Role, Priority, SummaryStatus } from '@prisma/client';
+import { Role, Priority, SummaryStatus, TaskStatus } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -36,6 +36,10 @@ export class ExecutiveService {
 
   async getDailyOverview(dateStr?: string) {
     const targetDate = this.normalizeDate(dateStr);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
 
     // Fetch all directorates
     const directorates = await this.prisma.directorate.findMany({
@@ -52,6 +56,17 @@ export class ExecutiveService {
           },
         },
         executiveTasks: {
+          where: {
+            OR: [
+              {
+                status: { not: TaskStatus.COMPLETED },
+                completionPercentage: { lt: 100 },
+              },
+              {
+                updatedAt: { gte: startOfDay, lte: endOfDay },
+              },
+            ],
+          },
           include: {
             assignedBy: { select: { id: true, fullName: true, title: true, role: true } },
             assignedToUser: { select: { id: true, fullName: true, title: true } },

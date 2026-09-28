@@ -93,8 +93,24 @@ export class DailySummariesService {
     const tasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: plan.id },
     });
+    const startOfDay = new Date(summaryDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(summaryDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
     const execTasks = await this.prisma.executiveTask.findMany({
-      where: { directorateId },
+      where: {
+        directorateId,
+        OR: [
+          {
+            status: { not: TaskStatus.COMPLETED },
+            completionPercentage: { lt: 100 },
+          },
+          {
+            updatedAt: { gte: startOfDay, lte: endOfDay },
+          },
+        ],
+      },
     });
 
     const calculateTaskDailyFulfillmentRate = (t: {
@@ -115,7 +131,7 @@ export class DailySummariesService {
       ...execTasks.map((t) => calculateTaskDailyFulfillmentRate(t)),
     ];
 
-    let overallRate = 100.0;
+    let overallRate = 0.0;
     if (allPcts.length > 0) {
       const total = allPcts.reduce((sum, pct) => sum + pct, 0);
       overallRate = Math.round((total / allPcts.length) * 10) / 10;

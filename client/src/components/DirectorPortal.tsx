@@ -2185,6 +2185,15 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       };
 
       const planTasksList = plan?.tasks || [];
+      const relevantExecTasks = executiveTasks.filter((et) => {
+        const local = taskLocalState[et.id];
+        const isCompleted = (local ? local.status === 'COMPLETED' || local.completionPercentage >= 100 : et.status === 'COMPLETED' || et.completionPercentage >= 100);
+        if (isCompleted) {
+          return isTaskUpdatedToday(et) || Boolean(local?.isModified);
+        }
+        return true;
+      });
+
       const combinedTasksList = [
         ...planTasksList.map((t) => ({
           title: t.title,
@@ -2193,7 +2202,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           isMultiDay: trackedTasks[t.id]?.isMultiDay ?? t.isMultiDay ?? !!t.carriedFromTaskId,
           todayTargetMet: trackedTasks[t.id]?.todayTargetMet ?? t.todayTargetMet ?? false,
         })),
-        ...executiveTasks.map((et) => {
+        ...relevantExecTasks.map((et) => {
           const local = taskLocalState[et.id];
           return {
             title: `[تكليف المدير العام] ${et.title}`,
@@ -2209,7 +2218,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       const totalTasks = combinedTasksList.length;
       const overallRate = totalTasks > 0
         ? Math.round((combinedTasksList.reduce((sum, t) => sum + getTaskFulfillmentPct(t), 0) / totalTasks) * 10) / 10
-        : 100;
+        : 0;
 
       // Auto-generate summaryText if left blank
       const finalSummaryText = summaryText.trim() ||
@@ -3176,6 +3185,15 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               };
 
               const planTasksList = plan?.tasks || [];
+              const relevantExecTasks = executiveTasks.filter((et) => {
+                const local = taskLocalState[et.id];
+                const isCompleted = (local ? local.status === 'COMPLETED' || local.completionPercentage >= 100 : et.status === 'COMPLETED' || et.completionPercentage >= 100);
+                if (isCompleted) {
+                  return isTaskUpdatedToday(et) || Boolean(local?.isModified);
+                }
+                return true;
+              });
+
               const combinedList = [
                 ...planTasksList.map((t) => ({
                   id: t.id,
@@ -3186,7 +3204,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   todayTargetMet: trackedTasks[t.id]?.todayTargetMet ?? t.todayTargetMet ?? false,
                   isExecutive: false,
                 })),
-                ...executiveTasks.map((et) => {
+                ...relevantExecTasks.map((et) => {
                   const local = taskLocalState[et.id];
                   return {
                     id: et.id,
@@ -3206,7 +3224,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
               const total = combinedList.length;
               const avgRate = total > 0
                 ? Math.round((combinedList.reduce((sum, t) => sum + getFulfillmentPct(t), 0) / total) * 10) / 10
-                : 100;
+                : 0;
 
               return (
                 <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#d2d1c9] space-y-3.5 shadow-xs">
@@ -3229,29 +3247,40 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     />
                   </div>
 
-                  {/* 3-Column Compact KPI Metrics Grid */}
-                  <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center pt-1">
-                    <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col items-center justify-center">
-                      <span className="text-base sm:text-lg font-black text-emerald-800 leading-tight">
-                        {completedList.length} <span className="text-[10px] font-bold text-emerald-600">/ {total}</span>
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-emerald-900 font-extrabold mt-0.5">مكتملة 100%</span>
+                  {total === 0 ? (
+                    <div className="py-4 px-3 text-center bg-[#f9f8f5] rounded-xl border border-dashed border-[#d2d1c9] space-y-1">
+                      <p className="text-xs font-bold text-[#0c3e35]">
+                        لم يتم تسجيل مهام في خطة اليوم أو تكليفات نشطة للمديرية
+                      </p>
+                      <p className="text-[11px] text-[#718782]">
+                        إذا لم تقدم خطة صباحية اليوم، يمكنك كتابة تقرير حر عن أعمال اليوم عبر حقل الملاحظات أدناه.
+                      </p>
                     </div>
+                  ) : (
+                    /* 3-Column Compact KPI Metrics Grid */
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center pt-1">
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-50/90 border border-emerald-200 flex flex-col items-center justify-center">
+                        <span className="text-base sm:text-lg font-black text-emerald-800 leading-tight">
+                          {completedList.length} <span className="text-[10px] font-bold text-emerald-600">/ {total}</span>
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-emerald-900 font-extrabold mt-0.5">مكتملة 100%</span>
+                      </div>
 
-                    <div className="p-2.5 sm:p-3 rounded-xl bg-amber-50/90 border border-amber-200 flex flex-col items-center justify-center">
-                      <span className="text-base sm:text-lg font-black text-amber-800 leading-tight">
-                        {inProgressList.length}
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-amber-900 font-extrabold mt-0.5">قيد المتابعة</span>
-                    </div>
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-amber-50/90 border border-amber-200 flex flex-col items-center justify-center">
+                        <span className="text-base sm:text-lg font-black text-amber-800 leading-tight">
+                          {inProgressList.length}
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-amber-900 font-extrabold mt-0.5">قيد المتابعة</span>
+                      </div>
 
-                    <div className="p-2.5 sm:p-3 rounded-xl bg-slate-50/90 border border-slate-200 flex flex-col items-center justify-center">
-                      <span className="text-base sm:text-lg font-black text-slate-800 leading-tight">
-                        {pendingList.length}
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-slate-700 font-extrabold mt-0.5">قيد الانتظار</span>
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-slate-50/90 border border-slate-200 flex flex-col items-center justify-center">
+                        <span className="text-base sm:text-lg font-black text-slate-800 leading-tight">
+                          {pendingList.length}
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-slate-700 font-extrabold mt-0.5">قيد الانتظار</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Completed tasks list */}
                   {completedList.length > 0 && (

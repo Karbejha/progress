@@ -113,8 +113,24 @@ export class ExecutiveTasksService {
 
     if (todayPlan?.dailySummary) {
       const planTasks = todayPlan.tasks;
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
       const allExecTasks = await this.prisma.executiveTask.findMany({
-        where: { directorateId },
+        where: {
+          directorateId,
+          OR: [
+            {
+              status: { not: TaskStatus.COMPLETED },
+              completionPercentage: { lt: 100 },
+            },
+            {
+              updatedAt: { gte: startOfDay, lte: endOfDay },
+            },
+          ],
+        },
       });
       const allPcts = [
         ...planTasks.map((t) => (t.isMultiDay && t.todayTargetMet ? 100 : t.completionPercentage)),
@@ -122,7 +138,7 @@ export class ExecutiveTasksService {
       ];
       const newRate = allPcts.length > 0
         ? Math.round((allPcts.reduce((sum, p) => sum + p, 0) / allPcts.length) * 10) / 10
-        : 100;
+        : 0;
       await this.prisma.dailySummary.update({
         where: { id: todayPlan.dailySummary.id },
         data: { overallCompletionRate: newRate },
