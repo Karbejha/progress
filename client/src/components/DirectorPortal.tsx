@@ -1055,16 +1055,24 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             );
           })()}
 
-          {/* Row 2: Note Input & Quick Save Button */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="ملاحظات أو مستجدات الإنجاز..."
+          {/* Row 2: Note Textarea & Quick Save Button */}
+          <div className="flex items-start gap-2">
+            <textarea
+              rows={2}
+              placeholder="ملاحظات أو مستجدات الإنجاز (يمكنك الضغط على Enter أو Shift+Enter لبدء سطر جديد)..."
               value={local.completionNote}
               onChange={(e) =>
                 handleLocalExecTaskChange(task.id, 'completionNote', e.target.value)
               }
-              className="flex-1 p-2 rounded-lg bg-[#f4f3ed] border border-[#d2d1c9] text-xs text-[#0c3e35] focus:outline-none focus:border-[#0c3e35] placeholder-[#8daaa2]"
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  if (local.isModified && !isSaving) {
+                    handleSaveExecutiveTask(task.id);
+                  }
+                }
+              }}
+              className="flex-1 p-2.5 rounded-lg bg-[#f4f3ed] border border-[#d2d1c9] text-xs text-[#0c3e35] focus:outline-none focus:border-[#0c3e35] placeholder-[#8daaa2] resize-y min-h-[44px] leading-relaxed"
             />
 
             {local.isModified ? (
@@ -1072,13 +1080,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 type="button"
                 disabled={isSaving}
                 onClick={() => handleSaveExecutiveTask(task.id)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer shrink-0 shadow-xs active:scale-95 animate-pulse border border-[#d4af37]/60"
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-[#0c3e35] text-white text-xs font-bold hover:bg-[#072923] transition cursor-pointer shrink-0 shadow-xs active:scale-95 animate-pulse border border-[#d4af37]/60 mt-0.5"
+                title="حفظ التعديلات (Ctrl+Enter)"
               >
                 {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" /> : <Save className="w-3.5 h-3.5 text-[#d4af37]" />}
                 <span>حفظ</span>
               </button>
             ) : (
-              <span className="text-[11px] text-emerald-700 font-bold px-2.5 py-1 bg-emerald-50 rounded-lg border border-emerald-200 shrink-0 inline-flex items-center gap-1">
+              <span className="text-[11px] text-emerald-700 font-bold px-2.5 py-2 bg-emerald-50 rounded-lg border border-emerald-200 shrink-0 inline-flex items-center gap-1 mt-0.5">
                 <Check className="w-3 h-3 text-emerald-600" />
                 <span>محفوظ</span>
               </span>
@@ -3639,7 +3648,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                             <div key={t.id} className="p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] flex items-center justify-between gap-2">
                               <div>
                                 <p className="font-bold text-[#0c3e35]">{t.title}</p>
-                                {t.completionNote && <p className="text-[11px] text-[#5e736e] mt-0.5">{t.completionNote}</p>}
+                                {t.completionNote && <p className="text-[11px] text-[#5e736e] mt-0.5 whitespace-pre-wrap">{t.completionNote}</p>}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <span className="text-[10px] text-gray-500">{t.planDate ? new Date(t.planDate).toLocaleDateString('ar-SY') : ''}</span>
@@ -3663,7 +3672,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                             <div key={t.id} className="p-2.5 rounded-xl bg-[#f4f3ed] border border-[#d2d1c9] flex items-center justify-between gap-2">
                               <div>
                                 <p className="font-bold text-[#0c3e35]">{t.title}</p>
-                                {t.completionNote && <p className="text-[11px] text-[#5e736e] mt-0.5">{t.completionNote}</p>}
+                                {t.completionNote && <p className="text-[11px] text-[#5e736e] mt-0.5 whitespace-pre-wrap">{t.completionNote}</p>}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
                                 <span className="text-[10px] text-gray-500">{t.planDate ? new Date(t.planDate).toLocaleDateString('ar-SY') : ''}</span>

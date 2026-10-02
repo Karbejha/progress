@@ -1311,7 +1311,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                               <MessageSquare className="w-4 h-4 text-[#0c3e35] shrink-0 mt-0.5" />
                               <div className="text-xs text-[#05261e]">
                                 <strong className="text-[#0c3e35]">تقرير ورد مدير المديرية: </strong>
-                                <span className="font-medium">{task.completionNote}</span>
+                                <span className="font-medium whitespace-pre-wrap leading-relaxed">{task.completionNote}</span>
                               </div>
                             </div>
                           )}

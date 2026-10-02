@@ -331,8 +331,9 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
                       {task.completionNote && (
                         <div className="text-[11px] text-[#5e736e] pt-1.5 flex items-start gap-1.5 border-t border-[#e5e4dc]/70 mt-1">
                           <Info className="w-3.5 h-3.5 text-[#d4af37] shrink-0 mt-0.5" />
-                          <span>
-                            <strong className="text-[#0c3e35]">آخر ملاحظة:</strong> {task.completionNote}
+                          <span className="flex-1">
+                            <strong className="text-[#0c3e35]">آخر ملاحظة: </strong>
+                            <span className="whitespace-pre-wrap leading-relaxed">{task.completionNote}</span>
                           </span>
                         </div>
                       )}

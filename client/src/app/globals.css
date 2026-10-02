@@ -263,23 +263,12 @@ html, body {
   overscroll-behavior-y: none;
 }
 
-body {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
 button, a, select {
   touch-action: manipulation;
 }
 
-input, textarea, [contenteditable="true"], .selectable {
-  touch-action: auto;
-  -webkit-user-select: text !important;
-  user-select: text !important;
-}
-
 /* Prevent accidental text highlight on app chrome / navigation elements */
-header, nav, button, .no-select {
+header, nav, button, label, .no-select, .select-none {
   -webkit-user-select: none;
   user-select: none;
 }
