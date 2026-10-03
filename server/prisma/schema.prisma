@@ -87,6 +87,7 @@ model User {
   notificationReads NotificationRead[]
   notifications Notification[]
   attachments   Attachment[]
+  deviceTokens  DeviceToken[]
 }
 
 model DailyPlan {
@@ -309,5 +310,17 @@ model Attachment {
   @@index([dailySummaryId])
   @@index([executiveTaskId])
   @@index([uploadedById])
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String
+  platform  String   @default("android") // android | ios | web
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([userId, token])
+  @@index([userId])
 }
 

@@ -43,12 +43,15 @@ import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { NotificationDetailsModal, NotificationDetailItem } from './NotificationDetailsModal';
 import { QuickTodoDrawer } from './QuickTodoDrawer';
+import { App } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import {
   initNotificationService,
   requestNotificationPermissions,
   notifyCircular,
   notifyExecutiveTask,
   notifyFeedback,
+  notifyGeneric,
 } from '../lib/notifications';
 
 interface HeaderProps {
@@ -398,6 +401,156 @@ export const Header: React.FC<HeaderProps> = ({
     return () => {
       window.removeEventListener('announcements:read_updated', handleReadUpdate);
       window.removeEventListener('notifications:read_updated', handleReadUpdate);
+    };
+  }, [currentUser]);
+
+  // Background Recovery and Missed Notification Catch-up
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let isSubscribed = true;
+    let lastCheckedTime = localStorage.getItem(`ports_last_checked_${currentUser.id}`) || new Date().toISOString();
+
+    const recoverMissedNotifications = async () => {
+      try {
+        const sinceIso = lastCheckedTime;
+        const nowIso = new Date().toISOString();
+
+        // 1. Fetch any notifications created since last check
+        const missedNotifs = await api.getNotificationsSince(sinceIso);
+
+        // Also update read keys from server in case user read notifications on another device
+        const serverReadKeys = await api.getReadNotificationKeys();
+        if (serverReadKeys && serverReadKeys.length) {
+          const updatedReads = syncReadNotificationsFromServer(currentUser.id, serverReadKeys);
+          setReadNotifIds(updatedReads);
+        }
+
+        if (missedNotifs && missedNotifs.length > 0) {
+          const currentReads = getReadNotificationIds(currentUser.id);
+          const newItemsToAdd: LiveNotification[] = [];
+
+          for (const n of missedNotifs) {
+            const notifType = (['plan', 'summary', 'task', 'feedback', 'announcement'].includes(n.type))
+              ? n.type
+              : (n.type === 'executive-task' ? 'feedback' : (n.type === 'executive-task-update' ? 'task' : 'plan'));
+
+            const isAlreadyRead = currentReads.includes(n.id) || (n.referenceId && currentReads.includes(n.referenceId));
+
+            // If not read, show mobile heads-up notification and chime!
+            if (!isAlreadyRead) {
+              await notifyGeneric({
+                id: n.id,
+                type: n.type,
+                title: n.title,
+                message: n.message,
+                referenceId: n.referenceId,
+                metadata: n.metadata,
+                createdAt: n.createdAt,
+              });
+
+              if (n.metadata?.priority === 'URGENT' || n.type === 'executive-task') {
+                playUrgentAlert();
+              } else {
+                playSubtleChime();
+              }
+            }
+
+            newItemsToAdd.push({
+              id: n.id,
+              title: n.title,
+              message: n.message,
+              content: n.metadata?.content || n.metadata?.description || undefined,
+              authorName: n.metadata?.authorName || n.metadata?.fromUserName || n.metadata?.assignedByName || n.metadata?.directorName || undefined,
+              authorTitle: n.metadata?.authorTitle || n.metadata?.fromUserTitle || undefined,
+              priority: n.metadata?.priority || undefined,
+              createdAt: n.createdAt,
+              type: notifType as LiveNotification['type'],
+              time: n.createdAt
+                ? new Date(n.createdAt).toLocaleDateString('ar-SY', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'اليوم',
+              fullPayload: {
+                ...(n.metadata || {}),
+                referenceId: n.referenceId,
+                dbId: n.id,
+              },
+            });
+          }
+
+          if (isSubscribed && newItemsToAdd.length > 0) {
+            setNotifications((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const freshItems = newItemsToAdd.filter((item) => !existingIds.has(item.id));
+              if (freshItems.length === 0) return prev;
+
+              const combined = [...freshItems, ...prev];
+              // Update unread count
+              const unreadNew = freshItems.filter((item) => {
+                return !currentReads.includes(item.id) && (!item.fullPayload?.referenceId || !currentReads.includes(item.fullPayload.referenceId));
+              });
+              if (unreadNew.length > 0) {
+                setUnreadCount((c) => c + unreadNew.length);
+              }
+              return combined.slice(0, 150);
+            });
+          }
+        }
+
+        lastCheckedTime = nowIso;
+        localStorage.setItem(`ports_last_checked_${currentUser.id}`, nowIso);
+      } catch (err) {
+        console.warn('Failed to recover missed notifications:', err);
+      }
+    };
+
+    // 1. Listen for Capacitor App state changes (background -> foreground)
+    let appStateListener: any;
+    if (Capacitor.isNativePlatform()) {
+      appStateListener = App.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+          recoverMissedNotifications();
+        }
+      });
+    }
+
+    // 2. Listen for Web page visibility changes & window focus & push received
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        recoverMissedNotifications();
+      }
+    };
+    const handleWindowFocus = () => {
+      recoverMissedNotifications();
+    };
+    const handlePushReceived = () => {
+      recoverMissedNotifications();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('ports:push_received', handlePushReceived);
+
+    // 3. Periodic heartbeat polling (every 40 seconds when active)
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        recoverMissedNotifications();
+      }
+    }, 40000);
+
+    return () => {
+      isSubscribed = false;
+      if (appStateListener && typeof appStateListener.remove === 'function') {
+        appStateListener.remove();
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('ports:push_received', handlePushReceived);
+      clearInterval(intervalId);
     };
   }, [currentUser]);
 

@@ -9,10 +9,35 @@ export class NotificationsService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
+    // Non-blocking table check for DeviceToken
+    this.ensureDeviceTokenTable().catch((err) => {
+      this.logger.warn('Error verifying DeviceToken table:', err);
+    });
+
     // Non-blocking auto-backfill on module initialization
     this.autoBackfillHistoricalNotifications().catch((err) => {
       this.logger.error('Error during automatic notifications backfill:', err);
     });
+  }
+
+  private async ensureDeviceTokenTable() {
+    try {
+      await this.prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "DeviceToken" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
+          "token" TEXT NOT NULL,
+          "platform" TEXT NOT NULL DEFAULT 'android',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "DeviceToken_userId_token_key" UNIQUE ("userId", "token")
+        );
+        CREATE INDEX IF NOT EXISTS "DeviceToken_userId_idx" ON "DeviceToken"("userId");
+      `);
+      this.logger.log('DeviceToken table verified successfully');
+    } catch (err: any) {
+      this.logger.debug(`DeviceToken table check skipped or already configured: ${err.message}`);
+    }
   }
 
   /**
@@ -27,7 +52,7 @@ export class NotificationsService implements OnModuleInit {
     metadata?: any;
   }) {
     try {
-      return await this.prisma.notification.create({
+      const notif = await this.prisma.notification.create({
         data: {
           userId: data.userId,
           type: data.type,
@@ -37,6 +62,21 @@ export class NotificationsService implements OnModuleInit {
           metadata: data.metadata || null,
         },
       });
+
+      // Send push notification to user's mobile device via FCM
+      this.sendPushToUser(data.userId, {
+        title: data.title,
+        body: data.message,
+        data: {
+          type: data.type,
+          referenceId: data.referenceId || '',
+          notificationId: notif.id,
+        },
+      }).catch((err) => {
+        this.logger.debug(`Push notification failed: ${err.message}`);
+      });
+
+      return notif;
     } catch (error) {
       this.logger.error(`Failed to create notification for user ${data.userId}:`, error);
     }
@@ -78,6 +118,19 @@ export class NotificationsService implements OnModuleInit {
           metadata: data.metadata || null,
         })),
       });
+
+      // Dispatch FCM Push Notifications
+      this.sendPushToMultipleUsers(
+        users.map((u) => u.id),
+        {
+          title: data.title,
+          body: data.message,
+          data: {
+            type: data.type,
+            referenceId: data.referenceId || '',
+          },
+        },
+      ).catch(() => {});
     } catch (error) {
       this.logger.error(`Failed to create notifications for roles ${roles.join(',')}:`, error);
     }
@@ -118,6 +171,19 @@ export class NotificationsService implements OnModuleInit {
           metadata: data.metadata || null,
         })),
       });
+
+      // Dispatch FCM Push Notifications
+      this.sendPushToMultipleUsers(
+        users.map((u) => u.id),
+        {
+          title: data.title,
+          body: data.message,
+          data: {
+            type: data.type,
+            referenceId: data.referenceId || '',
+          },
+        },
+      ).catch(() => {});
     } catch (error) {
       this.logger.error(`Failed to create notifications for directorate ${directorateId}:`, error);
     }
@@ -155,6 +221,19 @@ export class NotificationsService implements OnModuleInit {
           metadata: data.metadata || null,
         })),
       });
+
+      // Dispatch FCM Push Notifications
+      this.sendPushToMultipleUsers(
+        users.map((u) => u.id),
+        {
+          title: data.title,
+          body: data.message,
+          data: {
+            type: data.type,
+            referenceId: data.referenceId || '',
+          },
+        },
+      ).catch(() => {});
     } catch (error) {
       this.logger.error(`Failed to create notifications for all users:`, error);
     }
@@ -178,6 +257,244 @@ export class NotificationsService implements OnModuleInit {
       return [];
     }
   }
+
+  /**
+   * Get notifications created AFTER a specific timestamp for a user.
+   * Used by mobile app background recovery to catch up on missed notifications.
+   */
+  async getNotificationsSince(userId: string, since: Date) {
+    if (!userId) return [];
+
+    try {
+      return await this.prisma.notification.findMany({
+        where: {
+          userId,
+          createdAt: { gt: since },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to get notifications since ${since.toISOString()} for user ${userId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Register an FCM device token for push notifications.
+   * Stores the token in the DeviceToken table, upserting to avoid duplicates.
+   */
+  async registerDeviceToken(userId: string, token: string, platform = 'android') {
+    if (!userId || !token) {
+      return { success: false, message: 'Missing userId or token' };
+    }
+
+    try {
+      // Use raw upsert since DeviceToken model may not exist yet
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO "DeviceToken" ("id", "userId", "token", "platform", "updatedAt")
+         VALUES (gen_random_uuid()::text, $1, $2, $3, CURRENT_TIMESTAMP)
+         ON CONFLICT ("userId", "token")
+         DO UPDATE SET "platform" = $3, "updatedAt" = CURRENT_TIMESTAMP`,
+        userId,
+        token,
+        platform,
+      );
+
+      this.logger.log(`Registered FCM token for user ${userId} (platform: ${platform})`);
+      return { success: true };
+    } catch (error) {
+      // If the table doesn't exist yet, log a warning instead of crashing
+      this.logger.warn(`Could not register device token (table may not exist yet): ${error.message}`);
+      return { success: false, message: 'Device token registration not available yet' };
+    }
+  }
+
+  /**
+   * Remove a device token (e.g., on user logout).
+   */
+  async unregisterDeviceToken(userId: string, token: string) {
+    if (!userId || !token) {
+      return { success: false, message: 'Missing userId or token' };
+    }
+
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `DELETE FROM "DeviceToken" WHERE "userId" = $1 AND "token" = $2`,
+        userId,
+        token,
+      );
+      this.logger.log(`Unregistered FCM token for user ${userId}`);
+      return { success: true };
+    } catch (error) {
+      this.logger.warn(`Could not unregister device token: ${error.message}`);
+      return { success: false, message: 'Device token unregistration not available yet' };
+    }
+  }
+
+  /**
+   * Send a push notification to all devices registered to a specific user via FCM.
+   * This is a no-op if Firebase Admin is not configured.
+   * Uses dynamic import to avoid crashes if firebase-admin is not installed.
+   */
+  async sendPushToUser(userId: string, payload: { title: string; body: string; data?: Record<string, string> }) {
+    try {
+      // Get all device tokens for this user
+      const tokens = await this.prisma.$queryRawUnsafe<{ token: string }[]>(
+        `SELECT "token" FROM "DeviceToken" WHERE "userId" = $1`,
+        userId,
+      );
+
+      if (!tokens || tokens.length === 0) return;
+
+      // Try to load firebase-admin dynamically
+      let admin: any;
+      try {
+        admin = await import('firebase-admin');
+      } catch {
+        // firebase-admin not installed, skip push
+        return;
+      }
+
+      // Ensure Firebase is initialized
+      if (!admin.apps?.length) {
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const candidatePaths = [
+            process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+            path.resolve(process.cwd(), 'firebase-service-account.json'),
+            path.resolve(process.cwd(), 'server/firebase-service-account.json'),
+            path.resolve(__dirname, '../../firebase-service-account.json'),
+            './firebase-service-account.json',
+          ].filter(Boolean) as string[];
+
+          const resolvedPath = candidatePaths.find((p) => fs.existsSync(p));
+          if (resolvedPath) {
+            const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
+            const certFn = admin.cert || (admin.credential && admin.credential.cert);
+            admin.initializeApp({
+              credential: certFn ? certFn(serviceAccount) : undefined,
+            });
+            this.logger.log(`Firebase Admin initialized successfully using: ${resolvedPath}`);
+          } else {
+            this.logger.warn('Firebase service account file not found, push notifications disabled');
+            return;
+          }
+        } catch (initErr) {
+          this.logger.warn(`Firebase initialization failed: ${initErr.message}`);
+          return;
+        }
+      }
+
+      // Send to each registered device
+      let messaging: any;
+      if (typeof admin.messaging === 'function') {
+        messaging = admin.messaging();
+      } else {
+        const { getMessaging } = await import('firebase-admin/messaging');
+        messaging = getMessaging();
+      }
+      for (const { token } of tokens) {
+        try {
+          await messaging.send({
+            token,
+            notification: {
+              title: payload.title,
+              body: payload.body,
+            },
+            data: payload.data || {},
+            android: {
+              priority: 'high' as const,
+              notification: {
+                channelId: 'ports_urgent',
+                priority: 'max' as const,
+                defaultSound: true,
+                defaultVibrateTimings: true,
+                icon: 'ic_launcher_round',
+                color: '#0c3e35',
+              },
+            },
+          });
+        } catch (sendErr: any) {
+          // If token is invalid, remove it
+          if (
+            sendErr.code === 'messaging/registration-token-not-registered' ||
+            sendErr.code === 'messaging/invalid-registration-token'
+          ) {
+            this.logger.warn(`Removing invalid FCM token for user ${userId}`);
+            await this.prisma.$executeRawUnsafe(
+              `DELETE FROM "DeviceToken" WHERE "token" = $1`,
+              token,
+            ).catch(() => {});
+          } else {
+            this.logger.error(`Failed to send FCM to user ${userId}:`, sendErr);
+          }
+        }
+      }
+    } catch (error) {
+      // Graceful failure - push notifications are optional
+      this.logger.debug(`Push notification skipped for user ${userId}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send push notifications to all users with specific roles.
+   */
+  async sendPushToRoles(roles: string[], payload: { title: string; body: string; data?: Record<string, string> }, excludeUserId?: string) {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: {
+          role: { in: roles as any },
+          ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+        },
+        select: { id: true },
+      });
+
+      for (const user of users) {
+        this.sendPushToUser(user.id, payload).catch(() => {});
+      }
+    } catch (error) {
+      this.logger.debug(`Push to roles skipped: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send push notifications to all users in a specific directorate.
+   */
+  async sendPushToDirectorate(directorateId: string, payload: { title: string; body: string; data?: Record<string, string> }, excludeUserId?: string) {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: {
+          directorateId,
+          ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+        },
+        select: { id: true },
+      });
+
+      for (const user of users) {
+        this.sendPushToUser(user.id, payload).catch(() => {});
+      }
+    } catch (error) {
+      this.logger.debug(`Push to directorate skipped: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send push notifications to a list of specific user IDs.
+   */
+  async sendPushToMultipleUsers(userIds: string[], payload: { title: string; body: string; data?: Record<string, string> }) {
+    if (!userIds || userIds.length === 0) return;
+    try {
+      const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+      for (const userId of uniqueIds) {
+        this.sendPushToUser(userId, payload).catch(() => {});
+      }
+    } catch (error: any) {
+      this.logger.debug(`Push to multiple users skipped: ${error.message}`);
+    }
+  }
+
 
   /**
    * Returns all notification keys read by the given user from the database.

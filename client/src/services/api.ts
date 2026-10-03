@@ -308,6 +308,54 @@ class ApiService {
     }
   }
 
+  /**
+   * Fetch notifications created after a specific ISO timestamp.
+   * Used for background recovery when app returns to foreground.
+   */
+  async getNotificationsSince(sinceIso: string): Promise<any[]> {
+    if (!sinceIso) return [];
+    try {
+      return await this.request<any[]>(`/notifications/since?since=${encodeURIComponent(sinceIso)}`);
+    } catch (err) {
+      console.warn('Failed to fetch notifications since timestamp', err);
+      return [];
+    }
+  }
+
+  /**
+   * Register device push notification token on server
+   */
+  async registerDeviceToken(token: string, platform = 'android'): Promise<boolean> {
+    if (!token) return false;
+    try {
+      const res = await this.request<{ success: boolean }>('/notifications/register-device', {
+        method: 'POST',
+        body: JSON.stringify({ token, platform }),
+      });
+      return res?.success ?? false;
+    } catch (err) {
+      console.warn('Failed to register device token on server', err);
+      return false;
+    }
+  }
+
+  /**
+   * Unregister device push notification token on server (logout)
+   */
+  async unregisterDeviceToken(token: string): Promise<boolean> {
+    if (!token) return false;
+    try {
+      const res = await this.request<{ success: boolean }>('/notifications/unregister-device', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      });
+      return res?.success ?? false;
+    } catch (err) {
+      console.warn('Failed to unregister device token on server', err);
+      return false;
+    }
+  }
+
   // Director endpoints
   async getMyTodayPlan(dateStr?: string): Promise<DailyPlan | null> {
     const query = dateStr ? `?date=${dateStr}` : '';

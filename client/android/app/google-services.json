@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "381621404565",
+    "project_id": "progress-b1eb9",
+    "storage_bucket": "progress-b1eb9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:381621404565:android:87a598fd05083ac40b6c9c",
+        "android_client_info": {
+          "package_name": "sy.gov.ports.daily"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmsPiiIeOuwOp9tQ9Ft2Q8k5ui0bdlV0k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
