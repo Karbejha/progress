@@ -553,7 +553,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-5 bg-black/65 backdrop-blur-sm animate-fadeIn">
       {/* Toast Alert */}
       {toastMsg && (
         <div className="fixed top-6 left-6 z-[60] flex items-center gap-2.5 bg-[#05261e] border-2 border-[#d4af37] text-white px-4 py-3 rounded-2xl shadow-2xl animate-fadeIn">
@@ -564,31 +564,31 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
 
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-5xl max-h-[92vh] bg-[#fcfbf7] border border-[#d2d1c9] rounded-[28px] shadow-2xl flex flex-col overflow-hidden text-[#05261e]"
+        className="relative w-full h-[100dvh] sm:h-auto sm:max-w-5xl sm:max-h-[92vh] bg-[#fcfbf7] border-0 sm:border border-[#d2d1c9] rounded-none sm:rounded-[28px] shadow-2xl flex flex-col overflow-hidden text-[#05261e]"
       >
         {/* Top Header Banner */}
-        <div className="p-5 sm:p-6 bg-[#05261e] border-b border-[#0c3e35] text-white flex items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-inner">
-              <Layers className="w-6 h-6" />
+        <div className="p-3.5 sm:p-6 bg-[#05261e] border-b border-[#0c3e35] text-white flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-[#0c3e35] border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shadow-inner shrink-0">
+              <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-extrabold text-white">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-lg font-extrabold text-white truncate">
                   التكليفات والمهام المركزية
                 </h2>
                 {isObserver ? (
-                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 flex items-center gap-1 shadow-xs">
-                    <Eye className="w-3 h-3 text-[#d4af37]" />
-                    مراقبة واطلاع
+                  <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 flex items-center gap-1 shadow-xs">
+                    <Eye className="w-2.5 h-2.5 text-[#d4af37]" />
+                    مراقبة
                   </span>
                 ) : (
-                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40">
-                    تكليف ومتابعة مباشرة
+                  <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40">
+                    متابعة مباشرة
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#8daaa2] mt-0.5">
+              <p className="hidden sm:block text-xs text-[#8daaa2] mt-0.5">
                 {isObserver
                   ? 'اطلاع ومراقبة كافة التكليفات ونسب الإنجاز التراكمية والتفصيلية دون تعديل'
                   : 'إسناد مهام مشتركة أو منفردة للمدراء ومتابعة نسب الإنجاز التراكمية والتفصيلية لحظياً'}
@@ -596,30 +596,31 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {!isCreating && !isObserver && (
               <button
                 onClick={() => setIsCreating(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#d4af37] text-[#05261e] hover:bg-[#c5a059] transition shadow-md active:scale-95 cursor-pointer"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-xl bg-[#d4af37] text-[#05261e] hover:bg-[#c5a059] transition shadow-md active:scale-95 cursor-pointer whitespace-nowrap"
               >
-                <Plus className="w-4 h-4" />
-                <span>إسناد تكليف جديد</span>
+                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline sm:inline">إسناد تكليف</span>
+                <span className="xs:hidden sm:hidden">تكليف</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-[#0c3e35] text-[#8daaa2] hover:text-white hover:bg-[#0c4237] transition cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-xl bg-[#0c3e35] text-[#8daaa2] hover:text-white hover:bg-[#0c4237] transition cursor-pointer"
               title="إغلاق"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
 
         {/* Create Task Form View */}
         {isCreating ? (
-          <div className="flex-1 overflow-y-auto p-6 sm:p-7 space-y-6">
-            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-4">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-7 space-y-4 sm:space-y-6 overscroll-contain">
+            <div className="flex items-center justify-between border-b border-[#d2d1c9] pb-3 sm:pb-4">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -628,8 +629,8 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                 >
                   <ArrowRight className="w-4 h-4" />
                 </button>
-                <h3 className="text-base font-extrabold text-[#0c3e35]">
-                  نموذج إسناد تكليف / مهمة جديدة لمدراء المديريات
+                <h3 className="text-sm sm:text-base font-extrabold text-[#0c3e35]">
+                  نموذج إسناد تكليف جديد للمديريات
                 </h3>
               </div>
               <span className="text-xs text-[#5e736e]">
@@ -795,89 +796,89 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
           /* Tasks List View */
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Stats KPI Chips */}
-            <div className="p-4 sm:p-5 bg-white border-b border-[#d2d1c9] grid grid-cols-2 sm:grid-cols-5 gap-3 shrink-0">
+            <div className="p-2 sm:p-5 bg-white border-b border-[#d2d1c9] flex sm:grid sm:grid-cols-5 gap-2 sm:gap-3 overflow-x-auto no-scrollbar shrink-0">
               <button
                 onClick={() => setStatusFilter('ALL')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer ${
+                className={`flex-shrink-0 sm:flex-shrink flex items-center sm:block justify-between gap-2 px-3 py-2 sm:p-3 rounded-xl sm:rounded-2xl border text-right transition cursor-pointer ${
                   statusFilter === 'ALL'
                     ? 'bg-[#0c3e35] text-white border-[#0c3e35] shadow-xs'
                     : 'bg-[#f4f3ed] border-[#d2d1c9] text-[#05261e] hover:bg-[#edece4]'
                 }`}
               >
-                <div className="text-[11px] font-semibold opacity-80">إجمالي التكليفات</div>
-                <div className="text-lg font-extrabold mt-0.5">
+                <div className="text-[11px] font-semibold opacity-80 whitespace-nowrap">إجمالي التكليفات</div>
+                <div className="text-xs sm:text-lg font-extrabold sm:mt-0.5">
                   {viewMode === 'GROUPED' ? totalGroupedCount : totalTasksCount}
                 </div>
               </button>
 
               <button
                 onClick={() => setStatusFilter('SHARED')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer ${
+                className={`flex-shrink-0 sm:flex-shrink flex items-center sm:block justify-between gap-2 px-3 py-2 sm:p-3 rounded-xl sm:rounded-2xl border text-right transition cursor-pointer ${
                   statusFilter === 'SHARED'
                     ? 'bg-[#0c3e35] text-[#d4af37] border-[#d4af37] shadow-xs ring-1 ring-[#d4af37]'
                     : 'bg-emerald-50/70 border-emerald-200 text-emerald-900 hover:bg-emerald-100'
                 }`}
               >
-                <div className="text-[11px] font-semibold opacity-80">مهام مشتركة</div>
-                <div className="text-lg font-extrabold mt-0.5">{sharedTasksCount}</div>
+                <div className="text-[11px] font-semibold opacity-80 whitespace-nowrap">مهام مشتركة</div>
+                <div className="text-xs sm:text-lg font-extrabold sm:mt-0.5">{sharedTasksCount}</div>
               </button>
 
               <button
                 onClick={() => setStatusFilter('PENDING')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer ${
+                className={`flex-shrink-0 sm:flex-shrink flex items-center sm:block justify-between gap-2 px-3 py-2 sm:p-3 rounded-xl sm:rounded-2xl border text-right transition cursor-pointer ${
                   statusFilter === 'PENDING'
                     ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                     : 'bg-amber-50/70 border-amber-200 text-amber-900 hover:bg-amber-100'
                 }`}
               >
-                <div className="text-[11px] font-semibold opacity-80">قيد الانتظار</div>
-                <div className="text-lg font-extrabold mt-0.5">{pendingCount}</div>
+                <div className="text-[11px] font-semibold opacity-80 whitespace-nowrap">قيد الانتظار</div>
+                <div className="text-xs sm:text-lg font-extrabold sm:mt-0.5">{pendingCount}</div>
               </button>
 
               <button
                 onClick={() => setStatusFilter('IN_PROGRESS')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer ${
+                className={`flex-shrink-0 sm:flex-shrink flex items-center sm:block justify-between gap-2 px-3 py-2 sm:p-3 rounded-xl sm:rounded-2xl border text-right transition cursor-pointer ${
                   statusFilter === 'IN_PROGRESS'
                     ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                     : 'bg-blue-50/70 border-blue-200 text-blue-900 hover:bg-blue-100'
                 }`}
               >
-                <div className="text-[11px] font-semibold opacity-80">قيد التنفيذ</div>
-                <div className="text-lg font-extrabold mt-0.5">{inProgressCount}</div>
+                <div className="text-[11px] font-semibold opacity-80 whitespace-nowrap">قيد التنفيذ</div>
+                <div className="text-xs sm:text-lg font-extrabold sm:mt-0.5">{inProgressCount}</div>
               </button>
 
               <button
                 onClick={() => setStatusFilter('COMPLETED')}
-                className={`p-3 rounded-2xl border text-right transition cursor-pointer col-span-2 sm:col-span-1 ${
+                className={`flex-shrink-0 sm:flex-shrink flex items-center sm:block justify-between gap-2 px-3 py-2 sm:p-3 rounded-xl sm:rounded-2xl border text-right transition cursor-pointer col-span-1 ${
                   statusFilter === 'COMPLETED'
                     ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
                     : 'bg-emerald-50/70 border-emerald-200 text-emerald-900 hover:bg-emerald-100'
                 }`}
               >
-                <div className="text-[11px] font-semibold opacity-80">مكتملة ومُنجزة</div>
-                <div className="text-lg font-extrabold mt-0.5">{completedCount}</div>
+                <div className="text-[11px] font-semibold opacity-80 whitespace-nowrap">مكتملة ومُنجزة</div>
+                <div className="text-xs sm:text-lg font-extrabold sm:mt-0.5">{completedCount}</div>
               </button>
             </div>
 
             {/* Filter & Search Bar + View Mode Switcher */}
-            <div className="p-4 bg-[#f4f3ed] border-b border-[#d2d1c9] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+            <div className="p-2.5 sm:p-4 bg-[#f4f3ed] border-b border-[#d2d1c9] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 shrink-0">
               <div className="relative w-full sm:w-80">
-                <Search className="w-4 h-4 text-[#8daaa2] absolute right-3 top-3" />
+                <Search className="w-4 h-4 text-[#8daaa2] absolute right-3 top-2.5 sm:top-3" />
                 <input
                   type="text"
-                  placeholder="البحث في المهام، المديريات، أو الملاحظات..."
+                  placeholder="البحث في المهام، المديريات..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pr-9 pl-3 py-2 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
+                  className="w-full pr-9 pl-3 py-1.5 sm:py-2 rounded-xl bg-white border border-[#d2d1c9] text-xs text-[#0c3e35] placeholder-[#8daaa2] focus:outline-none focus:border-[#0c3e35]"
                 />
               </div>
 
-              <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap justify-between sm:justify-end">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 {/* View Mode Toggle */}
-                <div className="flex items-center bg-white p-1 rounded-xl border border-[#d2d1c9] shadow-2xs">
+                <div className="flex-1 sm:flex-initial flex items-center bg-white p-1 rounded-xl border border-[#d2d1c9] shadow-2xs">
                   <button
                     onClick={() => setViewMode('GROUPED')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                       viewMode === 'GROUPED'
                         ? 'bg-[#0c3e35] text-white shadow-xs'
                         : 'text-[#5e736e] hover:text-[#0c3e35]'
@@ -885,11 +886,11 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                     title="عرض مجمّع يربط المهام المشتركة كبند رئيسي موحد"
                   >
                     <Layers className="w-3.5 h-3.5" />
-                    <span>عرض مجمّع ذكي</span>
+                    <span>مجمّع ذكي</span>
                   </button>
                   <button
                     onClick={() => setViewMode('INDIVIDUAL')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                       viewMode === 'INDIVIDUAL'
                         ? 'bg-[#0c3e35] text-white shadow-xs'
                         : 'text-[#5e736e] hover:text-[#0c3e35]'
@@ -897,18 +898,18 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                     title="عرض مفصل لكل مديرية على حدة"
                   >
                     <LayoutList className="w-3.5 h-3.5" />
-                    <span>عرض تفصيلي</span>
+                    <span>تفصيلي</span>
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-[#5e736e] shrink-0" />
+                <div className="flex-1 sm:flex-initial flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-[#5e736e] shrink-0" />
                   <select
                     value={selectedDirFilter}
                     onChange={(e) => setSelectedDirFilter(e.target.value)}
-                    className="w-full sm:w-auto p-2 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
+                    className="w-full sm:w-auto p-1.5 sm:p-2 rounded-xl bg-white border border-[#d2d1c9] text-xs font-bold text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
                   >
-                    <option value="ALL">كافة المديريات والمكاتب (20)</option>
+                    <option value="ALL">كافة المديريات (20)</option>
                     {directorates.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
@@ -920,7 +921,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
             </div>
 
             {/* Scrollable Tasks Cards Grid */}
-            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4 overscroll-contain">
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-16 text-[#5e736e]">
                   <Loader2 className="w-8 h-8 animate-spin text-[#0c3e35] mb-2" />
@@ -966,7 +967,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                     return (
                       <div
                         key={group.groupId}
-                        className={`p-5 sm:p-6 rounded-2xl border transition shadow-xs hover:shadow-md ${
+                        className={`p-3.5 sm:p-6 rounded-xl sm:rounded-2xl border transition shadow-xs hover:shadow-md ${
                           group.isShared
                             ? 'bg-white border-[#d4af37]/70 ring-1 ring-[#d4af37]/20'
                             : isCompleted
@@ -1195,7 +1196,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                     return (
                       <div
                         key={task.id}
-                        className={`p-5 rounded-2xl border transition shadow-xs hover:shadow-md ${
+                        className={`p-3.5 sm:p-5 rounded-xl sm:rounded-2xl border transition shadow-xs hover:shadow-md ${
                           task.isShared
                             ? 'bg-white border-[#d4af37]/60'
                             : isCompleted
