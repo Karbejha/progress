@@ -4,6 +4,7 @@ import { Role, Priority, TaskStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { randomUUID } from 'crypto';
+import { normalizePlanDate, progressDate, withDailyExecutiveProgress, dailyExecutiveTasks, averageDailyRate, recordExecutiveProgress } from '../common/daily-progress';
 
 export interface CreateExecutiveTaskDto {
   title: string;
@@ -40,6 +41,13 @@ export class ExecutiveTasksService {
   private async enrichTasksWithCoTasks(tasks: any[]) {
     if (!tasks || tasks.length === 0) return [];
 
+    const date = normalizePlanDate();
+    const entries = await this.prisma.executiveTaskDailyProgress.findMany({
+      where: { executiveTaskId: { in: tasks.map((task) => task.id) }, progressDate: progressDate(date) },
+    });
+    const entriesByTask = new Map(entries.map((entry) => [entry.executiveTaskId, entry]));
+    tasks = tasks.map((task) => withDailyExecutiveProgress({ ...task, dailyProgress: entriesByTask.has(task.id) ? [entriesByTask.get(task.id)] : [] }, date));
+
     const groupIds = Array.from(
       new Set(tasks.map((t) => t.sharedGroupId).filter(Boolean))
     ) as string[];
@@ -49,6 +57,7 @@ export class ExecutiveTasksService {
       const allGroupTasks = await this.prisma.executiveTask.findMany({
         where: { sharedGroupId: { in: groupIds } },
         include: {
+          dailyProgress: { where: { progressDate: progressDate(date) } },
           directorate: {
             select: { id: true, code: true, name: true, category: true, icon: true },
           },
@@ -56,7 +65,8 @@ export class ExecutiveTasksService {
         orderBy: { directorate: { displayOrder: 'asc' } },
       });
 
-      for (const gt of allGroupTasks) {
+      for (const rawTask of allGroupTasks) {
+        const gt = withDailyExecutiveProgress(rawTask, date);
         if (!gt.sharedGroupId) continue;
         const arr = siblingMap.get(gt.sharedGroupId) || [];
         arr.push(gt);
@@ -99,8 +109,7 @@ export class ExecutiveTasksService {
   }
 
   private async recalculateDailySummary(directorateId: string) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = normalizePlanDate();
     const todayPlan = await this.prisma.dailyPlan.findUnique({
       where: {
         directorateId_planDate: {
@@ -112,33 +121,8 @@ export class ExecutiveTasksService {
     });
 
     if (todayPlan?.dailySummary) {
-      const planTasks = todayPlan.tasks;
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(today);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      const allExecTasks = await this.prisma.executiveTask.findMany({
-        where: {
-          directorateId,
-          OR: [
-            {
-              status: { not: TaskStatus.COMPLETED },
-              completionPercentage: { lt: 100 },
-            },
-            {
-              updatedAt: { gte: startOfDay, lte: endOfDay },
-            },
-          ],
-        },
-      });
-      const allPcts = [
-        ...planTasks.map((t) => (t.isMultiDay && t.todayTargetMet ? 100 : t.completionPercentage)),
-        ...allExecTasks.map((t) => (t.todayTargetMet ? 100 : t.completionPercentage)),
-      ];
-      const newRate = allPcts.length > 0
-        ? Math.round((allPcts.reduce((sum, p) => sum + p, 0) / allPcts.length) * 10) / 10
-        : 0;
+      const allExecTasks = await dailyExecutiveTasks(this.prisma, directorateId, today);
+      const newRate = averageDailyRate(todayPlan.tasks, allExecTasks);
       await this.prisma.dailySummary.update({
         where: { id: todayPlan.dailySummary.id },
         data: { overallCompletionRate: newRate },
@@ -337,11 +321,20 @@ export class ExecutiveTasksService {
 
     const existingTask = await this.prisma.executiveTask.findUnique({
       where: { id },
-      include: { directorate: true },
+      include: {
+        directorate: true,
+        dailyProgress: { where: { progressDate: progressDate() } },
+      },
     });
 
     if (!existingTask) {
       throw new NotFoundException('التكليف غير موجود');
+    }
+
+    existingTask.todayTargetMet = !!existingTask.dailyProgress[0]?.todayTargetMet;
+    if (dto.completionPercentage !== undefined &&
+      (!Number.isInteger(dto.completionPercentage) || dto.completionPercentage < 0 || dto.completionPercentage > 100)) {
+      throw new BadRequestException('نسبة الإنجاز يجب أن تكون عدداً صحيحاً بين 0 و100');
     }
 
     const isExecutive = user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR;
@@ -410,28 +403,32 @@ export class ExecutiveTasksService {
       });
     }
 
-    const updated = await this.prisma.executiveTask.update({
-      where: { id },
-      data: dataToUpdate,
-      include: {
-        assignedBy: {
-          select: { id: true, fullName: true, title: true, role: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const targetMet = await recordExecutiveProgress(tx, id, dataToUpdate);
+      return tx.executiveTask.update({
+        where: { id },
+        data: { ...dataToUpdate, todayTargetMet: targetMet },
+        include: {
+          assignedBy: {
+            select: { id: true, fullName: true, title: true, role: true },
+          },
+          directorate: {
+            select: { id: true, code: true, name: true, category: true, icon: true },
+          },
+          assignedToUser: {
+            select: { id: true, fullName: true, title: true },
+          },
+          attachments: true,
         },
-        directorate: {
-          select: { id: true, code: true, name: true, category: true, icon: true },
-        },
-        assignedToUser: {
-          select: { id: true, fullName: true, title: true },
-        },
-        attachments: true,
-      },
+      });
     });
 
     await this.recalculateDailySummary(updated.directorateId);
 
+    const [enriched] = await this.enrichTasksWithCoTasks([updated]);
     if (hasChanges) {
       this.eventsGateway.emitExecutiveTaskUpdated({
-        task: updated,
+        task: enriched,
         directorateId: updated.directorateId,
         directorateName: updated.directorate.name,
         updatedByRole: user.role,
@@ -489,7 +486,6 @@ export class ExecutiveTasksService {
       );
     }
 
-    const [enriched] = await this.enrichTasksWithCoTasks([updated]);
     return enriched;
   }
 

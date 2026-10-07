@@ -54,6 +54,7 @@ import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFr
 import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
 import { getCleanTodoDescription } from './TodosView';
+import { workingDateKey, executiveDailyProgress } from '../lib/executiveDailyProgress';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -79,11 +80,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   // Drafts State (Requirement 4)
   const getTodayLocalKey = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return workingDateKey();
   };
 
   const todayKey = getTodayLocalKey();
@@ -240,14 +237,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   // Executive Tasks helpers & memos (Auto-pinned in morning plan until 100% completed)
   const isTaskUpdatedToday = (task: ExecutiveTask) => {
-    if (!task.updatedAt) return false;
-    const taskDate = new Date(task.updatedAt);
-    const today = new Date();
-    return (
-      taskDate.getFullYear() === today.getFullYear() &&
-      taskDate.getMonth() === today.getMonth() &&
-      taskDate.getDate() === today.getDate()
-    );
+    return executiveDailyProgress(task, taskLocalState[task.id]).completedToday;
   };
 
   const activeExecutiveTasks = React.useMemo(() => {
@@ -685,7 +675,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       let nextStatus = current.status;
       let nextPercentage = current.completionPercentage;
       let nextNote = current.completionNote;
-      let nextTodayTargetMet = current.todayTargetMet;
+      const originalTask = executiveTasks.find((task) => task.id === taskId);
+      let nextTodayTargetMet = originalTask ? executiveDailyProgress(originalTask, current).targetMet : false;
 
       if (field === 'completionPercentage') {
         const p = typeof value === 'number' ? value : parseInt(value, 10) || 0;
@@ -722,7 +713,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       const isDifferent = original
         ? (original.status !== nextStatus ||
           original.completionPercentage !== nextPercentage ||
-          Boolean(original.todayTargetMet) !== Boolean(nextTodayTargetMet) ||
+          executiveDailyProgress(original).targetMet !== Boolean(nextTodayTargetMet) ||
           (original.completionNote || '').trim() !== (nextNote || '').trim())
         : true;
 
@@ -789,13 +780,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   };
 
   const renderExecutiveTaskCard = (task: ExecutiveTask, isPinnedInMorningPlan: boolean = true) => {
-    const local = taskLocalState[task.id] || {
+    const savedLocal = taskLocalState[task.id] || {
       status: task.status,
       completionPercentage: task.completionPercentage,
       completionNote: task.completionNote || '',
       todayTargetMet: task.todayTargetMet || false,
       isModified: false,
     };
+    const local = { ...savedLocal, todayTargetMet: executiveDailyProgress(task, savedLocal).targetMet };
     const isCompleted = local.status === 'COMPLETED' || local.completionPercentage === 100;
     const isSaving = updatingTaskId === task.id;
 
@@ -859,7 +851,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     : 'قيد الانتظار'}
             </span>
 
-            {!isCompleted && (Boolean(local.todayTargetMet) || Boolean(task.todayTargetMet)) && (
+            {!isCompleted && local.todayTargetMet && (
               <span
                 className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-md flex items-center gap-1 transition-all ${
                   local.isModified
@@ -978,8 +970,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           {/* Today's target met control for multi-day executive task */}
           {(() => {
             const isTargetMet = Boolean(local.todayTargetMet) || isCompleted;
-            const isUnsavedChange = local.isModified && (Boolean(local.todayTargetMet) !== Boolean(task.todayTargetMet));
-            const isConfirmedSaved = Boolean(task.todayTargetMet) && !local.isModified;
+            const isUnsavedChange = local.isModified && (Boolean(local.todayTargetMet) !== executiveDailyProgress(task).targetMet);
+            const isConfirmedSaved = executiveDailyProgress(task).targetMet && !local.isModified;
 
             return (
               <div
@@ -2173,12 +2165,32 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
     try {
       setSaving(true);
+      // Save executive progress before generating the report from the saved daily values.
+      const summaryExecutiveTasks = [...executiveTasks];
+      for (let index = 0; index < summaryExecutiveTasks.length; index++) {
+        const task = summaryExecutiveTasks[index];
+        const local = taskLocalState[task.id];
+        if (!local?.isModified) continue;
+        const attachments = execTaskAttachments[task.id];
+        summaryExecutiveTasks[index] = await api.updateExecutiveTask(task.id, {
+          status: local.status,
+          completionPercentage: local.completionPercentage,
+          completionNote: local.completionNote,
+          todayTargetMet: executiveDailyProgress(task, local).targetMet,
+          attachmentIds: attachments?.map((attachment) => attachment.id),
+        });
+        setExecutiveTasks([...summaryExecutiveTasks]);
+        setTaskLocalState((previous) => ({ ...previous, [task.id]: { ...previous[task.id], isModified: false } }));
+        setExecTaskAttachments((previous) => { const next = { ...previous }; delete next[task.id]; return next; });
+      }
       const getTaskFulfillmentPct = (t: {
         completionPercentage: number;
         status: TaskStatus;
         isMultiDay?: boolean;
         todayTargetMet?: boolean;
+        dailyRate?: number;
       }) => {
+        if (t.dailyRate !== undefined) return t.dailyRate;
         if (t.status === 'COMPLETED' || t.completionPercentage >= 100) return 100;
         if (t.isMultiDay && t.todayTargetMet) return 100;
         return Math.min(100, Math.max(0, t.completionPercentage || 0));
@@ -2189,12 +2201,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         status: TaskStatus;
         isMultiDay?: boolean;
         todayTargetMet?: boolean;
+        dailyRate?: number;
       }) => {
+        if (t.dailyRate !== undefined) return t.dailyRate === 100;
         return t.status === 'COMPLETED' || t.completionPercentage === 100 || (Boolean(t.isMultiDay) && Boolean(t.todayTargetMet));
       };
 
       const planTasksList = plan?.tasks || [];
-      const relevantExecTasks = executiveTasks.filter((et) => {
+      const relevantExecTasks = summaryExecutiveTasks.filter((et) => {
         const local = taskLocalState[et.id];
         const isCompleted = (local ? local.status === 'COMPLETED' || local.completionPercentage >= 100 : et.status === 'COMPLETED' || et.completionPercentage >= 100);
         if (isCompleted) {
@@ -2219,6 +2233,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             status: (local ? local.status : et.status) as TaskStatus,
             isMultiDay: true,
             todayTargetMet: local ? local.todayTargetMet : et.todayTargetMet,
+            dailyRate: executiveDailyProgress(et).rate,
           };
         }),
       ];
@@ -3179,7 +3194,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 status: TaskStatus;
                 isMultiDay?: boolean;
                 todayTargetMet?: boolean;
+                dailyRate?: number;
               }) => {
+                if (t.dailyRate !== undefined) return t.dailyRate === 100;
                 return t.status === 'COMPLETED' || t.completionPercentage >= 100 || (Boolean(t.isMultiDay) && Boolean(t.todayTargetMet));
               };
 
@@ -3188,7 +3205,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 status: TaskStatus;
                 isMultiDay?: boolean;
                 todayTargetMet?: boolean;
+                dailyRate?: number;
               }) => {
+                if (t.dailyRate !== undefined) return t.dailyRate;
                 if (isFulfilled(t)) return 100;
                 return Math.min(100, Math.max(0, t.completionPercentage || 0));
               };
@@ -3222,6 +3241,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     status: (local ? local.status : et.status) as TaskStatus,
                     isMultiDay: true,
                     todayTargetMet: local ? local.todayTargetMet : et.todayTargetMet,
+                    dailyRate: executiveDailyProgress(et, local).rate,
                     isExecutive: true,
                   };
                 }),
@@ -3244,7 +3264,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       <span>الحصيلة الإحصائية لأعمال اليوم (محسوبة تلقائياً):</span>
                     </h4>
                     <span className="text-xs font-black px-3 py-1 rounded-full bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/30 shadow-2xs">
-                      نسبة الإنجاز العامة: {avgRate}%
+                      نسبة إنجاز اليوم: {avgRate}%
                     </span>
                   </div>
 

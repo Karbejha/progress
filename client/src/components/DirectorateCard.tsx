@@ -238,7 +238,7 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
               المهام: <strong className="text-[#0c3e35] font-bold">{item.completedTasksCount}</strong> من <strong className="text-[#5e736e] font-medium">{item.tasksCount}</strong>
             </span>
             <span className={`font-extrabold ${isCompleted ? 'text-emerald-700' : isUrgent ? 'text-red-700' : 'text-[#0c3e35]'}`}>
-              {item.completionRate}% إنجاز
+              {item.completionRate}% إنجاز اليوم
             </span>
           </div>
 

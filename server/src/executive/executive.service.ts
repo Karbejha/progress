@@ -4,6 +4,7 @@ import { Role, Priority, SummaryStatus, TaskStatus } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { normalizePlanDate, progressDate, executiveTasksForDay, withDailyExecutiveProgress, planDailyRate, executiveDailyRate, averageDailyRate } from '../common/daily-progress';
 
 export interface GiveFeedbackDto {
   directorateId: string;
@@ -29,17 +30,11 @@ export class ExecutiveService {
   ) {}
 
   private normalizeDate(dateStr?: string): Date {
-    const d = dateStr ? new Date(dateStr) : new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return normalizePlanDate(dateStr);
   }
 
   async getDailyOverview(dateStr?: string) {
     const targetDate = this.normalizeDate(dateStr);
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
 
     // Fetch all directorates
     const directorates = await this.prisma.directorate.findMany({
@@ -56,18 +51,9 @@ export class ExecutiveService {
           },
         },
         executiveTasks: {
-          where: {
-            OR: [
-              {
-                status: { not: TaskStatus.COMPLETED },
-                completionPercentage: { lt: 100 },
-              },
-              {
-                updatedAt: { gte: startOfDay, lte: endOfDay },
-              },
-            ],
-          },
+          where: executiveTasksForDay(targetDate),
           include: {
+            dailyProgress: { where: { progressDate: progressDate(targetDate) } },
             assignedBy: { select: { id: true, fullName: true, title: true, role: true } },
             assignedToUser: { select: { id: true, fullName: true, title: true } },
             attachments: true,
@@ -105,7 +91,7 @@ export class ExecutiveService {
       const plan = dir.dailyPlans[0] || null;
       const summary = plan?.dailySummary || null;
       const planTasks = plan?.tasks || [];
-      const execTasks = dir.executiveTasks || [];
+      const execTasks = dir.executiveTasks.map((task) => withDailyExecutiveProgress(task, targetDate));
       const feedbacks = plan?.feedbacks || [];
 
       const hasPlan = !!plan;
@@ -117,31 +103,20 @@ export class ExecutiveService {
       if (isUrgent) urgentIssuesCount++;
 
       // Combined tasks count and completed count
-      const isTaskFulfilledToday = (t: any) => {
-        return t.status === 'COMPLETED' || t.completionPercentage === 100 || ((t.isMultiDay || !!t.carriedFromTaskId) && t.todayTargetMet);
-      };
-      const getTaskFulfillmentPct = (t: any) => {
-        if (isTaskFulfilledToday(t)) return 100;
-        return Math.min(100, Math.max(0, t.completionPercentage || 0));
-      };
-
       const allTasksCount = planTasks.length + execTasks.length;
-      const completedPlanTasks = planTasks.filter(isTaskFulfilledToday).length;
-      const completedExecTasks = execTasks.filter(isTaskFulfilledToday).length;
+      const completedPlanTasks = planTasks.filter((task) => planDailyRate(task) === 100).length;
+      const completedExecTasks = execTasks.filter((task) => executiveDailyRate(task) === 100).length;
       const totalCompleted = completedPlanTasks + completedExecTasks;
 
       totalTasksCount += allTasksCount;
       totalCompletedTasksCount += totalCompleted;
 
-      let completionRate = 0;
-      if (summary) {
-        completionRate = summary.overallCompletionRate;
-        sumCompletionRates += completionRate;
-        activeReportingDirectorates++;
-      } else if (allTasksCount > 0) {
-        const sumPlanPct = planTasks.reduce((sum, t) => sum + getTaskFulfillmentPct(t), 0);
-        const sumExecPct = execTasks.reduce((sum, t) => sum + getTaskFulfillmentPct(t), 0);
-        completionRate = Math.round(((sumPlanPct + sumExecPct) / allTasksCount) * 10) / 10;
+      // Recompute today's rate, including when a stored summary used the old calculation.
+      // Historical submitted summaries remain the record of that day's report.
+      const completionRate = summary && targetDate.getTime() < normalizePlanDate().getTime()
+        ? summary.overallCompletionRate
+        : averageDailyRate(planTasks, execTasks);
+      if (summary || allTasksCount > 0) {
         sumCompletionRates += completionRate;
         activeReportingDirectorates++;
       }
@@ -229,6 +204,7 @@ export class ExecutiveService {
         users: true,
         executiveTasks: {
           include: {
+            dailyProgress: { where: { progressDate: progressDate(targetDate) } },
             assignedBy: { select: { fullName: true, title: true, role: true } },
             assignedToUser: { select: { fullName: true, title: true } },
             attachments: true,
@@ -279,7 +255,10 @@ export class ExecutiveService {
     });
 
     return {
-      directorate,
+      directorate: {
+        ...directorate,
+        executiveTasks: directorate.executiveTasks.map((task) => withDailyExecutiveProgress(task, targetDate)),
+      },
       currentPlan,
       pastPlans,
     };

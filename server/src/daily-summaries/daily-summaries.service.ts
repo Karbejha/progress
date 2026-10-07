@@ -4,6 +4,7 @@ import { Role, SummaryStatus, TaskStatus, Priority } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { normalizePlanDate, dailyExecutiveTasks, averageDailyRate } from '../common/daily-progress';
 
 export interface SubmitSummaryDto {
   date?: string;
@@ -33,9 +34,7 @@ export class DailySummariesService {
   ) {}
 
   private normalizeDate(dateStr?: string): Date {
-    const d = dateStr ? new Date(dateStr) : new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return normalizePlanDate(dateStr);
   }
 
   async submitSummary(user: any, dto: SubmitSummaryDto) {
@@ -93,49 +92,8 @@ export class DailySummariesService {
     const tasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: plan.id },
     });
-    const startOfDay = new Date(summaryDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(summaryDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const execTasks = await this.prisma.executiveTask.findMany({
-      where: {
-        directorateId,
-        OR: [
-          {
-            status: { not: TaskStatus.COMPLETED },
-            completionPercentage: { lt: 100 },
-          },
-          {
-            updatedAt: { gte: startOfDay, lte: endOfDay },
-          },
-        ],
-      },
-    });
-
-    const calculateTaskDailyFulfillmentRate = (t: {
-      completionPercentage: number;
-      status?: TaskStatus | string;
-      isMultiDay?: boolean;
-      todayTargetMet?: boolean;
-      carriedFromTaskId?: string | null;
-    }) => {
-      if (t.status === TaskStatus.COMPLETED || t.completionPercentage >= 100) return 100;
-      const isMulti = t.isMultiDay || !!t.carriedFromTaskId;
-      if (isMulti && t.todayTargetMet) return 100;
-      return Math.min(100, Math.max(0, t.completionPercentage || 0));
-    };
-
-    const allPcts = [
-      ...tasks.map((t) => calculateTaskDailyFulfillmentRate(t)),
-      ...execTasks.map((t) => calculateTaskDailyFulfillmentRate(t)),
-    ];
-
-    let overallRate = 0.0;
-    if (allPcts.length > 0) {
-      const total = allPcts.reduce((sum, pct) => sum + pct, 0);
-      overallRate = Math.round((total / allPcts.length) * 10) / 10;
-    }
+    const execTasks = await dailyExecutiveTasks(this.prisma, directorateId, summaryDate);
+    const overallRate = averageDailyRate(tasks, execTasks);
 
     // Upsert summary
     const summary = await this.prisma.dailySummary.upsert({
@@ -328,6 +286,10 @@ export class DailySummariesService {
       },
     });
 
+    if (plan?.dailySummary && targetDate.getTime() === normalizePlanDate().getTime()) {
+      const execTasks = await dailyExecutiveTasks(this.prisma, directorateId, targetDate);
+      plan.dailySummary.overallCompletionRate = averageDailyRate(plan.tasks, execTasks);
+    }
     return plan?.dailySummary || null;
   }
 }

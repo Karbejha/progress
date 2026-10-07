@@ -4,6 +4,7 @@ import { Role, PlanStatus, Priority, TaskStatus } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { normalizePlanDate, dailyExecutiveTasks, averageDailyRate, planDailyRate } from '../common/daily-progress';
 
 export interface CreatePlanDto {
   planDate?: string;
@@ -45,9 +46,7 @@ export class DailyPlansService {
   ) {}
 
   private normalizeDate(dateStr?: string): Date {
-    const d = dateStr ? new Date(dateStr) : new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return normalizePlanDate(dateStr);
   }
 
   public calculateDailyFulfillmentRate(task: {
@@ -57,14 +56,7 @@ export class DailyPlansService {
     todayTargetMet?: boolean;
     carriedFromTaskId?: string | null;
   }): number {
-    if (task.status === TaskStatus.COMPLETED || task.completionPercentage >= 100) {
-      return 100;
-    }
-    const isMulti = task.isMultiDay || !!task.carriedFromTaskId;
-    if (isMulti && task.todayTargetMet) {
-      return 100;
-    }
-    return Math.min(100, Math.max(0, task.completionPercentage || 0));
+    return planDailyRate(task);
   }
 
   async getMyPlanForDate(user: any, dateStr?: string) {
@@ -113,6 +105,10 @@ export class DailyPlansService {
       },
     });
 
+    if (plan?.dailySummary && targetDate.getTime() === normalizePlanDate().getTime()) {
+      const execTasks = await dailyExecutiveTasks(this.prisma, directorateId, targetDate);
+      plan.dailySummary.overallCompletionRate = averageDailyRate(plan.tasks, execTasks);
+    }
     return plan;
   }
 
@@ -278,22 +274,11 @@ export class DailyPlansService {
         const allPlanTasks = await this.prisma.planTask.findMany({
           where: { dailyPlanId: existing.id },
         });
-        const allExecTasks = await this.prisma.executiveTask.findMany({
-          where: { directorateId },
+        const allExecTasks = await dailyExecutiveTasks(this.prisma, directorateId, planDate);
+        await this.prisma.dailySummary.update({
+          where: { id: updated.dailySummary.id },
+          data: { overallCompletionRate: averageDailyRate(allPlanTasks, allExecTasks) },
         });
-
-        const allPcts = [
-          ...allPlanTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
-          ...allExecTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
-        ];
-
-        if (allPcts.length > 0) {
-          const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
-          await this.prisma.dailySummary.update({
-            where: { id: updated.dailySummary.id },
-            data: { overallCompletionRate: Math.round(avg * 10) / 10 },
-          });
-        }
       }
 
       // Emit real-time notification to executive leadership only if NOT silent auto-save
@@ -445,28 +430,15 @@ export class DailyPlansService {
     const allPlanTasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: task.dailyPlanId },
     });
-    const allExecTasks = await this.prisma.executiveTask.findMany({
-      where: { directorateId: task.dailyPlan.directorateId },
+    const allExecTasks = await dailyExecutiveTasks(this.prisma, task.dailyPlan.directorateId, task.dailyPlan.planDate);
+    const summary = await this.prisma.dailySummary.findUnique({
+      where: { dailyPlanId: task.dailyPlanId },
     });
-
-    const allPcts = [
-      ...allPlanTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
-      ...allExecTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
-    ];
-
-    if (allPcts.length > 0) {
-      const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
-
-      const summary = await this.prisma.dailySummary.findUnique({
-        where: { dailyPlanId: task.dailyPlanId },
+    if (summary) {
+      await this.prisma.dailySummary.update({
+        where: { id: summary.id },
+        data: { overallCompletionRate: averageDailyRate(allPlanTasks, allExecTasks) },
       });
-
-      if (summary) {
-        await this.prisma.dailySummary.update({
-          where: { id: summary.id },
-          data: { overallCompletionRate: Math.round(avg * 10) / 10 },
-        });
-      }
     }
 
     const hasStatusChanged = dto.status !== undefined && dto.status !== task.status;
@@ -738,26 +710,15 @@ export class DailyPlansService {
     const allPlanTasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: task.dailyPlanId },
     });
-    const allExecTasks = await this.prisma.executiveTask.findMany({
-      where: { directorateId: task.dailyPlan.directorateId },
+    const allExecTasks = await dailyExecutiveTasks(this.prisma, task.dailyPlan.directorateId, task.dailyPlan.planDate);
+    const summary = await this.prisma.dailySummary.findUnique({
+      where: { dailyPlanId: task.dailyPlanId },
     });
-
-    const allPcts = [
-      ...allPlanTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
-      ...allExecTasks.map((t) => this.calculateDailyFulfillmentRate(t)),
-    ];
-
-    if (allPcts.length > 0) {
-      const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
-      const summary = await this.prisma.dailySummary.findUnique({
-        where: { dailyPlanId: task.dailyPlanId },
+    if (summary) {
+      await this.prisma.dailySummary.update({
+        where: { id: summary.id },
+        data: { overallCompletionRate: averageDailyRate(allPlanTasks, allExecTasks) },
       });
-      if (summary) {
-        await this.prisma.dailySummary.update({
-          where: { id: summary.id },
-          data: { overallCompletionRate: Math.round(avg * 10) / 10 },
-        });
-      }
     }
 
     this.eventsGateway.emitTaskUpdated({

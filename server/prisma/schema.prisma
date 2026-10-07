@@ -238,7 +238,24 @@ model ExecutiveTask {
   updatedAt            DateTime      @updatedAt
   attachments          Attachment[]
 
+  dailyProgress        ExecutiveTaskDailyProgress[]
+
   @@index([sharedGroupId])
+}
+
+model ExecutiveTaskDailyProgress {
+  id                        String        @id @default(uuid())
+  executiveTaskId           String
+  executiveTask             ExecutiveTask @relation(fields: [executiveTaskId], references: [id], onDelete: Cascade)
+  progressDate              DateTime      @db.Date
+  startCompletionPercentage Int
+  completionPercentage      Int
+  todayTargetMet            Boolean       @default(false)
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+
+  @@unique([executiveTaskId, progressDate])
+  @@index([progressDate])
 }
 
 model UserTodo {

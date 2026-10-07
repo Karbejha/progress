@@ -232,6 +232,10 @@ export interface ExecutiveTask {
   completionPercentage: number;
   completionNote?: string;
   todayTargetMet?: boolean;
+  dailyCompletionPercentage?: number;
+  dailyStartCompletionPercentage?: number;
+  dailyProgressDate?: string;
+  completedOnDate?: boolean;
   assignedById: string;
   assignedBy?: {
     id: string;

@@ -10,6 +10,7 @@ import { Role, Priority, TaskStatus } from '@prisma/client';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { randomUUID } from 'crypto';
+import { normalizePlanDate, progressDate, dailyExecutiveTasks, averageDailyRate, recordExecutiveProgress, withDailyExecutiveProgress } from '../common/daily-progress';
 
 @Injectable()
 export class TodosService {
@@ -66,8 +67,7 @@ export class TodosService {
     const todayPlanTaskIds = new Set<string>();
 
     if (user.directorateId) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = normalizePlanDate();
 
       const todayPlan = await this.prisma.dailyPlan.findUnique({
         where: {
@@ -162,8 +162,7 @@ export class TodosService {
 
     let isIncludedInTodayPlan = false;
     if (user.directorateId) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = normalizePlanDate();
       const todayPlan = await this.prisma.dailyPlan.findUnique({
         where: {
           directorateId_planDate: {
@@ -325,8 +324,7 @@ export class TodosService {
 
     const todo = await this.getTodoById(user, id);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = normalizePlanDate();
 
     // Find or create today's daily plan
     let plan = await this.prisma.dailyPlan.findUnique({
@@ -424,24 +422,13 @@ export class TodosService {
     const allPlanTasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: plan.id },
     });
-    const allExecTasks = await this.prisma.executiveTask.findMany({
-      where: { directorateId: user.directorateId },
-    });
-    const allPcts = [
-      ...allPlanTasks.map((t) => t.completionPercentage),
-      ...allExecTasks.map((t) => t.completionPercentage),
-    ];
-    if (allPcts.length > 0) {
-      const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
-      const summary = await this.prisma.dailySummary.findUnique({
-        where: { dailyPlanId: plan.id },
+    const allExecTasks = await dailyExecutiveTasks(this.prisma, user.directorateId, today);
+    const summary = await this.prisma.dailySummary.findUnique({ where: { dailyPlanId: plan.id } });
+    if (summary) {
+      await this.prisma.dailySummary.update({
+        where: { id: summary.id },
+        data: { overallCompletionRate: averageDailyRate(allPlanTasks, allExecTasks) },
       });
-      if (summary) {
-        await this.prisma.dailySummary.update({
-          where: { id: summary.id },
-          data: { overallCompletionRate: Math.round(avg * 10) / 10 },
-        });
-      }
     }
 
     // Notify live clients via Socket
@@ -603,8 +590,7 @@ export class TodosService {
       }
 
       // Check today's plan
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = normalizePlanDate();
 
       const todayPlan = directorateId
         ? await this.prisma.dailyPlan.findUnique({
@@ -713,25 +699,13 @@ export class TodosService {
         const allPlanTasks = await this.prisma.planTask.findMany({
           where: { dailyPlanId: planTask.dailyPlanId },
         });
-        const allExecTasks = await this.prisma.executiveTask.findMany({
-          where: { directorateId: planTask.dailyPlan.directorateId },
-        });
-        const allPcts = [
-          ...allPlanTasks.map((t) => (t.id === taskId ? nextPercentage : t.completionPercentage)),
-          ...allExecTasks.map((t) => t.completionPercentage),
-        ];
-
-        if (allPcts.length > 0) {
-          const avg = allPcts.reduce((acc, curr) => acc + curr, 0) / allPcts.length;
-          const summary = await this.prisma.dailySummary.findUnique({
-            where: { dailyPlanId: planTask.dailyPlanId },
+        const allExecTasks = await dailyExecutiveTasks(this.prisma, planTask.dailyPlan.directorateId, planTask.dailyPlan.planDate);
+        const summary = await this.prisma.dailySummary.findUnique({ where: { dailyPlanId: planTask.dailyPlanId } });
+        if (summary) {
+          await this.prisma.dailySummary.update({
+            where: { id: summary.id },
+            data: { overallCompletionRate: averageDailyRate(allPlanTasks, allExecTasks) },
           });
-          if (summary) {
-            await this.prisma.dailySummary.update({
-              where: { id: summary.id },
-              data: { overallCompletionRate: Math.round(avg * 10) / 10 },
-            });
-          }
         }
 
         this.eventsGateway.emitTaskUpdated({
@@ -803,12 +777,28 @@ export class TodosService {
           if (options?.dueDate !== undefined) {
             execUpdateData.dueDate = options.dueDate ? new Date(options.dueDate) : null;
           }
-          const updated = await this.prisma.executiveTask.update({
-            where: { id: execTaskId },
-            data: execUpdateData,
+          const date = normalizePlanDate();
+          const updated = await this.prisma.$transaction(async (tx) => {
+            const targetMet = await recordExecutiveProgress(tx, execTaskId, execUpdateData, date);
+            return tx.executiveTask.update({
+              where: { id: execTaskId },
+              data: { ...execUpdateData, todayTargetMet: targetMet },
+              include: { dailyProgress: { where: { progressDate: progressDate(date) } } },
+            });
           });
+          const todayPlan = await this.prisma.dailyPlan.findUnique({
+            where: { directorateId_planDate: { directorateId: updated.directorateId, planDate: date } },
+            include: { tasks: true, dailySummary: true },
+          });
+          if (todayPlan?.dailySummary) {
+            const execTasks = await dailyExecutiveTasks(this.prisma, updated.directorateId, date);
+            await this.prisma.dailySummary.update({
+              where: { id: todayPlan.dailySummary.id },
+              data: { overallCompletionRate: averageDailyRate(todayPlan.tasks, execTasks) },
+            });
+          }
           this.eventsGateway.emitExecutiveTaskUpdated({
-            task: updated,
+            task: withDailyExecutiveProgress(updated, date),
             directorateId: execTask.directorateId,
             directorateName: execTask.directorate.name,
             updatedByRole: 'DIRECTOR',
