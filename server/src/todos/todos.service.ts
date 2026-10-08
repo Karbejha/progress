@@ -6,11 +6,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../events/events.gateway';
-import { Role, Priority, TaskStatus } from '@prisma/client';
+import { Role, Priority, TaskStatus, Prisma } from '@prisma/client';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { randomUUID } from 'crypto';
 import { normalizePlanDate, progressDate, dailyExecutiveTasks, averageDailyRate, recordExecutiveProgress, withDailyExecutiveProgress } from '../common/daily-progress';
+import { MAX_TODO_ATTACHMENTS, removeAttachmentFiles } from '../attachments/attachment-files';
 
 @Injectable()
 export class TodosService {
@@ -18,6 +19,30 @@ export class TodosService {
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
   ) {}
+
+  private async replaceAttachments(tx: Prisma.TransactionClient, userId: string, todoId: string, ids: string[]) {
+    if (!Array.isArray(ids) || ids.length > MAX_TODO_ATTACHMENTS || new Set(ids).size !== ids.length) {
+      throw new BadRequestException('يُسمح بإرفاق عشرة ملفات كحد أقصى دون تكرار');
+    }
+
+    // Claim only private files uploaded by this user. The predicate also prevents
+    // concurrent requests from moving the same upload between different todos.
+    const claimed = await tx.attachment.updateMany({
+      where: {
+        id: { in: ids }, uploadedById: userId, category: 'TODO',
+        announcementId: null, dailySummaryId: null, executiveTaskId: null,
+        OR: [{ todoId: null }, { todoId }],
+      },
+      data: { todoId },
+    });
+    if (claimed.count !== ids.length) {
+      throw new BadRequestException('أحد المرفقات غير موجود أو لا تملك صلاحية إرفاقه بهذه المهمة');
+    }
+
+    const removed = await tx.attachment.findMany({ where: { todoId, id: { notIn: ids } } });
+    await tx.attachment.deleteMany({ where: { todoId, id: { notIn: ids } } });
+    return removed;
+  }
 
   async getTodos(
     user: any,
@@ -54,6 +79,7 @@ export class TodosService {
 
     const todos = await this.prisma.userTodo.findMany({
       where,
+      include: { attachments: { orderBy: { createdAt: 'asc' } } },
       orderBy: [
         { isCompleted: 'asc' },
         { displayOrder: 'asc' },
@@ -154,6 +180,7 @@ export class TodosService {
   async getTodoById(user: any, id: string) {
     const todo = await this.prisma.userTodo.findUnique({
       where: { id },
+      include: { attachments: { orderBy: { createdAt: 'asc' } } },
     });
 
     if (!todo || todo.userId !== user.id) {
@@ -203,18 +230,22 @@ export class TodosService {
       ? Math.min(100, Math.max(0, Math.round(dto.completionPercentage)))
       : 0;
 
-    const todo = await this.prisma.userTodo.create({
-      data: {
-        userId: user.id,
-        title: dto.title.trim(),
-        description: dto.description?.trim() || null,
-        priority: dto.priority || Priority.NORMAL,
-        dueDate,
-        category: dto.category || 'GENERAL',
-        completionPercentage: pct,
-        isCompleted: pct === 100,
-        completedAt: pct === 100 ? new Date() : null,
-      },
+    const todo = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.userTodo.create({
+        data: {
+          userId: user.id,
+          title: dto.title.trim(),
+          description: dto.description?.trim() || null,
+          priority: dto.priority || Priority.NORMAL,
+          dueDate,
+          category: dto.category || 'GENERAL',
+          completionPercentage: pct,
+          isCompleted: pct === 100,
+          completedAt: pct === 100 ? new Date() : null,
+        },
+      });
+      if (dto.attachmentIds !== undefined) await this.replaceAttachments(tx, user.id, created.id, dto.attachmentIds);
+      return created;
     });
 
     this.eventsGateway.emitTodoUpdated(user.id);
@@ -252,10 +283,14 @@ export class TodosService {
       }
     }
 
-    const updated = await this.prisma.userTodo.update({
-      where: { id },
-      data,
+    const { updated, removed } = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.userTodo.update({ where: { id }, data });
+      const removed = dto.attachmentIds !== undefined
+        ? await this.replaceAttachments(tx, user.id, id, dto.attachmentIds)
+        : [];
+      return { updated, removed };
     });
+    await removeAttachmentFiles(removed);
 
     await this.syncLinkedEntities(updated, updated.isCompleted, updated.completionPercentage, {
       title: dto.title,
@@ -291,10 +326,13 @@ export class TodosService {
 
   async deleteTodo(user: any, id: string) {
     await this.getTodoById(user, id);
-
-    await this.prisma.userTodo.delete({
-      where: { id },
+    const attachments = await this.prisma.$transaction(async (tx) => {
+      const attachments = await tx.attachment.findMany({ where: { todoId: id } });
+      await tx.userTodo.delete({ where: { id } });
+      return attachments;
     });
+    await removeAttachmentFiles(attachments);
+    this.eventsGateway.emitTodoUpdated(user.id);
 
     return { success: true, message: 'تم حذف المهمة بنجاح' };
   }

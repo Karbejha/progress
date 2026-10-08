@@ -660,8 +660,8 @@ class ApiService {
     return `${baseUrl}/attachments/${attachmentId}/download${query}`;
   }
 
-  async deleteAttachment(attachmentId: string): Promise<{ success: boolean; id: string }> {
-    return this.request<{ success: boolean; id: string }>(`/attachments/${attachmentId}`, {
+  async deleteAttachment(attachmentId: string, onlyUnlinked = false): Promise<{ success: boolean; id: string }> {
+    return this.request<{ success: boolean; id: string }>(`/attachments/${attachmentId}${onlyUnlinked ? '?onlyUnlinked=1' : ''}`, {
       method: 'DELETE',
     });
   }

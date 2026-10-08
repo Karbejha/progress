@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { officialAttachmentWhere } from '../attachments/attachment-files';
 import { Role, Priority, SummaryStatus, TaskStatus } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
@@ -581,7 +582,7 @@ export class ExecutiveService {
 
     if (dto.attachmentIds && dto.attachmentIds.length > 0) {
       await this.prisma.attachment.updateMany({
-        where: { id: { in: dto.attachmentIds } },
+        where: officialAttachmentWhere(dto.attachmentIds),
         data: { announcementId: ann.id, category: 'ANNOUNCEMENT' },
       });
     }

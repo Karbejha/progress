@@ -1,5 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { officialAttachmentWhere } from '../attachments/attachment-files';
 import { Role, SummaryStatus, TaskStatus, Priority } from '@prisma/client';
 
 import { EventsGateway } from '../events/events.gateway';
@@ -136,7 +137,7 @@ export class DailySummariesService {
 
     if (dto.attachmentIds && dto.attachmentIds.length > 0) {
       await this.prisma.attachment.updateMany({
-        where: { id: { in: dto.attachmentIds } },
+        where: officialAttachmentWhere(dto.attachmentIds),
         data: { dailySummaryId: summary.id, category: 'DAILY_SUMMARY' },
       });
     }

@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { User, UserTodo, Priority, TodoCategory, Directorate } from '../types';
+import { User, UserTodo, Priority, TodoCategory, Directorate, Attachment } from '../types';
 import { api } from '../services/api';
 import { getSocket } from '../lib/socket';
 import { CustomDatePicker } from './CustomDatePicker';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { TodoAttachmentPicker } from './TodoAttachmentPicker';
+import { TodoAttachmentCard } from './TodoAttachmentCard';
+import { saveTodoAttachments } from '../lib/todoAttachments';
 import {
   CheckCircle2,
   Clock,
@@ -40,6 +43,7 @@ import {
   ChevronUp,
   ChevronsUp,
   ChevronsDown,
+  Paperclip,
 } from 'lucide-react';
 
 interface TodosViewProps {
@@ -88,6 +92,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const [newCategory, setNewCategory] = useState<string>('GENERAL');
   const [newDueDate, setNewDueDate] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [createError, setCreateError] = useState('');
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -195,6 +201,9 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   const [editDueDate, setEditDueDate] = useState<string>('');
   const [editPercentage, setEditPercentage] = useState<number>(0);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editFiles, setEditFiles] = useState<File[]>([]);
+  const [editAttachments, setEditAttachments] = useState<Attachment[]>([]);
+  const [editError, setEditError] = useState('');
 
   // Executive Conversion Modal State (for General Director)
   const [convertingTodo, setConvertingTodo] = useState<UserTodo | null>(null);
@@ -295,17 +304,19 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
   // Quick Add Todo
   const handleCreateTodo = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || isSubmitting) return;
 
     try {
       setIsSubmitting(true);
-      const created = await api.createTodo({
+      setCreateError('');
+      const created = await saveTodoAttachments(api, newFiles, [], (attachmentIds) => api.createTodo({
         title: newTitle.trim(),
         description: newDesc.trim() || undefined,
         priority: newPriority,
         category: newCategory,
         dueDate: newDueDate || undefined,
-      });
+        attachmentIds,
+      }));
 
       setTodos((prev) => [created, ...prev]);
       setNewTitle('');
@@ -313,10 +324,12 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       setNewPriority('NORMAL');
       setNewCategory('GENERAL');
       setNewDueDate('');
+      setNewFiles([]);
 
       window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to create todo', err);
+      setCreateError(err instanceof Error ? err.message : 'تعذر حفظ المهمة ومرفقاتها. يرجى المحاولة مجدداً');
     } finally {
       setIsSubmitting(false);
     }
@@ -950,15 +963,19 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     setEditCategory(todo.category || 'GENERAL');
     setEditDueDate(todo.dueDate ? new Date(todo.dueDate).toISOString().split('T')[0] : '');
     setEditPercentage(todo.completionPercentage ?? (todo.isCompleted ? 100 : 0));
+    setEditAttachments(todo.attachments || []);
+    setEditFiles([]);
+    setEditError('');
   };
 
   // Save Edit
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTodo || !editTitle.trim()) return;
+    if (!editingTodo || !editTitle.trim() || savingEdit) return;
 
     try {
       setSavingEdit(true);
+      setEditError('');
       // Preserve existing system tags if they existed in the original description
       const rawDesc = editingTodo.description || '';
       const tags: string[] = [];
@@ -975,7 +992,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         finalDesc = cleanDesc ? `${cleanDesc}\n${tags.join('\n')}` : tags.join('\n');
       }
 
-      const updated = await api.updateTodo(editingTodo.id, {
+      const updated = await saveTodoAttachments(api, editFiles, editAttachments, (attachmentIds) => api.updateTodo(editingTodo.id, {
         title: editTitle.trim(),
         description: finalDesc,
         priority: editPriority,
@@ -984,7 +1001,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         completionPercentage: editPercentage !== (editingTodo.completionPercentage ?? (editingTodo.isCompleted ? 100 : 0))
           ? editPercentage
           : undefined,
-      });
+        attachmentIds,
+      }));
 
       setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       setEditingTodo(null);
@@ -992,6 +1010,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'TodosView' } }));
     } catch (err) {
       console.error('Failed to update todo', err);
+      setEditError(err instanceof Error ? err.message : 'تعذر حفظ تعديلات المهمة. يرجى المحاولة مجدداً');
     } finally {
       setSavingEdit(false);
     }
@@ -1277,6 +1296,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       {/* Quick Add Todo Card */}
       <div className="rounded-2xl sm:rounded-3xl border border-[#d2d1c9] bg-white p-3.5 sm:p-5 shadow-sm transition hover:shadow-md">
         <form onSubmit={handleCreateTodo} className="space-y-2.5 sm:space-y-3">
+          <fieldset disabled={isSubmitting} className="space-y-2.5 sm:space-y-3 min-w-0">
           
           <div className="flex items-center gap-2">
             <div className="relative flex-1 min-w-0">
@@ -1375,6 +1395,9 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
             </div>
           </div>
 
+          <TodoAttachmentPicker files={newFiles} onFilesChange={setNewFiles} disabled={isSubmitting} />
+          {createError && <p role="alert" className="text-xs font-bold text-red-600">{createError}</p>}
+          </fieldset>
         </form>
       </div>
 
@@ -1786,6 +1809,15 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                               >
                                 {getCleanTodoDescription(todo.description)}
                               </p>
+                            )}
+
+                            {todo.attachments && todo.attachments.length > 0 && (
+                              <div className="space-y-1.5 pt-1">
+                                <p className="flex items-center gap-1 text-[11px] font-bold text-[#0c3e35]"><Paperclip className="w-3.5 h-3.5" /> المرفقات ({todo.attachments.length})</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {todo.attachments.map((attachment) => <TodoAttachmentCard key={attachment.id} attachment={attachment} />)}
+                                </div>
+                              </div>
                             )}
 
                             {/* Metadata Chips Row: Priority, Category, Due Date, Plan/Exec Badges, Completed stamp */}
@@ -2238,6 +2270,16 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                           <Edit3 className="w-4 h-4" />
                         </button>
 
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(todo)}
+                          className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-[#0c3e35] hover:bg-slate-100 transition cursor-pointer min-w-[32px] min-h-[32px] flex items-center justify-center"
+                          title="إضافة أو إدارة مرفقات المهمة"
+                          aria-label={`إدارة مرفقات ${todo.title}`}
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </button>
+
                         {/* Delete Button */}
                         <button
                           type="button"
@@ -2273,6 +2315,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
               </div>
               <button
                 onClick={() => setEditingTodo(null)}
+                disabled={savingEdit}
                 className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
@@ -2280,6 +2323,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4 overflow-y-auto flex-1 pr-1 pl-1 py-1">
+              <fieldset disabled={savingEdit} className="space-y-4 min-w-0">
               <div>
                 <label className="block text-xs font-bold text-[#05261e] mb-1">عنوان المهمة</label>
                 <input
@@ -2344,6 +2388,16 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                 </div>
               </div>
 
+              <TodoAttachmentPicker
+                key={editingTodo.id}
+                files={editFiles}
+                onFilesChange={setEditFiles}
+                attachments={editAttachments}
+                onAttachmentsChange={setEditAttachments}
+                disabled={savingEdit}
+              />
+              {editError && <p role="alert" className="text-xs font-bold text-red-600">{editError}</p>}
+
               {/* Completion Percentage in Edit Modal */}
               <div className="p-3 bg-[#f8f9fa] rounded-2xl border border-[#d2d1c9]/70 space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-[#05261e]">
@@ -2397,6 +2451,7 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
                 </button>
               </div>
 
+              </fieldset>
             </form>
           </div>
         </div>

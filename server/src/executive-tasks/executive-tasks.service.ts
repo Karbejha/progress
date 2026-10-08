@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, Priority, TaskStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
+import { officialAttachmentWhere } from '../attachments/attachment-files';
 import { randomUUID } from 'crypto';
 import { normalizePlanDate, progressDate, withDailyExecutiveProgress, dailyExecutiveTasks, averageDailyRate, recordExecutiveProgress } from '../common/daily-progress';
 
@@ -257,12 +258,12 @@ export class ExecutiveTasksService {
       if (dto.attachmentIds && dto.attachmentIds.length > 0) {
         if (!isJoint) {
           await this.prisma.attachment.updateMany({
-            where: { id: { in: dto.attachmentIds } },
+            where: officialAttachmentWhere(dto.attachmentIds),
             data: { executiveTaskId: task.id, category: 'EXECUTIVE_TASK' },
           });
         } else {
           const originalAttachments = await this.prisma.attachment.findMany({
-            where: { id: { in: dto.attachmentIds } },
+            where: officialAttachmentWhere(dto.attachmentIds),
           });
           for (const att of originalAttachments) {
             await this.prisma.attachment.create({
@@ -400,7 +401,7 @@ export class ExecutiveTasksService {
     if (hasAttachmentsChanged) {
       const category = user.role === Role.DIRECTOR ? 'TASK_COMPLETION' : 'EXECUTIVE_TASK';
       await this.prisma.attachment.updateMany({
-        where: { id: { in: dto.attachmentIds } },
+        where: officialAttachmentWhere(dto.attachmentIds),
         data: { executiveTaskId: id, category },
       });
     }

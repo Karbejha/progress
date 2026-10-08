@@ -36,6 +36,9 @@ services:
       PORT: 4000
       SEED_ON_START: ${SEED_ON_START:-false}
 
+    volumes:
+      - ports_uploads:/app/uploads
+
     ports:
       - "${BACKEND_PORT:-4010}:4000"
 
@@ -72,6 +75,8 @@ services:
 
 volumes:
   ports_pgdata:
+    driver: local
+  ports_uploads:
     driver: local
 
 networks:

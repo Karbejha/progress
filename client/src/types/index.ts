@@ -355,6 +355,7 @@ export interface UserTodo {
   isIncludedInTodayPlan?: boolean;
   createdAt: string;
   updatedAt: string;
+  attachments?: Attachment[];
 }
 
 export interface TodoStats {
@@ -378,6 +379,7 @@ export interface CreateTodoDto {
   dueDate?: string;
   category?: string;
   completionPercentage?: number;
+  attachmentIds?: string[];
 }
 
 export interface UpdateTodoDto {
@@ -389,6 +391,7 @@ export interface UpdateTodoDto {
   completionPercentage?: number;
   category?: string;
   displayOrder?: number;
+  attachmentIds?: string[];
 }
 
 export interface ReportTaskItem {

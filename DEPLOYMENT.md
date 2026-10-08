@@ -102,3 +102,24 @@ docker exec -t ports-postgres pg_dump -U postgres ports_daily_system > backup_$(
 ```bash
 cat backup_file.sql | docker exec -i ports-postgres psql -U postgres -d ports_daily_system
 ```
+
+## 6. مرفقات مهام الأجندة الشخصية
+
+يمكن إضافة الملفات عند إنشاء المهمة أو عبر زر المشبك بجانب المهمة. يدعم النظام PDF والصور (JPG/PNG/WebP) وWord وExcel وPowerPoint وTXT وCSV وZIP، بحد أقصى 10 ملفات للمهمة و25 ميغابايت لكل ملف. مرفقات الأجندة متاحة لصاحب المهمة فقط، وتُحفظ أو تُزال عند حفظ التعديلات. حذف المهمة يزيل مرفقاتها أيضاً.
+
+يضيف هذا التحديث علاقة `Attachment.todoId` في قاعدة البيانات. عند النشر باستخدام Docker، يقوم ملف الدخول بمزامنة المخطط تلقائياً. للتشغيل المحلي، نفّذ داخل `server` قبل إعادة تشغيل الخادم:
+
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+أصبحت الملفات محفوظة في volume دائم باسم `ports_uploads` ضمن `/app/uploads`. عند تحديث تثبيت قديم يحفظ الملفات داخل الحاوية، انسخها **قبل إعادة إنشاء الحاوية** ثم أعدها إلى المجلد الدائم بعد التحديث:
+
+```bash
+docker cp ports-server:/app/uploads ./ports-uploads-backup
+docker compose up -d --build
+docker cp ./ports-uploads-backup/. ports-server:/app/uploads
+```
+
+أضف نسخة من مجلد المرفقات إلى النسخ الاحتياطية مع قاعدة البيانات. إذا كان النظام خلف proxy، اضبط حد حجم الطلب بما يسمح بملف 25 ميغابايت بالإضافة إلى بيانات multipart.

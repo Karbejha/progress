@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString, IsInt, Min, Max, IsArray, IsUUID, ArrayMaxSize, ArrayUnique } from 'class-validator';
 import { Priority } from '@prisma/client';
 
 export class CreateTodoDto {
@@ -27,4 +27,11 @@ export class CreateTodoDto {
   @Max(100)
   @IsOptional()
   completionPercentage?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  attachmentIds?: string[];
 }

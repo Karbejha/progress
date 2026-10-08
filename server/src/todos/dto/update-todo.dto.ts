@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsDateString, IsBoolean, IsNumber, IsInt, Min, Max, IsArray, IsUUID, ArrayMaxSize, ArrayUnique } from 'class-validator';
 import { Priority } from '@prisma/client';
 
 export class UpdateTodoDto {
@@ -35,5 +35,12 @@ export class UpdateTodoDto {
   @IsNumber()
   @IsOptional()
   displayOrder?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  attachmentIds?: string[];
 }
 

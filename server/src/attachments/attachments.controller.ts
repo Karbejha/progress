@@ -20,6 +20,7 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AttachmentsService } from './attachments.service';
 import { randomUUID } from 'crypto';
+import { attachmentMimeType, MAX_ATTACHMENT_SIZE } from './attachment-files';
 
 const uploadStorageDir = path.resolve(process.cwd(), 'uploads', 'attachments');
 if (!fs.existsSync(uploadStorageDir)) {
@@ -40,21 +41,19 @@ export class AttachmentsController {
         },
         filename: (req, file, cb) => {
           const uniqueId = randomUUID();
-          const ext = path.extname(file.originalname).toLowerCase() || '.pdf';
+          const ext = path.extname(file.originalname).toLowerCase();
           cb(null, `${Date.now()}-${uniqueId}${ext}`);
         },
       }),
       limits: {
-        fileSize: 25 * 1024 * 1024, // 25 MB max limit
+        fileSize: MAX_ATTACHMENT_SIZE,
       },
       fileFilter: (req, file, cb) => {
-        if (
-          file.mimetype === 'application/pdf' ||
-          file.originalname.toLowerCase().endsWith('.pdf')
-        ) {
+        try {
+          attachmentMimeType(file, typeof req.query.category === 'string' ? req.query.category : undefined);
           cb(null, true);
-        } else {
-          cb(new BadRequestException('يُسمح فقط برفع مستندات رسمية بصيغة PDF'), false);
+        } catch (error) {
+          cb(error, false);
         }
       },
     }),
@@ -71,24 +70,29 @@ export class AttachmentsController {
   }
 
   @Get(':id')
-  async getAttachmentMeta(@Param('id') id: string) {
-    const { attachment } = await this.attachmentsService.getAttachmentById(id);
+  async getAttachmentMeta(@Request() req: any, @Param('id') id: string) {
+    const { attachment } = await this.attachmentsService.getAttachmentById(id, req.user);
     return attachment;
   }
 
   @Get(':id/download')
   async downloadAttachment(
+    @Request() req: any,
     @Param('id') id: string,
     @Query('download') isDownload: string,
     @Res() res: Response,
   ) {
-    const { attachment, absolutePath } = await this.attachmentsService.getAttachmentById(id);
+    const { attachment, absolutePath } = await this.attachmentsService.getAttachmentById(id, req.user);
 
-    if (isDownload === '1' || isDownload === 'true') {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+
+    const canPreview = attachment.mimeType === 'application/pdf' || ['image/jpeg', 'image/png', 'image/webp'].includes(attachment.mimeType);
+    if (isDownload === '1' || isDownload === 'true' || !canPreview) {
       return res.download(absolutePath, attachment.fileName);
     }
 
-    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Type', attachment.mimeType);
     res.setHeader(
       'Content-Disposition',
       `inline; filename="${encodeURIComponent(attachment.fileName)}"`,
@@ -97,7 +101,7 @@ export class AttachmentsController {
   }
 
   @Delete(':id')
-  async deleteAttachment(@Request() req: any, @Param('id') id: string) {
-    return this.attachmentsService.deleteAttachment(req.user, id);
+  async deleteAttachment(@Request() req: any, @Param('id') id: string, @Query('onlyUnlinked') onlyUnlinked?: string) {
+    return this.attachmentsService.deleteAttachment(req.user, id, onlyUnlinked === '1');
   }
 }
