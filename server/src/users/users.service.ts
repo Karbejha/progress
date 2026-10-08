@@ -191,7 +191,36 @@ export class UsersService {
       throw new ForbiddenException('لا يمكن حذف حساب المدير العام الرئيسي');
     }
 
+    const directorateId = user.directorateId;
+
     await this.prisma.user.delete({ where: { id } });
+
+    // If this director was assigned to a directorate, check if the directorate
+    // has no other users and no activity/plans/tasks. If completely unused, delete it.
+    if (directorateId) {
+      const dir = await this.prisma.directorate.findUnique({
+        where: { id: directorateId },
+        include: {
+          users: true,
+          dailyPlans: true,
+          executiveTasks: true,
+          feedbacks: true,
+          taskTemplates: true,
+        },
+      });
+
+      if (
+        dir &&
+        dir.users.length === 0 &&
+        dir.dailyPlans.length === 0 &&
+        dir.executiveTasks.length === 0 &&
+        dir.feedbacks.length === 0 &&
+        dir.taskTemplates.length === 0
+      ) {
+        await this.prisma.directorate.delete({ where: { id: directorateId } });
+      }
+    }
+
     return { message: 'تم حذف المستخدم بنجاح' };
   }
 }

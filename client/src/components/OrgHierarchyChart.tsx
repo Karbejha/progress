@@ -20,7 +20,7 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
   // Groupings matching the official hierarchy chart
   const row1Codes = ['DG_OFFICE', 'IMSAS', 'PSC', 'PLANNING', 'PR', 'TARTOUS_BRANCH'];
   const row2Codes = ['INTERNAL_AUDIT', 'SUPPLY', 'MORAL_GUIDANCE', 'MARITIME_EDU', 'FINANCE', 'INSPECTION', 'MAINTENANCE'];
-  const row3Codes = ['FISHERIES_LICENSES', 'INFORMATICS', 'IT_INFRA', 'VEHICLES', 'ADMIN_DEV', 'LEGAL'];
+  const row3Codes = ['FISHERIES_LICENSES', 'INFORMATICS', 'VEHICLES', 'ADMIN_DEV', 'LEGAL'];
   const row4Codes = ['PORT_AFFAIRS'];
 
   const renderNode = (code: string) => {
@@ -154,7 +154,7 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
       {/* Level 3 Directorates */}
       <div className="space-y-2.5">
         <h4 className="text-xs font-bold text-[#0c3e35] px-1">المديريات الفنية والمساندة والشؤون القانونية:</h4>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {row3Codes.map(renderNode)}
         </div>
       </div>

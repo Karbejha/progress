@@ -142,14 +142,6 @@ async function main() {
       displayOrder: 15,
     },
     {
-      code: 'IT_INFRA',
-      name: 'مديرية تقانة المعلومات والبنية التحتية',
-      category: 'TECHNICAL',
-      description: 'إدارة الشبكات والسيرفرات والاتصالات البحرية والأمن السيبراني.',
-      icon: 'Network',
-      displayOrder: 16,
-    },
-    {
       code: 'VEHICLES',
       name: 'مديرية الآليات والمركبات',
       category: 'SUPPORT',
@@ -256,7 +248,6 @@ async function main() {
     { code: 'MAINTENANCE', username: 'dir_maintenance', title: 'مدير المنشآت والصيانة', email: 'maintenance@ports.gov.sy' },
     { code: 'FISHERIES_LICENSES', username: 'dir_fisheries', title: 'مدير المصائد والرخص', email: 'fisheries@ports.gov.sy' },
     { code: 'INFORMATICS', username: 'dir_informatics', title: 'مديرة المعلوماتية', email: 'informatics@ports.gov.sy' },
-    { code: 'IT_INFRA', username: 'dir_it', title: 'مدير تقانة المعلومات', email: 'it@ports.gov.sy' },
     { code: 'VEHICLES', username: 'dir_vehicles', title: 'مدير الآليات', email: 'vehicles@ports.gov.sy' },
     { code: 'ADMIN_DEV', username: 'dir_admin_dev', title: 'مديرة التنمية الإدارية', email: 'admin.dev@ports.gov.sy' },
     { code: 'LEGAL', username: 'dir_legal', title: 'مديرة الشؤون القانونية', email: 'legal@ports.gov.sy' },
@@ -280,7 +271,7 @@ async function main() {
   }
 
   console.log('Seeding completed successfully!');
-  console.log('Directorates seeded: 20');
+  console.log('Directorates seeded: 19');
   console.log('Admin account: general.director@ports.gov.sy (password: admin123)');
   console.log('Director accounts created with password: password123');
 }

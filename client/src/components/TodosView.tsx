@@ -981,7 +981,9 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
         priority: editPriority,
         category: editCategory,
         dueDate: editDueDate || null,
-        completionPercentage: editPercentage,
+        completionPercentage: editPercentage !== (editingTodo.completionPercentage ?? (editingTodo.isCompleted ? 100 : 0))
+          ? editPercentage
+          : undefined,
       });
 
       setTodos((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));

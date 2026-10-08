@@ -262,6 +262,8 @@ export class TodosService {
       description: dto.description,
       priority: dto.priority,
       dueDate: dto.dueDate,
+      syncProgress: (data.completionPercentage !== undefined && data.completionPercentage !== existing.completionPercentage) ||
+        (data.isCompleted !== undefined && data.isCompleted !== existing.isCompleted),
     });
 
     this.eventsGateway.emitTodoUpdated(user.id);
@@ -563,7 +565,7 @@ export class TodosService {
     todo: any,
     isCompleted: boolean,
     percentage?: number,
-    options?: { title?: string; description?: string; priority?: Priority; dueDate?: string | null },
+    options?: { title?: string; description?: string; priority?: Priority; dueDate?: string | null; syncProgress?: boolean },
   ) {
     try {
       const nextPercentage = typeof percentage === 'number'
@@ -572,6 +574,7 @@ export class TodosService {
       const nextStatus = nextPercentage === 100
         ? TaskStatus.COMPLETED
         : (nextPercentage > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+      const syncProgress = options?.syncProgress !== false;
 
       // 1. Extract ALL explicit PlanTask IDs from todo.description
       const planMatches = [...(todo.description?.matchAll(/\[معرف المهمة:\s*([^\]]+)\]/g) || [])];
@@ -661,10 +664,10 @@ export class TodosService {
 
       // Update all matched PlanTasks
       for (const [taskId, planTask] of tasksToUpdateMap) {
-        const updateData: any = {
+        const updateData: any = syncProgress ? {
           status: nextStatus,
           completionPercentage: nextPercentage,
-        };
+        } : {};
         if (options?.title !== undefined && options.title.trim()) {
           updateData.title = options.title.trim();
         }
@@ -690,7 +693,7 @@ export class TodosService {
           updateData.priority = options.priority;
         }
 
-        await this.prisma.planTask.update({
+        const updatedPlanTask = await this.prisma.planTask.update({
           where: { id: taskId },
           data: updateData,
         });
@@ -713,8 +716,8 @@ export class TodosService {
           directorateName: planTask.dailyPlan.directorate.name,
           taskId: planTask.id,
           taskTitle: updateData.title || planTask.title,
-          status: nextStatus,
-          completionPercentage: nextPercentage,
+          status: updatedPlanTask.status,
+          completionPercentage: updatedPlanTask.completionPercentage,
         });
       }
 
@@ -722,23 +725,22 @@ export class TodosService {
       const execMatches = [...(todo.description?.matchAll(/\[معرف التكليف:\s*([^\]]+)\]/g) || [])];
       const execTaskIds = new Set<string>(execMatches.map((m) => m[1].trim()).filter(Boolean));
 
-      // Also if user has directorate, check active executive tasks for this directorate with matching title
-      if (directorateId) {
+      // Infer a legacy link only when no explicit link exists. Completed assignments
+      // must never be reopened by an unrelated agenda item with a similar title.
+      if (directorateId && execTaskIds.size === 0) {
         const cleanTodoTitle = (todo.title || '').trim().toLowerCase();
         if (cleanTodoTitle) {
           const activeExecs = await this.prisma.executiveTask.findMany({
             where: {
               directorateId,
+              status: { not: TaskStatus.COMPLETED },
+              completionPercentage: { lt: 100 },
             },
             include: { directorate: true },
           });
           for (const ext of activeExecs) {
             const extTitle = (ext.title || '').trim().toLowerCase();
-            if (
-              extTitle === cleanTodoTitle ||
-              extTitle.includes(cleanTodoTitle) ||
-              cleanTodoTitle.includes(extTitle)
-            ) {
+            if (ext.status !== TaskStatus.COMPLETED && ext.completionPercentage < 100 && extTitle === cleanTodoTitle) {
               execTaskIds.add(ext.id);
             }
           }
@@ -751,10 +753,10 @@ export class TodosService {
           include: { directorate: true },
         });
         if (execTask) {
-          const execUpdateData: any = {
+          const execUpdateData: any = syncProgress ? {
             status: nextStatus,
             completionPercentage: nextPercentage,
-          };
+          } : {};
           if (options?.title !== undefined && options.title.trim()) {
             execUpdateData.title = options.title.trim();
           }

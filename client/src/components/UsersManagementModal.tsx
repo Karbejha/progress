@@ -235,7 +235,8 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
     try {
       setActionLoading(true);
       await api.deleteUser(userToDelete.id);
-      showToast(`تم حذف حساب ${userToDelete.fullName} بنجاح`);
+      const displayName = userToDelete.fullName?.trim() || userToDelete.title?.trim() || userToDelete.username;
+      showToast(`تم حذف حساب (${displayName}) بنجاح`);
       setUserToDelete(null);
       loadData();
     } catch (err: any) {
@@ -812,7 +813,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                 تأكيد حذف الحساب
               </h3>
               <p className="text-xs font-bold text-[#0c3e35] bg-[#f4f3ed] p-2.5 rounded-xl border border-[#d2d1c9]">
-                {userToDelete.fullName} ({userToDelete.username})
+                {userToDelete.fullName?.trim() || userToDelete.title || userToDelete.username} ({userToDelete.username})
               </p>
               <p className="text-xs text-[#5e736e] leading-relaxed font-medium">
                 هل أنت متأكد من رغبتك في حذف هذا الحساب نهائياً؟ سيتم إلغاء صلاحية الوصول الخاصة بهذا المستخدم فوراً.

@@ -376,11 +376,13 @@ export class ExecutiveTasksService {
       if (dto.completionPercentage !== undefined) dataToUpdate.completionPercentage = dto.completionPercentage;
       if (dto.completionNote !== undefined) dataToUpdate.completionNote = dto.completionNote;
       if (dto.todayTargetMet !== undefined) dataToUpdate.todayTargetMet = dto.todayTargetMet;
+    }
 
-      if (dto.completionPercentage === 100) {
-        if (!dto.status) dataToUpdate.status = TaskStatus.COMPLETED;
-        dataToUpdate.todayTargetMet = true;
-      }
+    // Persist completion consistently, regardless of which control or role saved it.
+    if (dataToUpdate.status === TaskStatus.COMPLETED || dataToUpdate.completionPercentage === 100) {
+      dataToUpdate.status = TaskStatus.COMPLETED;
+      dataToUpdate.completionPercentage = 100;
+      dataToUpdate.todayTargetMet = false;
     }
 
     const hasStatusChanged = dataToUpdate.status !== undefined && dataToUpdate.status !== existingTask.status;

@@ -34,4 +34,15 @@ export class DirectoratesService {
     }
     return directorate;
   }
+
+  async remove(id: string) {
+    const directorate = await this.prisma.directorate.findUnique({
+      where: { id },
+    });
+    if (!directorate) {
+      throw new NotFoundException('المديرية غير موجودة');
+    }
+    await this.prisma.directorate.delete({ where: { id } });
+    return { message: 'تم حذف المديرية بنجاح' };
+  }
 }

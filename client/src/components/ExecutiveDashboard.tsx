@@ -307,6 +307,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
         const matchesSearch =
           dir.directorateName.toLowerCase().includes(query) ||
           (dir.director?.fullName && dir.director.fullName.toLowerCase().includes(query)) ||
+          (dir.director?.title && dir.director.title.toLowerCase().includes(query)) ||
           (dir.generalFocus && dir.generalFocus.toLowerCase().includes(query));
         if (!matchesSearch) return false;
       }

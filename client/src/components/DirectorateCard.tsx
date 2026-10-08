@@ -178,6 +178,8 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             <p className="text-xs text-[#5e736e] mt-1 font-medium truncate">
               المدير المسؤول: {item.director?.fullName?.trim() ? (
                 <strong className="text-[#0c3e35] font-bold">{item.director.fullName}</strong>
+              ) : item.director?.title?.trim() ? (
+                <strong className="text-[#0c3e35] font-bold">{item.director.title}</strong>
               ) : (
                 <span className="text-[#8daaa2] font-normal">غير محدد</span>
               )}

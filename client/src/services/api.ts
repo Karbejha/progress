@@ -229,6 +229,12 @@ class ApiService {
     return this.request<Directorate[]>('/directorates');
   }
 
+  async deleteDirectorate(directorateId: string) {
+    return this.request<{ message: string }>(`/directorates/${directorateId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Executive endpoints
   async getExecutiveOverview(dateStr?: string): Promise<ExecutiveOverviewResponse> {
     const query = dateStr ? `?date=${dateStr}` : '';

@@ -327,7 +327,7 @@ function DirectorReportContent() {
             <div className="text-left space-y-0.5 text-xs print:text-[9.5px] print:leading-tight text-[#5e736e] print:text-black font-medium">
               <p>الرمز: م.ع.م / {data.directorate.code}</p>
               <p>تاريخ الاستخراج: {new Date().toLocaleDateString('ar-SY')}</p>
-              <p>المدير المسؤول: <strong className="text-[#0c3e35] print:text-black">{data.director?.fullName || '-'}</strong></p>
+              <p>المدير المسؤول: <strong className="text-[#0c3e35] print:text-black">{data.director?.fullName?.trim() || data.director?.title?.trim() || '-'}</strong></p>
               <p className="text-[10.5px] print:text-[8.5px] text-[#0c3e35] print:text-black font-bold">التصنيف: رسمي / إحصائي</p>
             </div>
           </div>

@@ -78,7 +78,12 @@ export class ExecutiveService {
       },
     });
 
-    let totalDirectorates = directorates.length;
+    // Filter out inactive/ghost directorates that have no assigned users and no operational activity for this target date
+    const activeDirectorates = directorates.filter(
+      (dir) => dir.users.length > 0 || dir.dailyPlans.length > 0 || dir.executiveTasks.length > 0
+    );
+
+    let totalDirectorates = activeDirectorates.length;
     let plansSubmittedCount = 0;
     let summariesSubmittedCount = 0;
     let totalTasksCount = 0;
@@ -87,7 +92,7 @@ export class ExecutiveService {
     let sumCompletionRates = 0;
     let activeReportingDirectorates = 0;
 
-    const items = directorates.map((dir) => {
+    const items = activeDirectorates.map((dir) => {
       const plan = dir.dailyPlans[0] || null;
       const summary = plan?.dailySummary || null;
       const planTasks = plan?.tasks || [];
@@ -381,7 +386,9 @@ export class ExecutiveService {
   }
 
   async getAnnouncements(user?: any) {
-    const totalDirectorates = await this.prisma.directorate.count();
+    const totalDirectorates = await this.prisma.directorate.count({
+      where: { users: { some: {} } },
+    });
 
     const announcements = await this.prisma.announcement.findMany({
       include: {
@@ -496,8 +503,9 @@ export class ExecutiveService {
       throw new NotFoundException('التعميم غير موجود');
     }
 
-    // Get all directorates to identify who hasn't read yet
+    // Get active directorates to identify who hasn't read yet
     const allDirectorates = await this.prisma.directorate.findMany({
+      where: { users: { some: {} } },
       orderBy: { displayOrder: 'asc' },
       include: {
         users: {
@@ -513,7 +521,7 @@ export class ExecutiveService {
 
     const readers = ann.reads.map((r) => ({
       userId: r.userId,
-      userName: r.user?.fullName || 'مستخدم غير محدد',
+      userName: r.user?.fullName?.trim() || r.user?.title?.trim() || 'مستخدم غير محدد',
       userTitle: r.user?.title || '',
       directorateId: r.user?.directorateId,
       directorateName: r.user?.directorate?.name || 'الإدارة العليا / غير محدد',
@@ -528,7 +536,7 @@ export class ExecutiveService {
         directorateName: dir.name,
         directorateCode: dir.code,
         icon: dir.icon,
-        directorName: dir.users[0]?.fullName || 'غير محدد',
+        directorName: dir.users[0]?.fullName?.trim() || dir.users[0]?.title?.trim() || 'غير محدد',
       }));
 
     const totalDirectorates = allDirectorates.length;

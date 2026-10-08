@@ -158,7 +158,7 @@ function ReportContent() {
                     {dir.directorateName}
                   </td>
                   <td className="p-2 print:py-[3px] print:px-1.5 text-[#5e736e] print:text-gray-900 whitespace-nowrap font-medium">
-                    {dir.director?.fullName || '-'}
+                    {dir.director?.fullName?.trim() || dir.director?.title?.trim() || '-'}
                   </td>
                   <td className="p-2 print:py-[3px] print:px-1.5 text-[#5e736e] print:text-gray-900 max-w-[180px] print:max-w-none print:leading-tight">
                     {dir.generalFocus || (dir.hasPlan ? `${dir.tasksCount} مهام مجدولة` : 'لم ترفع خطة')}

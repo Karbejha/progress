@@ -219,7 +219,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                 )}
               </div>
               <p className="text-xs text-[#8daaa2] mt-0.5 font-medium">
-                المدير المسؤول: <strong className="text-[#d4af37]">{item.director?.fullName || 'غير محدد'}</strong> {item.director?.phone ? `(${item.director.phone})` : ''}
+                المدير المسؤول: <strong className="text-[#d4af37]">{item.director?.fullName?.trim() || item.director?.title?.trim() || 'غير محدد'}</strong> {item.director?.phone ? `(${item.director.phone})` : ''}
               </p>
             </div>
           </div>

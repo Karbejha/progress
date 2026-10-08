@@ -54,7 +54,7 @@ import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFr
 import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
 import { getCleanTodoDescription } from './TodosView';
-import { workingDateKey, executiveDailyProgress } from '../lib/executiveDailyProgress';
+import { workingDateKey, executiveDailyProgress, LocalExecutiveTaskState, mergeExecutiveTaskStates, acceptSavedExecutiveTaskState } from '../lib/executiveDailyProgress';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -225,15 +225,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [executiveTasks, setExecutiveTasks] = useState<ExecutiveTask[]>([]);
   const [loadingExecTasks, setLoadingExecTasks] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
-  const [taskLocalState, setTaskLocalState] = useState<{
-    [id: string]: {
-      status: TaskStatus;
-      completionPercentage: number;
-      completionNote: string;
-      todayTargetMet?: boolean;
-      isModified?: boolean;
-    };
-  }>({});
+  const [taskLocalState, setTaskLocalState] = useState<Record<string, LocalExecutiveTaskState>>({});
+  const executiveTasksRequestRef = React.useRef(0);
 
   // Executive Tasks helpers & memos (Auto-pinned in morning plan until 100% completed)
   const isTaskUpdatedToday = (task: ExecutiveTask) => {
@@ -640,26 +633,29 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   const loadExecutiveTasks = async () => {
     if (!currentUser.directorateId) return;
+    const requestId = ++executiveTasksRequestRef.current;
     try {
       setLoadingExecTasks(true);
       const res = await api.getExecutiveTasks({ directorateId: currentUser.directorateId });
+      if (requestId !== executiveTasksRequestRef.current) return;
       setExecutiveTasks(res);
-      const stateMap: any = {};
-      res.forEach((t) => {
-        stateMap[t.id] = {
-          status: t.status,
-          completionPercentage: t.completionPercentage,
-          completionNote: t.completionNote || '',
-          todayTargetMet: t.todayTargetMet || false,
-          isModified: false,
-        };
-      });
-      setTaskLocalState(stateMap);
+      setTaskLocalState((previous) => mergeExecutiveTaskStates(res, previous));
     } catch (err) {
       console.error('Failed to load director executive tasks', err);
     } finally {
-      setLoadingExecTasks(false);
+      if (requestId === executiveTasksRequestRef.current) setLoadingExecTasks(false);
     }
+  };
+
+  const acceptSavedExecutiveTask = (task: ExecutiveTask, submitted: LocalExecutiveTaskState) => {
+    // A read started before this save cannot replace its confirmed result.
+    ++executiveTasksRequestRef.current;
+    setLoadingExecTasks(false);
+    setExecutiveTasks((previous) => previous.map((item) => item.id === task.id ? task : item));
+    setTaskLocalState((previous) => ({
+      ...previous,
+      [task.id]: acceptSavedExecutiveTaskState(task, submitted, previous[task.id]),
+    }));
   };
 
   const handleLocalExecTaskChange = (taskId: string, field: string, value: any) => {
@@ -683,7 +679,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         nextPercentage = p;
         if (p === 100) {
           nextStatus = 'COMPLETED';
-          nextTodayTargetMet = true;
+          nextTodayTargetMet = false;
         } else if (p === 0) {
           nextStatus = 'PENDING';
         } else {
@@ -694,7 +690,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         nextStatus = s;
         if (s === 'COMPLETED') {
           nextPercentage = 100;
-          nextTodayTargetMet = true;
+          nextTodayTargetMet = false;
         } else if (s === 'PENDING') {
           nextPercentage = 0;
         } else if (s === 'IN_PROGRESS') {
@@ -742,13 +738,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     try {
       setUpdatingTaskId(taskId);
       const taskAtts = execTaskAttachments[taskId];
-      await api.updateExecutiveTask(taskId, {
+      const updated = await api.updateExecutiveTask(taskId, {
         status: local.status,
         completionPercentage: local.completionPercentage,
         completionNote: local.completionNote,
         todayTargetMet: local.todayTargetMet,
         attachmentIds: taskAtts && taskAtts.length > 0 ? taskAtts.map((a) => a.id) : undefined,
       });
+      acceptSavedExecutiveTask(updated, local);
       if (taskAtts && taskAtts.length > 0) {
         setExecTaskAttachments((prev) => {
           const next = { ...prev };
@@ -756,16 +753,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           return next;
         });
       }
-      const toastMsg = local.todayTargetMet
-        ? 'تم حفظ مستهدف اليوم وتحديث تقرير التكليف بنجاح! ✔️'
-        : 'تم إرسال تقرير إنجاز التكليف وتحديثه في أجندة المهام اليومية بنجاح!';
+      const toastMsg = updated.status === 'COMPLETED' || updated.completionPercentage === 100
+        ? 'تم حفظ اكتمال التكليف بنسبة 100% وإزالته من التكليفات النشطة بنجاح! ✔️'
+        : updated.todayTargetMet
+          ? 'تم حفظ مستهدف اليوم وتحديث تقرير التكليف بنجاح! ✔️'
+          : 'تم إرسال تقرير إنجاز التكليف وتحديثه في أجندة المهام اليومية بنجاح!';
       showToast(toastMsg);
       window.dispatchEvent(new CustomEvent('ports:todos_updated'));
-      setTaskLocalState((prev) => ({
-        ...prev,
-        [taskId]: { ...prev[taskId], isModified: false },
-      }));
-      await loadExecutiveTasks();
     } catch (err: any) {
       console.error('Failed to update executive task', err);
       if (err?.message?.includes('غير موجود')) {
@@ -2179,8 +2173,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           todayTargetMet: executiveDailyProgress(task, local).targetMet,
           attachmentIds: attachments?.map((attachment) => attachment.id),
         });
-        setExecutiveTasks([...summaryExecutiveTasks]);
-        setTaskLocalState((previous) => ({ ...previous, [task.id]: { ...previous[task.id], isModified: false } }));
+        acceptSavedExecutiveTask(summaryExecutiveTasks[index], local);
         setExecTaskAttachments((previous) => { const next = { ...previous }; delete next[task.id]; return next; });
       }
       const getTaskFulfillmentPct = (t: {

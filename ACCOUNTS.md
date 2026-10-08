@@ -21,7 +21,7 @@
 
 ---
 
-### 3️⃣ حسابات مدراء المديريات والمكاتب (20 مديرية)
+### 3️⃣ حسابات مدراء المديريات والمكاتب (19 مديرية)
 
 > **ملاحظة:** كلمة السر الموحدة لكافة حسابات مدراء المديريات هي: **`password123`**
 
@@ -42,11 +42,10 @@
 | 13 | **مديرية المنشآت والصيانة** | `dir_maintenance` | `maintenance@ports.gov.sy` | `password123` |
 | 14 | **مديرية المصائد والرخص** | `dir_fisheries` | `fisheries@ports.gov.sy` | `password123` |
 | 15 | **مديرية المعلوماتية** | `dir_informatics` | `informatics@ports.gov.sy` | `password123` |
-| 16 | **مديرية تقانة المعلومات** | `dir_it` | `it@ports.gov.sy` | `password123` |
-| 17 | **مديرية الآليات** | `dir_vehicles` | `vehicles@ports.gov.sy` | `password123` |
-| 18 | **مديرية التنمية الإدارية** | `dir_admin_dev` | `admin.dev@ports.gov.sy` | `password123` |
-| 19 | **مديرية الشؤون القانونية** | `dir_legal` | `legal@ports.gov.sy` | `password123` |
-| 20 | **مديرية شؤون الموانئ** | `dir_ports` | `ports@ports.gov.sy` | `password123` |
+| 16 | **مديرية الآليات** | `dir_vehicles` | `vehicles@ports.gov.sy` | `password123` |
+| 17 | **مديرية التنمية الإدارية** | `dir_admin_dev` | `admin.dev@ports.gov.sy` | `password123` |
+| 18 | **مديرية الشؤون القانونية** | `dir_legal` | `legal@ports.gov.sy` | `password123` |
+| 19 | **مديرية شؤون الموانئ** | `dir_ports` | `ports@ports.gov.sy` | `password123` |
 
 ---
 
