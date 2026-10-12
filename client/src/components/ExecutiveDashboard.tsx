@@ -564,26 +564,26 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
               }}
               className="p-4 rounded-2xl bg-white border border-[#d2d1c9] hover:border-[#0c3e35] transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer shadow-xs animate-fadeIn"
             >
-              <div className="flex items-center gap-3.5 flex-1 min-w-0">
+              <div className="flex items-start sm:items-center gap-3.5 w-full flex-1 min-w-0">
                 <div className="w-10 h-10 rounded-xl bg-[#0c3e35] text-[#d4af37] flex items-center justify-center shrink-0 shadow-xs">
                   <Megaphone className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded bg-[#0c3e35] text-[#d4af37]">
                       آخر تعميم إداري صادر
                     </span>
-                    <h4 className="text-xs font-bold text-[#0c3e35] truncate">{latestAnn.title}</h4>
+                    <h4 className="min-w-0 text-xs font-bold text-[#0c3e35] break-words">{latestAnn.title}</h4>
                   </div>
-                  <p className="text-xs text-[#5e736e] mt-0.5 truncate">{latestAnn.content}</p>
+                  <p className="text-xs leading-relaxed text-[#5e736e] mt-0.5 whitespace-pre-line break-words">{latestAnn.content}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="flex items-center gap-1.5 bg-[#f4f3ed] px-3 py-1.5 rounded-xl border border-[#d2d1c9] text-xs text-[#0c3e35] font-bold">
-                  <Eye className="w-3.5 h-3.5 text-[#d4af37]" />
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto sm:shrink-0">
+                <div className="flex min-w-0 max-w-full items-center gap-1.5 bg-[#f4f3ed] px-3 py-1.5 rounded-xl border border-[#d2d1c9] text-xs text-[#0c3e35] font-bold">
+                  <Eye className="w-3.5 h-3.5 shrink-0 text-[#d4af37]" />
                   <span>سجل القراءة: {latestAnn.readPercentage || 0}% ({latestAnn.readCount || 0} مديرية)</span>
                 </div>
-                <span className="text-[11px] text-[#0c3e35] font-bold bg-[#edece4] hover:bg-[#0c3e35] hover:text-white px-3.5 py-1.5 rounded-xl border border-[#d2d1c9] transition">
+                <span className="text-[11px] text-[#0c3e35] font-bold whitespace-nowrap bg-[#edece4] hover:bg-[#0c3e35] hover:text-white px-3.5 py-1.5 rounded-xl border border-[#d2d1c9] transition">
                   عرض سجل المطّلعين
                 </span>
               </div>

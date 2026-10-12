@@ -28,6 +28,7 @@ import { User, Attachment } from '../types';
 import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
 import { getCleanTodoDescription } from './TodosView';
+import { newestTasksFirst } from '../lib/taskOrder';
 
 interface DirectorateDetailModalProps {
   item: DirectorateOverviewItem | null;
@@ -344,7 +345,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
               </div>
             ) : (
               <div className="space-y-2.5 max-h-56 overflow-y-auto">
-                {executiveTasks.map((t) => (
+                {newestTasksFirst(executiveTasks).map((t) => (
                   <div key={t.id} className="p-3.5 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9] space-y-2 text-xs">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className="font-extrabold text-[#05261e]">{t.title}</span>
@@ -422,9 +423,9 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
 
             {item.tasks && item.tasks.length > 0 ? (
               <div className="space-y-2 mt-2">
-                {item.tasks.map((task, idx) => (
+                {newestTasksFirst(item.tasks).map((task, idx) => (
                   <div
-                    key={idx}
+                    key={task.id}
                     className="p-3 rounded-xl bg-[#fcfbf7] border border-[#d2d1c9] flex items-center justify-between gap-3 text-xs"
                   >
                     <div className="flex items-center gap-2 flex-1">

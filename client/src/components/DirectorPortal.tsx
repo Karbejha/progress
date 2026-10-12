@@ -55,6 +55,7 @@ import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
 import { getCleanTodoDescription } from './TodosView';
 import { workingDateKey, executiveDailyProgress, LocalExecutiveTaskState, mergeExecutiveTaskStates, acceptSavedExecutiveTaskState } from '../lib/executiveDailyProgress';
+import { newestTaskEntries, newestTasksFirst } from '../lib/taskOrder';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -126,6 +127,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [tasks, setTasks] = useState<
     {
       id?: string;
+      createdAt?: string;
+      displayOrder?: number;
       title: string;
       description: string;
       priority: Priority;
@@ -448,11 +451,13 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         setAutoSaveTime(nowStr);
 
         setTasks((prev) =>
-          prev.map((t, idx) => {
-            if (!t.id && res.tasks[idx]?.id) {
-              return { ...t, id: res.tasks[idx].id };
-            }
-            return t;
+          prev.map((t) => {
+            const savedTask = t.id
+              ? res.tasks.find((saved) => saved.id === t.id)
+              : res.tasks[validTasks.indexOf(t)];
+            return savedTask
+              ? { ...t, id: savedTask.id, createdAt: savedTask.createdAt, displayOrder: savedTask.displayOrder }
+              : t;
           })
         );
 
@@ -638,7 +643,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       setLoadingExecTasks(true);
       const res = await api.getExecutiveTasks({ directorateId: currentUser.directorateId });
       if (requestId !== executiveTasksRequestRef.current) return;
-      setExecutiveTasks(res);
+      setExecutiveTasks(newestTasksFirst(res));
       setTaskLocalState((previous) => mergeExecutiveTaskStates(res, previous));
     } catch (err) {
       console.error('Failed to load director executive tasks', err);
@@ -1175,6 +1180,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         if (currentPlan.tasks && currentPlan.tasks.length > 0) {
           const mappedTasks = currentPlan.tasks.map((t) => ({
             id: t.id,
+            createdAt: t.createdAt,
+            displayOrder: t.displayOrder,
             title: t.title,
             description: getCleanTodoDescription(t.description),
             priority: t.priority,
@@ -1756,6 +1763,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         setTasks(
           res.tasks.map((t) => ({
             id: t.id,
+            createdAt: t.createdAt,
+            displayOrder: t.displayOrder,
             title: t.title,
             description: t.description || '',
             priority: t.priority,
@@ -1812,6 +1821,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         ...prev.filter((t) => t.title.trim().length > 0),
         {
           id: newTask.id,
+          createdAt: newTask.createdAt,
+          displayOrder: newTask.displayOrder,
           title: newTask.title,
           description: newTask.description || '',
           priority: newTask.priority,
@@ -2210,8 +2221,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         return true;
       });
 
-      const combinedTasksList = [
+      const combinedTasksList = newestTasksFirst([
         ...planTasksList.map((t) => ({
+          id: t.id,
+          createdAt: t.createdAt,
+          displayOrder: t.displayOrder,
           title: t.title,
           completionPercentage: trackedTasks[t.id]?.completionPercentage ?? t.completionPercentage,
           status: (trackedTasks[t.id]?.status ?? t.status) as TaskStatus,
@@ -2221,6 +2235,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         ...relevantExecTasks.map((et) => {
           const local = taskLocalState[et.id];
           return {
+            id: et.id,
+            createdAt: et.createdAt,
+            isExecutive: true,
             title: `[تكليف المدير العام] ${et.title}`,
             completionPercentage: local ? local.completionPercentage : et.completionPercentage,
             status: (local ? local.status : et.status) as TaskStatus,
@@ -2229,7 +2246,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             dailyRate: executiveDailyProgress(et).rate,
           };
         }),
-      ];
+      ]);
 
       const completedTasks = combinedTasksList.filter(isFulfilled);
       const totalTasks = combinedTasksList.length;
@@ -2815,7 +2832,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
               {/* Task Cards List */}
               <div className="space-y-3.5">
-                {tasks.map((task, idx) => {
+                {newestTaskEntries(tasks).map(({ task, index: idx }, displayIndex) => {
                   const matchingTpl = getMatchingTemplate(task);
                   const isSaved = Boolean(matchingTpl);
                   const isToggling = togglingTemplateIdx === idx;
@@ -2830,7 +2847,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                         {/* Right: Task Badge & Status */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-xl bg-[#0c3e35] text-[#d4af37] border border-[#d4af37]/40 text-xs font-black flex items-center justify-center shadow-xs shrink-0">
-                            {idx + 1}
+                            {displayIndex + 1}
                           </span>
 
                           {task.carriedFromTaskId && (
@@ -3215,9 +3232,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 return true;
               });
 
-              const combinedList = [
+              const combinedList = newestTasksFirst([
                 ...planTasksList.map((t) => ({
                   id: t.id,
+                  createdAt: t.createdAt,
+                  displayOrder: t.displayOrder,
                   title: t.title,
                   completionPercentage: trackedTasks[t.id]?.completionPercentage ?? t.completionPercentage,
                   status: (trackedTasks[t.id]?.status ?? t.status) as TaskStatus,
@@ -3229,6 +3248,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   const local = taskLocalState[et.id];
                   return {
                     id: et.id,
+                    createdAt: et.createdAt,
                     title: `[تكليف المدير العام] ${et.title}`,
                     completionPercentage: local ? local.completionPercentage : et.completionPercentage,
                     status: (local ? local.status : et.status) as TaskStatus,
@@ -3238,7 +3258,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                     isExecutive: true,
                   };
                 }),
-              ];
+              ]);
 
               const completedList = combinedList.filter(isFulfilled);
               const inProgressList = combinedList.filter((t) => !isFulfilled(t) && (t.completionPercentage > 0 || t.status === 'IN_PROGRESS'));

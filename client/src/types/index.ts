@@ -49,6 +49,7 @@ export interface PlanTask {
   completionPercentage: number;
   completionNote?: string;
   displayOrder: number;
+  createdAt?: string;
   isMultiDay?: boolean;
   todayTargetMet?: boolean;
   carriedFromTaskId?: string;
