@@ -1,21 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { activeDirectorateWhere } from '../common/active-directorates';
 
 @Injectable()
 export class DirectoratesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(includeInactive = false) {
     return this.prisma.directorate.findMany({
+      where: includeInactive ? {} : activeDirectorateWhere,
       orderBy: { displayOrder: 'asc' },
       include: {
         users: {
+          where: includeInactive ? {} : { isActive: true },
           select: {
             id: true,
             fullName: true,
             title: true,
             email: true,
             role: true,
+            isActive: true,
           },
         },
       },

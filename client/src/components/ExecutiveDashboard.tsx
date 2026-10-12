@@ -134,6 +134,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   };
 
   useEffect(() => {
+    const socket = getSocket();
+    const refreshStatus = () => {
+      loadOverview();
+      loadTasksCount();
+      loadAnnouncements();
+    };
+    window.addEventListener('ports:user_status_changed', refreshStatus);
+    socket?.on('user:status-changed', refreshStatus);
+    return () => {
+      window.removeEventListener('ports:user_status_changed', refreshStatus);
+      socket?.off('user:status-changed', refreshStatus);
+    };
+  }, [selectedDate]);
+
+  useEffect(() => {
     if (!showAnnouncementModal) return;
 
     const originalOverflow = document.body.style.overflow;

@@ -119,6 +119,10 @@ class ApiService {
     });
 
     if (!response.ok) {
+      if (response.status === 401 && token) {
+        this.logout();
+        window.dispatchEvent(new CustomEvent('ports:session_expired'));
+      }
       let errorMessage = `Request failed with status ${response.status}`;
       try {
         const errorText = await response.text();
@@ -212,6 +216,13 @@ class ApiService {
     });
   }
 
+  async setUserActive(userId: string, isActive: boolean) {
+    return this.request<User>(`/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    });
+  }
+
   async adminResetPassword(userId: string, newPassword: string) {
     return this.request<{ message: string }>(`/users/${userId}/reset-password`, {
       method: 'PATCH',
@@ -225,8 +236,8 @@ class ApiService {
     });
   }
 
-  async getDirectorates(): Promise<Directorate[]> {
-    return this.request<Directorate[]>('/directorates');
+  async getDirectorates(includeInactive = false): Promise<Directorate[]> {
+    return this.request<Directorate[]>(`/directorates${includeInactive ? '?includeInactive=true' : ''}`);
   }
 
   async deleteDirectorate(directorateId: string) {

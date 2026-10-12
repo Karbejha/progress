@@ -6,6 +6,7 @@ import { Role, Priority, SummaryStatus, TaskStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { normalizePlanDate, progressDate, executiveTasksForDay, withDailyExecutiveProgress, planDailyRate, executiveDailyRate, averageDailyRate } from '../common/daily-progress';
+import { activeDirectorateWhere, activeExecutiveTaskWhere } from '../common/active-directorates';
 
 export interface GiveFeedbackDto {
   directorateId: string;
@@ -37,11 +38,13 @@ export class ExecutiveService {
   async getDailyOverview(dateStr?: string) {
     const targetDate = this.normalizeDate(dateStr);
 
-    // Fetch all directorates
+    // Exclude suspended directorates before counting activity or submission rates.
     const directorates = await this.prisma.directorate.findMany({
+      where: activeDirectorateWhere,
       orderBy: { displayOrder: 'asc' },
       include: {
         users: {
+          where: { isActive: true },
           select: {
             id: true,
             fullName: true,
@@ -49,10 +52,11 @@ export class ExecutiveService {
             email: true,
             phone: true,
             role: true,
+            isActive: true,
           },
         },
         executiveTasks: {
-          where: executiveTasksForDay(targetDate),
+          where: { AND: [executiveTasksForDay(targetDate), activeExecutiveTaskWhere] },
           include: {
             dailyProgress: { where: { progressDate: progressDate(targetDate) } },
             assignedBy: { select: { id: true, fullName: true, title: true, role: true } },
@@ -62,10 +66,11 @@ export class ExecutiveService {
           orderBy: { createdAt: 'desc' },
         },
         dailyPlans: {
-          where: { planDate: targetDate },
+          where: { planDate: targetDate, user: { isActive: true } },
           include: {
             tasks: { orderBy: { displayOrder: 'asc' } },
             dailySummary: {
+              where: { user: { isActive: true } },
               include: { attachments: true },
             },
             feedbacks: {
@@ -154,7 +159,7 @@ export class ExecutiveService {
         directorateCode: dir.code,
         category: dir.category,
         icon: dir.icon,
-        director: dir.users[0] || null,
+        director: dir.users.find((u) => u.role === Role.DIRECTOR) || dir.users[0] || null,
         planId: plan?.id || null,
         hasPlan,
         planSubmittedAt: plan?.submittedAt || null,
@@ -388,7 +393,7 @@ export class ExecutiveService {
 
   async getAnnouncements(user?: any) {
     const totalDirectorates = await this.prisma.directorate.count({
-      where: { users: { some: {} } },
+      where: { AND: [activeDirectorateWhere, { users: { some: { isActive: true } } }] },
     });
 
     const announcements = await this.prisma.announcement.findMany({
@@ -398,6 +403,7 @@ export class ExecutiveService {
         },
         attachments: true,
         reads: {
+          where: { user: { isActive: true, OR: [{ directorateId: null }, { directorate: activeDirectorateWhere }] } },
           include: {
             user: {
               select: {
@@ -417,7 +423,7 @@ export class ExecutiveService {
 
     return announcements.map((ann) => {
       const isReadByMe = user ? ann.reads.some((r) => r.userId === user.id) : false;
-      const readCount = ann.reads.length;
+      const readCount = new Set(ann.reads.map((r) => r.user.directorateId).filter(Boolean)).size;
       const readPercentage = Math.round((readCount / (totalDirectorates || 1)) * 100);
 
       return {
@@ -484,6 +490,7 @@ export class ExecutiveService {
         author: { select: { fullName: true, title: true } },
         attachments: true,
         reads: {
+          where: { user: { isActive: true, OR: [{ directorateId: null }, { directorate: activeDirectorateWhere }] } },
           include: {
             user: {
               select: {
@@ -506,16 +513,16 @@ export class ExecutiveService {
 
     // Get active directorates to identify who hasn't read yet
     const allDirectorates = await this.prisma.directorate.findMany({
-      where: { users: { some: {} } },
+      where: { AND: [activeDirectorateWhere, { users: { some: { isActive: true } } }] },
       orderBy: { displayOrder: 'asc' },
       include: {
         users: {
+          where: { isActive: true },
           select: { id: true, fullName: true, title: true, role: true },
         },
       },
     });
 
-    const readUserIds = new Set(ann.reads.map((r) => r.userId));
     const readDirectorateIds = new Set(
       ann.reads.map((r) => r.user?.directorateId).filter(Boolean),
     );

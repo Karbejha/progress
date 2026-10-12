@@ -69,6 +69,7 @@ model User {
   fullName      String
   title         String
   role          Role               @default(DIRECTOR)
+  isActive      Boolean            @default(true)
   phone         String?
   avatarUrl     String?
   directorateId String?

@@ -24,6 +24,9 @@ export class AuthService {
     });
 
     if (user && (await bcrypt.compare(pass, user.password))) {
+      if (!user.isActive) {
+        throw new UnauthorizedException('هذا الحساب معطل، يرجى مراجعة المدير العام');
+      }
       const { password, ...result } = user;
       return result;
     }
@@ -45,6 +48,9 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('اسم المستخدم أو كلمة المرور غير صحيحة');
     }
+    if (!user.isActive) {
+      throw new UnauthorizedException('هذا الحساب معطل، يرجى مراجعة المدير العام');
+    }
 
     const payload = {
       sub: user.id,
@@ -64,6 +70,7 @@ export class AuthService {
 
   async getAllUsersForSwitch() {
     return this.prisma.user.findMany({
+      where: { isActive: true },
       select: {
         id: true,
         email: true,
@@ -71,6 +78,7 @@ export class AuthService {
         fullName: true,
         title: true,
         role: true,
+        isActive: true,
         directorateId: true,
         directorate: {
           select: {

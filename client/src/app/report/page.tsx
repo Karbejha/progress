@@ -7,6 +7,7 @@ import { ExecutiveOverviewResponse } from '../../types';
 import { api } from '../../services/api';
 import { Printer, ArrowRight } from 'lucide-react';
 import { initStatusBar } from '../../lib/statusBar';
+import { getSocket } from '../../lib/socket';
 
 function ReportContent() {
   const searchParams = useSearchParams();
@@ -17,6 +18,13 @@ function ReportContent() {
   useEffect(() => {
     initStatusBar();
     loadReport();
+  }, [dateParam]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    const refreshStatus = () => loadReport();
+    socket?.on('user:status-changed', refreshStatus);
+    return () => { socket?.off('user:status-changed', refreshStatus); };
   }, [dateParam]);
 
   const loadReport = async () => {

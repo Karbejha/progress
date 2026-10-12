@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { EventsGateway } from '../events/events.gateway';
 
 export interface CreateUserDto {
   fullName: string;
@@ -30,7 +31,7 @@ export interface UpdateUserDto {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private eventsGateway: EventsGateway) {}
 
   async findAll() {
     return this.prisma.user.findMany({
@@ -41,6 +42,7 @@ export class UsersService {
         fullName: true,
         title: true,
         role: true,
+        isActive: true,
         phone: true,
         directorateId: true,
         directorate: {
@@ -131,6 +133,35 @@ export class UsersService {
         role: dto.role !== undefined ? dto.role : user.role,
       },
       include: { directorate: true },
+    });
+
+    const { password, ...result } = updated;
+    return result;
+  }
+
+  async setActive(id: string, isActive: boolean) {
+    if (typeof isActive !== 'boolean') {
+      throw new BadRequestException('حالة الحساب يجب أن تكون قيمة منطقية');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('المستخدم غير موجود');
+    }
+    if (user.role !== Role.DIRECTOR) {
+      throw new ForbiddenException('يمكن تغيير حالة حساب مدير المديرية فقط');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { isActive },
+      include: { directorate: true },
+    });
+
+    this.eventsGateway.emitUserStatusChanged({
+      userId: updated.id,
+      directorateId: updated.directorateId,
+      isActive: updated.isActive,
     });
 
     const { password, ...result } = updated;

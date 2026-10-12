@@ -1,4 +1,4 @@
-import { Controller, Get, Delete, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Delete, Param, Query, UseGuards } from '@nestjs/common';
 import { DirectoratesService } from './directorates.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -10,8 +10,8 @@ export class DirectoratesController {
   constructor(private readonly directoratesService: DirectoratesService) {}
 
   @Get()
-  findAll() {
-    return this.directoratesService.findAll();
+  findAll(@Query('includeInactive') includeInactive?: string) {
+    return this.directoratesService.findAll(includeInactive === 'true');
   }
 
   @UseGuards(JwtAuthGuard)

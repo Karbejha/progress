@@ -11,6 +11,7 @@ import { DirectorPortal } from '../components/DirectorPortal';
 import { TodosView } from '../components/TodosView';
 import { initNotificationService, requestNotificationPermissions } from '../lib/notifications';
 import { initStatusBar } from '../lib/statusBar';
+import { getSocket } from '../lib/socket';
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -30,6 +31,23 @@ export default function Home() {
     window.addEventListener('ports:navigate_view', handleNav);
     return () => window.removeEventListener('ports:navigate_view', handleNav);
   }, []);
+
+  useEffect(() => {
+    const socket = currentUser ? getSocket() : null;
+    const endSession = () => {
+      api.logout();
+      setCurrentUser(null);
+    };
+    const handleStatusChange = (payload: { userId: string; isActive: boolean }) => {
+      if (payload.userId === currentUser?.id && !payload.isActive) endSession();
+    };
+    window.addEventListener('ports:session_expired', endSession);
+    socket?.on('user:status-changed', handleStatusChange);
+    return () => {
+      window.removeEventListener('ports:session_expired', endSession);
+      socket?.off('user:status-changed', handleStatusChange);
+    };
+  }, [currentUser?.id]);
 
   const initAuth = async () => {
     try {

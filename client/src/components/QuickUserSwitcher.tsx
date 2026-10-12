@@ -60,7 +60,7 @@ export const QuickUserSwitcher: React.FC<QuickUserSwitcherProps> = ({
     try {
       setLoading(true);
       const res = await api.getAllUsers();
-      setUsers(res);
+      setUsers(res.filter((u) => u.isActive !== false));
     } catch (err) {
       console.error('Failed to load users for switcher', err);
     } finally {

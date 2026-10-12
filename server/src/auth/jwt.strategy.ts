@@ -27,6 +27,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       throw new UnauthorizedException('المستخدم غير موجود أو انتهت صلاحية الجلسة');
     }
+    if (!user.isActive) {
+      throw new UnauthorizedException('هذا الحساب معطل، يرجى مراجعة المدير العام');
+    }
 
     return user;
   }

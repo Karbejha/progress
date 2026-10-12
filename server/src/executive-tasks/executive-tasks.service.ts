@@ -5,6 +5,7 @@ import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { officialAttachmentWhere } from '../attachments/attachment-files';
 import { randomUUID } from 'crypto';
+import { activeExecutiveTaskWhere } from '../common/active-directorates';
 import { normalizePlanDate, progressDate, withDailyExecutiveProgress, dailyExecutiveTasks, averageDailyRate, recordExecutiveProgress } from '../common/daily-progress';
 
 export interface CreateExecutiveTaskDto {
@@ -56,7 +57,7 @@ export class ExecutiveTasksService {
     let siblingMap = new Map<string, any[]>();
     if (groupIds.length > 0) {
       const allGroupTasks = await this.prisma.executiveTask.findMany({
-        where: { sharedGroupId: { in: groupIds } },
+        where: { sharedGroupId: { in: groupIds }, AND: [activeExecutiveTaskWhere] },
         include: {
           dailyProgress: { where: { progressDate: progressDate(date) } },
           directorate: {
@@ -134,7 +135,7 @@ export class ExecutiveTasksService {
   async getTasks(user: any, query?: { directorateId?: string; status?: TaskStatus; priority?: Priority }) {
     const isExecutive = user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR;
     const canViewAll = isExecutive || user.role === Role.OBSERVER;
-    const where: any = {};
+    const where: any = { AND: [activeExecutiveTaskWhere] };
 
     if (!canViewAll) {
       if (!user.directorateId) {

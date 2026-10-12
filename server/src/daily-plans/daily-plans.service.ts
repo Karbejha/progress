@@ -1,6 +1,7 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, PlanStatus, Priority, TaskStatus } from '@prisma/client';
+import { activeDirectorateWhere, activeExecutiveTaskWhere } from '../common/active-directorates';
 
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -987,7 +988,7 @@ export class DailyPlansService {
     } else if (user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR || user.role === Role.OBSERVER) {
       targetDirectorateId = query.directorateId || user.directorateId || null;
       if (!targetDirectorateId) {
-        const firstDir = await this.prisma.directorate.findFirst({ orderBy: { displayOrder: 'asc' } });
+        const firstDir = await this.prisma.directorate.findFirst({ where: activeDirectorateWhere, orderBy: { displayOrder: 'asc' } });
         targetDirectorateId = firstDir ? firstDir.id : null;
       }
     } else {
@@ -1026,10 +1027,10 @@ export class DailyPlansService {
 
     // Fetch Directorate and Director
     const directorate = await this.prisma.directorate.findUnique({
-      where: { id: targetDirectorateId },
+      where: { id: targetDirectorateId, AND: [activeDirectorateWhere] },
       include: {
         users: {
-          where: { role: Role.DIRECTOR },
+          where: { role: Role.DIRECTOR, isActive: true },
           select: { id: true, fullName: true, title: true, email: true, phone: true },
           take: 1,
         },
@@ -1037,7 +1038,7 @@ export class DailyPlansService {
     });
 
     if (!directorate) {
-      throw new NotFoundException('المديرية غير موجودة');
+      throw new NotFoundException('المديرية غير موجودة أو مستبعدة من التقارير لتعطيل حساب مديرها');
     }
 
     const director = directorate.users[0] || null;
@@ -1046,6 +1047,7 @@ export class DailyPlansService {
     const plans = await this.prisma.dailyPlan.findMany({
       where: {
         directorateId: targetDirectorateId,
+        user: { isActive: true },
         planDate: {
           gte: startDate,
           lte: endDate,
@@ -1058,7 +1060,7 @@ export class DailyPlansService {
           },
           orderBy: { displayOrder: 'asc' },
         },
-        dailySummary: true,
+        dailySummary: { where: { user: { isActive: true } } },
         feedbacks: {
           include: { fromUser: { select: { fullName: true, title: true, role: true } } },
           orderBy: { createdAt: 'asc' },
@@ -1071,6 +1073,7 @@ export class DailyPlansService {
     const executiveTasks = await this.prisma.executiveTask.findMany({
       where: {
         directorateId: targetDirectorateId,
+        AND: [activeExecutiveTaskWhere],
         OR: [
           { createdAt: { gte: startDate, lte: endDate } },
           { dueDate: { gte: startDate, lte: endDate } },

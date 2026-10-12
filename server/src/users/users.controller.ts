@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('users')
@@ -42,6 +43,12 @@ export class UsersController {
   @Patch(':id')
   updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.updateUser(id, dto);
+  }
+
+  @Roles(Role.GENERAL_DIRECTOR)
+  @Patch(':id/status')
+  setActive(@Param('id') id: string, @Body() dto: UpdateUserStatusDto) {
+    return this.usersService.setActive(id, dto.isActive);
   }
 
   @Roles(Role.GENERAL_DIRECTOR)

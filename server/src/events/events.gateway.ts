@@ -169,6 +169,10 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     this.logger.log(`Broadcasting todo:updated for user ${userId}`);
     this.server.to(`room:user_${userId}`).emit('todo:updated', { userId });
   }
+
+  emitUserStatusChanged(payload: { userId: string; directorateId: string | null; isActive: boolean }) {
+    this.server.to('room:authenticated').emit('user:status-changed', payload);
+  }
 }
 
 

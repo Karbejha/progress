@@ -32,6 +32,7 @@ export interface User {
   fullName: string;
   title: string;
   role: Role;
+  isActive: boolean;
   phone?: string;
   avatarUrl?: string;
   directorateId?: string;

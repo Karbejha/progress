@@ -19,6 +19,7 @@ import {
   Phone,
   Mail,
   UserCheck,
+  UserX,
   Eye,
 } from 'lucide-react';
 
@@ -57,6 +58,9 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const canManageStatus = api.getCurrentUser()?.role === 'GENERAL_DIRECTOR';
 
   useEffect(() => {
     setMounted(true);
@@ -96,7 +100,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
       setLoading(true);
       const [uList, dList] = await Promise.all([
         api.getAllUsers(),
-        api.getDirectorates(),
+        api.getDirectorates(true),
       ]);
       setUsers(uList);
       setDirectorates(dList);
@@ -225,6 +229,22 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
     }
   };
 
+  const handleToggleStatus = async (u: User) => {
+    if (statusUpdatingId) return;
+    try {
+      setStatusUpdatingId(u.id);
+      setStatusError(null);
+      const updated = await api.setUserActive(u.id, u.isActive === false);
+      setUsers((current) => current.map((item) => item.id === updated.id ? updated : item));
+      window.dispatchEvent(new CustomEvent('ports:user_status_changed'));
+      showToast(updated.isActive ? 'تم تفعيل الحساب وإدراجه في الإحصائيات والتقارير' : 'تم تعطيل الحساب واستبعاده من الإحصائيات والتقارير مع حفظ بياناته');
+    } catch (err: any) {
+      setStatusError(err.message || 'تعذر تغيير حالة الحساب');
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
   const handleDeleteUser = (u: User) => {
     setUserToDelete(u);
   };
@@ -284,7 +304,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
             <div>
               <h2 className="text-lg font-bold text-white">إدارة المستخدمين وحسابات المدراء</h2>
               <p className="text-xs text-[#8daaa2] mt-0.5">
-                إضافة مدراء جدد، تعديل بياناتهم، وتعيين أو تغيير كلمات المرور مباشرة من قبل المدير العام
+                إدارة الحسابات وتعطيل مدراء المديريات أو إعادة تفعيلهم من قبل المدير العام مع حفظ بياناتهم
               </p>
             </div>
           </div>
@@ -320,6 +340,14 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
         {/* Table List */}
         <div className="flex-1 overflow-y-auto p-4 max-h-[60vh]">
+          <p className="text-xs text-[#5e736e] mb-3 leading-relaxed">
+            الحساب المعطل لا يمكنه تسجيل الدخول. تُستبعد بياناته من النسب والتقارير، وتُستبعد مديريته إذا لم يبقَ لها مدير فعال. يمكنك إعادة تفعيله في أي وقت.
+          </p>
+          {statusError && (
+            <div role="alert" className="mb-3 p-3 rounded-xl bg-red-50 text-red-800 border border-red-200 text-xs">
+              {statusError}
+            </div>
+          )}
           {loading ? (
             <div className="text-center py-12 text-[#0c3e35]">
               <div className="w-8 h-8 border-3 border-[#0c3e35] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -339,6 +367,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                     <th className="p-3.5">المديرية المسندة</th>
                     <th className="p-3.5">معلومات الاتصال</th>
                     <th className="p-3.5">الدور والصلاحية</th>
+                    <th className="p-3.5">حالة الحساب</th>
                     <th className="p-3.5 text-center">الإجراءات</th>
                   </tr>
                 </thead>
@@ -347,7 +376,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                     const isExec = u.role === 'GENERAL_DIRECTOR' || u.role === 'ASSISTANT_DIRECTOR';
 
                     return (
-                      <tr key={u.id} className="hover:bg-[#f4f3ed] transition">
+                      <tr key={u.id} className={`hover:bg-[#f4f3ed] transition ${u.isActive === false ? 'bg-slate-50' : ''}`}>
                         <td className="p-3.5 font-bold text-[#0c3e35]">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-lg bg-[#edece4] text-[#0c3e35] flex items-center justify-center font-bold">
@@ -417,8 +446,25 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                           </span>
                         </td>
 
+                        <td className="p-3.5">
+                          <span className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${u.isActive === false ? 'bg-slate-100 text-slate-600 border-slate-300' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
+                            {u.isActive === false ? 'معطل' : 'فعال'}
+                          </span>
+                        </td>
+
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center gap-1.5">
+                            {canManageStatus && u.role === 'DIRECTOR' && (
+                              <button
+                                onClick={() => handleToggleStatus(u)}
+                                disabled={statusUpdatingId !== null}
+                                aria-label={`${u.isActive === false ? 'تفعيل' : 'تعطيل'} حساب ${u.username}`}
+                                className={`flex items-center gap-1 p-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition cursor-pointer disabled:opacity-50 ${u.isActive === false ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-700 hover:text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-700 hover:text-white'}`}
+                              >
+                                {u.isActive === false ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
+                                {statusUpdatingId === u.id ? 'جارٍ الحفظ...' : u.isActive === false ? 'تفعيل' : 'تعطيل'}
+                              </button>
+                            )}
                             <button
                               onClick={() => handleOpenEdit(u)}
                               className="p-1.5 rounded-lg bg-[#edece4] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer"

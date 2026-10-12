@@ -22,6 +22,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { initStatusBar } from '../../lib/statusBar';
+import { getSocket } from '../../lib/socket';
 import { CustomMonthPicker } from '../../components/CustomMonthPicker';
 import { CustomDateRangePicker } from '../../components/CustomDateRangePicker';
 
@@ -73,6 +74,13 @@ function DirectorReportContent() {
     loadReport();
   }, [selectedMonth, customStartDate, customEndDate, statusFilter, periodMode]);
 
+  useEffect(() => {
+    const socket = getSocket();
+    const refreshStatus = () => loadReport();
+    socket?.on('user:status-changed', refreshStatus);
+    return () => { socket?.off('user:status-changed', refreshStatus); };
+  }, [selectedMonth, customStartDate, customEndDate, statusFilter, periodMode, initialDirectorateId]);
+
   const loadReport = async () => {
     try {
       setLoading(true);
@@ -102,6 +110,7 @@ function DirectorReportContent() {
       setData(res);
     } catch (err: any) {
       console.error('Failed to load achievements report', err);
+      setData(null);
       setError(err?.message || 'تعذر تحميل بيانات التقرير، يرجى التأكد من تسجيل الدخول والمحاولة مجدداً');
     } finally {
       setLoading(false);

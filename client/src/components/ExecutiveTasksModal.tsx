@@ -181,11 +181,13 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
     socket.on('executive-task:created', handleTaskUpdate);
     socket.on('executive-task:updated', handleTaskUpdate);
     socket.on('executive-task:deleted', handleTaskUpdate);
+    socket.on('user:status-changed', handleTaskUpdate);
 
     return () => {
       socket.off('executive-task:created', handleTaskUpdate);
       socket.off('executive-task:updated', handleTaskUpdate);
       socket.off('executive-task:deleted', handleTaskUpdate);
+      socket.off('user:status-changed', handleTaskUpdate);
     };
   }, [isOpen]);
 
