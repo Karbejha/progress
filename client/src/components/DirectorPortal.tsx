@@ -44,6 +44,7 @@ import {
 
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { IncompleteTasksModal } from './IncompleteTasksModal';
+import { ReplyTimestamp } from './ReplyTimestamp';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { CustomMonthPicker } from './CustomMonthPicker';
 import { CustomDateRangePicker } from './CustomDateRangePicker';
@@ -56,6 +57,7 @@ import { PdfAttachmentCard } from './PdfAttachmentCard';
 import { getCleanTodoDescription } from './TodosView';
 import { workingDateKey, executiveDailyProgress, LocalExecutiveTaskState, mergeExecutiveTaskStates, acceptSavedExecutiveTaskState } from '../lib/executiveDailyProgress';
 import { newestTaskEntries, newestTasksFirst } from '../lib/taskOrder';
+import { applyPlanTaskUpdate } from '../lib/planTaskUpdates';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -154,6 +156,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   const [incompleteTasks, setIncompleteTasks] = useState<IncompleteTask[]>([]);
   const [loadingIncompleteTasks, setLoadingIncompleteTasks] = useState(false);
   const [showIncompleteTasksModal, setShowIncompleteTasksModal] = useState(false);
+  const incompleteTasksRequestRef = React.useRef(0);
 
   // Summary wizard states initialized with local draft
   const [summaryText, setSummaryText] = useState(() => initSummaryDraft?.summaryText || '');
@@ -548,40 +551,19 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     // Real-time synchronization of daily plan tasks (including when updated from personal agenda)
     const handlePlanTaskUpdated = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
-        const matchesTask = (t: any) =>
-          t.id === payload.taskId ||
-          (payload.taskTitle && t.title && t.title.trim().toLowerCase() === payload.taskTitle.trim().toLowerCase());
-
         setPlan((prevPlan) => {
           if (!prevPlan) return prevPlan;
+          const nextTasks = applyPlanTaskUpdate(prevPlan.tasks, payload);
+          if (nextTasks === prevPlan.tasks) return prevPlan;
           return {
             ...prevPlan,
-            tasks: prevPlan.tasks.map((t) =>
-              matchesTask(t)
-                ? {
-                  ...t,
-                  id: payload.taskId,
-                  status: payload.status,
-                  completionPercentage: payload.completionPercentage,
-                  completionNote: payload.completionNote !== undefined ? payload.completionNote : t.completionNote,
-                }
-                : t,
-            ),
+            tasks: nextTasks,
           };
         });
 
         setTasks((prevTasks) => {
-          const nextTasks = prevTasks.map((t) =>
-            matchesTask(t)
-              ? {
-                ...t,
-                id: payload.taskId,
-                status: payload.status,
-                completionPercentage: payload.completionPercentage,
-                completionNote: payload.completionNote !== undefined ? payload.completionNote : t.completionNote,
-              }
-              : t,
-          );
+          const nextTasks = applyPlanTaskUpdate(prevTasks, payload);
+          if (nextTasks === prevTasks) return prevTasks;
           lastSavedPlanHashRef.current = getPlanHash(generalFocus, nextTasks);
           return nextTasks;
         });
@@ -589,6 +571,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         setTrackedTasks((prev) => ({
           ...prev,
           [payload.taskId]: {
+            ...prev[payload.taskId],
             status: payload.status,
             completionPercentage: payload.completionPercentage,
             completionNote:
@@ -635,6 +618,55 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       socket.off('todo:updated', handleTodoUpdated);
     };
   }, [currentUser]);
+
+  // Keep an open carryover list current when completion changes elsewhere.
+  useEffect(() => {
+    if (!showIncompleteTasksModal) return;
+    const socket = getSocket();
+    let active = true;
+
+    const refreshIncompleteTasks = async () => {
+      const requestId = ++incompleteTasksRequestRef.current;
+      setLoadingIncompleteTasks(true);
+      try {
+        const res = await api.getIncompleteTasks();
+        if (active && requestId === incompleteTasksRequestRef.current) {
+          setIncompleteTasks(res || []);
+        }
+      } catch (err) {
+        if (active) console.error('Failed to fetch incomplete tasks', err);
+      } finally {
+        if (active && requestId === incompleteTasksRequestRef.current) {
+          setLoadingIncompleteTasks(false);
+        }
+      }
+    };
+
+    const handlePlanTaskUpdated = (payload: { directorateId?: string }) => {
+      if (payload?.directorateId === currentUser.directorateId) {
+        void refreshIncompleteTasks();
+      }
+    };
+    const handleTodoUpdated = (payload: { userId?: string }) => {
+      if (payload?.userId === currentUser.id) void refreshIncompleteTasks();
+    };
+    const handleTodosUpdated = () => { void refreshIncompleteTasks(); };
+
+    void refreshIncompleteTasks();
+    socket?.on('task:updated', handlePlanTaskUpdated);
+    socket?.on('todo:updated', handleTodoUpdated);
+    socket?.on('connect', handleTodosUpdated);
+    window.addEventListener('ports:todos_updated', handleTodosUpdated);
+
+    return () => {
+      active = false;
+      ++incompleteTasksRequestRef.current;
+      socket?.off('task:updated', handlePlanTaskUpdated);
+      socket?.off('todo:updated', handleTodoUpdated);
+      socket?.off('connect', handleTodosUpdated);
+      window.removeEventListener('ports:todos_updated', handleTodosUpdated);
+    };
+  }, [showIncompleteTasksModal, currentUser.id, currentUser.directorateId]);
 
   const loadExecutiveTasks = async () => {
     if (!currentUser.directorateId) return;
@@ -1086,6 +1118,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           </div>
 
           {/* Row 3: Official Completion / Proof Documents (PDF) */}
+          {task.completionNote?.trim() && (
+            <ReplyTimestamp value={task.completionNoteUpdatedAt} />
+          )}
           <div className="pt-2 border-t border-[#f4f3ed]">
             <PdfAttachmentPicker
               attachments={execTaskAttachments[task.id] || []}
@@ -1157,6 +1192,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   const loadTodayData = async (options?: { silent?: boolean }) => {
     const isSilent = options?.silent ?? (!isInitialPlanLoadRef.current && plan !== null);
+    const incompleteRequestId = ++incompleteTasksRequestRef.current;
     try {
       if (!isSilent) setLoading(true);
       const [currentPlan, anns, incTasks] = await Promise.all([
@@ -1166,7 +1202,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       ]);
       setPlan(currentPlan);
       setAnnouncements(anns);
-      setIncompleteTasks(incTasks || []);
+      if (incompleteRequestId === incompleteTasksRequestRef.current) {
+        setIncompleteTasks(incTasks || []);
+      }
       if (anns && anns.length > 0) {
         const readFromAnns = anns.filter((a: any) => a.isReadByMe).map((a: any) => a.id);
         if (readFromAnns.length > 0) {
@@ -1246,6 +1284,9 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     } catch (err) {
       console.error('Failed to load director plan', err);
     } finally {
+      if (incompleteRequestId === incompleteTasksRequestRef.current) {
+        setLoadingIncompleteTasks(false);
+      }
       if (!isSilent) setLoading(false);
       isInitialPlanLoadRef.current = false;
     }
@@ -1512,18 +1553,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   };
 
   // Incomplete / Carried-over Tasks Management
-  const fetchIncompleteTasks = async () => {
-    try {
-      setLoadingIncompleteTasks(true);
-      const res = await api.getIncompleteTasks();
-      setIncompleteTasks(res || []);
-    } catch (err) {
-      console.error('Failed to fetch incomplete tasks', err);
-    } finally {
-      setLoadingIncompleteTasks(false);
-    }
-  };
-
   const handleImportIncompleteTask = (incTask: IncompleteTask) => {
     const alreadyExists = tasks.some(
       (t) => t.title.trim().toLowerCase() === incTask.title.trim().toLowerCase()
@@ -2783,7 +2812,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                   <button
                     type="button"
                     onClick={() => {
-                      fetchIncompleteTasks();
                       setShowIncompleteTasksModal(true);
                     }}
                     className="flex items-center justify-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] hover:bg-[#f4f3ed] transition cursor-pointer shadow-2xs active:scale-95 relative"

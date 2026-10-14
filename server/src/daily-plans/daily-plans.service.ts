@@ -6,6 +6,7 @@ import { activeDirectorateWhere, activeExecutiveTaskWhere } from '../common/acti
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { normalizePlanDate, dailyExecutiveTasks, averageDailyRate, planDailyRate } from '../common/daily-progress';
+import { collectLinkedPlanTasks, LinkedPlanTask } from '../common/plan-task-links';
 
 export interface CreatePlanDto {
   planDate?: string;
@@ -138,6 +139,7 @@ export class DailyPlansService {
       existingTasks.forEach((t) => existingMapById.set(t.id, t));
 
       const matchedExistingIds = new Set<string>();
+      const progressUpdates: LinkedPlanTask[] = [];
 
       for (let idx = 0; idx < dto.tasks.length; idx++) {
         const t = dto.tasks[idx];
@@ -177,7 +179,7 @@ export class DailyPlansService {
               ? t.completionNote
               : existingTask.completionNote;
 
-          await this.prisma.planTask.update({
+          const updatedTask = await this.prisma.planTask.update({
             where: { id: existingTask.id },
             data: {
               title: t.title.trim(),
@@ -194,17 +196,9 @@ export class DailyPlansService {
             },
           });
 
-          // Sync progress changes to personal agenda (UserTodo)
-          const isTaskCompleted = status === TaskStatus.COMPLETED || pct === 100;
-          await this.syncPlanTaskToUserTodo(
-            user.id,
-            existingTask.id,
-            t.title,
-            isTaskCompleted,
-            t.priority || existingTask.priority,
-            t.description,
-            pct,
-          );
+          if (status !== existingTask.status || pct !== existingTask.completionPercentage) {
+            progressUpdates.push({ ...updatedTask, dailyPlan: existing });
+          }
         } else {
           // New task added by director
           const pct =
@@ -228,6 +222,12 @@ export class DailyPlansService {
             },
           });
         }
+      }
+
+      // Apply deliberate progress edits after the form's other rows have saved,
+      // so an unchanged sibling row cannot restore stale completion afterward.
+      for (const task of progressUpdates) {
+        await this.syncLinkedPlanTaskProgress(task);
       }
 
       // Delete tasks that were explicitly removed by the director in the form
@@ -270,6 +270,17 @@ export class DailyPlansService {
         },
       });
 
+      // Use the saved progress after family synchronization; an unchanged form
+      // row may have carried an older percentage than the deliberately edited one.
+      for (const task of updated.tasks) {
+        if (!matchedExistingIds.has(task.id)) continue;
+        await this.syncPlanTaskToUserTodo(
+          user.id, task.id, task.title,
+          task.status === TaskStatus.COMPLETED || task.completionPercentage === 100,
+          task.priority, task.description, task.completionPercentage,
+        );
+      }
+
       // If summary exists, recalculate overall completion rate
       if (updated.dailySummary) {
         const allPlanTasks = await this.prisma.planTask.findMany({
@@ -292,7 +303,7 @@ export class DailyPlansService {
           planDate: updated.planDate.toISOString(),
         });
 
-        this.notificationsService.createNotificationForRoles(
+        await this.notificationsService.createNotificationForRoles(
           [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
           {
             type: 'plan',
@@ -307,6 +318,7 @@ export class DailyPlansService {
               planDate: updated.planDate.toISOString(),
             },
           },
+          user.id,
         );
       }
 
@@ -371,7 +383,7 @@ export class DailyPlansService {
       });
 
       // Persist notification for executive users
-      this.notificationsService.createNotificationForRoles(
+      await this.notificationsService.createNotificationForRoles(
         [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
         {
           type: 'plan',
@@ -386,6 +398,7 @@ export class DailyPlansService {
             planDate: created.planDate.toISOString(),
           },
         },
+        user.id,
       );
     }
 
@@ -427,6 +440,13 @@ export class DailyPlansService {
       },
     });
 
+    const hasStatusChanged = dto.status !== undefined && dto.status !== task.status;
+    const hasPercentageChanged =
+      dto.completionPercentage !== undefined && dto.completionPercentage !== task.completionPercentage;
+    if (hasStatusChanged || hasPercentageChanged) {
+      await this.syncLinkedPlanTaskProgress({ ...updatedTask, dailyPlan: task.dailyPlan });
+    }
+
     // Recalculate summary completion rate if summary exists
     const allPlanTasks = await this.prisma.planTask.findMany({
       where: { dailyPlanId: task.dailyPlanId },
@@ -442,13 +462,13 @@ export class DailyPlansService {
       });
     }
 
-    const hasStatusChanged = dto.status !== undefined && dto.status !== task.status;
-    const hasPercentageChanged =
-      dto.completionPercentage !== undefined && dto.completionPercentage !== task.completionPercentage;
     const hasNoteChanged =
       dto.completionNote !== undefined && (dto.completionNote || '').trim() !== (task.completionNote || '').trim();
-
-    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged;
+    const hasTodayTargetMetChanged = dto.todayTargetMet !== undefined && dto.todayTargetMet !== task.todayTargetMet;
+    const hasDetailsChanged = (dto.title !== undefined && dto.title.trim() !== task.title) ||
+      (dto.description !== undefined && dto.description !== task.description) ||
+      (dto.priority !== undefined && dto.priority !== task.priority);
+    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTodayTargetMetChanged || hasDetailsChanged;
 
     if (hasChanges) {
       console.log(`[DAILY-PLANS] Emitting and persisting task update for task ${updatedTask.id}`);
@@ -462,25 +482,33 @@ export class DailyPlansService {
         completionNote: updatedTask.completionNote || undefined,
       });
 
-      // Persist notification for executive users so it isn't lost on refresh (stable referenceId per task)
-      this.notificationsService.createNotificationForRoles(
-        [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
-        {
-          type: 'task',
-          title: 'تحديث حالة مهمة',
-          message: `قامت (${task.dailyPlan.directorate.name}) بتحديث: "${updatedTask.title}" (${updatedTask.completionPercentage}%).`,
-          referenceId: `task-up-${updatedTask.id}`,
-          metadata: {
-            directorateId: task.dailyPlan.directorateId,
-            directorateName: task.dailyPlan.directorate.name,
-            taskId: updatedTask.id,
-            taskTitle: updatedTask.title,
-            status: updatedTask.status,
-            completionPercentage: updatedTask.completionPercentage,
-            completionNote: updatedTask.completionNote || undefined,
-          },
+      // Each deliberate progress update is a separate readable notification.
+      const notification = {
+        type: 'task',
+        title: 'تحديث حالة مهمة',
+        message: `قامت (${task.dailyPlan.directorate.name}) بتحديث: "${updatedTask.title}" (${updatedTask.completionPercentage}%).`,
+        referenceId: `task-up-${updatedTask.id}`,
+        metadata: {
+          directorateId: task.dailyPlan.directorateId,
+          directorateName: task.dailyPlan.directorate.name,
+          taskId: updatedTask.id,
+          taskTitle: updatedTask.title,
+          status: updatedTask.status,
+          completionPercentage: updatedTask.completionPercentage,
+          completionNote: updatedTask.completionNote || undefined,
+          todayTargetMet: updatedTask.todayTargetMet,
+          description: updatedTask.description,
+          priority: updatedTask.priority,
+          planDate: task.dailyPlan.planDate.toISOString(),
         },
-      );
+      };
+      if (user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR) {
+        await this.notificationsService.createNotificationForDirectorate(task.dailyPlan.directorateId, notification, user.id);
+      } else {
+        await this.notificationsService.createNotificationForRoles(
+          [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER], notification, user.id,
+        );
+      }
     }
 
     // Sync task completion state to Director's personal agenda (UserTodo)
@@ -508,6 +536,47 @@ export class DailyPlansService {
     }
 
     return updatedTask;
+  }
+
+  private async syncLinkedPlanTaskProgress(task: LinkedPlanTask) {
+    const family = await collectLinkedPlanTasks(this.prisma, [task], task.dailyPlan.directorateId);
+    const changedTasks: LinkedPlanTask[] = [];
+    for (const related of family.values()) {
+      if (related.id === task.id || (
+        related.status === task.status && related.completionPercentage === task.completionPercentage
+      )) continue;
+      const updated = await this.prisma.planTask.update({
+        where: { id: related.id },
+        data: { status: task.status, completionPercentage: task.completionPercentage },
+      });
+      changedTasks.push({ ...updated, dailyPlan: related.dailyPlan });
+    }
+
+    // The caller recalculates the selected plan after this method completes.
+    const otherPlans = new Map(changedTasks
+      .filter((related) => related.dailyPlanId !== task.dailyPlanId)
+      .map((related) => [related.dailyPlanId, related.dailyPlan]));
+    for (const [dailyPlanId, plan] of otherPlans) {
+      const summary = await this.prisma.dailySummary.findUnique({ where: { dailyPlanId } });
+      if (!summary) continue;
+      const planTasks = await this.prisma.planTask.findMany({ where: { dailyPlanId } });
+      const execTasks = await dailyExecutiveTasks(this.prisma, plan.directorateId, plan.planDate);
+      await this.prisma.dailySummary.update({
+        where: { id: summary.id },
+        data: { overallCompletionRate: averageDailyRate(planTasks, execTasks) },
+      });
+    }
+    for (const related of changedTasks) {
+      this.eventsGateway.emitTaskUpdated({
+        directorateId: related.dailyPlan.directorateId,
+        directorateName: related.dailyPlan.directorate?.name || '',
+        taskId: related.id,
+        taskTitle: related.title,
+        status: related.status,
+        completionPercentage: related.completionPercentage,
+        completionNote: related.completionNote || undefined,
+      });
+    }
   }
 
   async addQuickTask(
@@ -884,9 +953,6 @@ export class DailyPlansService {
       },
       include: {
         tasks: {
-          include: {
-            continuations: true,
-          },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -897,8 +963,43 @@ export class DailyPlansService {
       return [];
     }
 
-    // Deduplicate by title traversing from the newest prior plan to the oldest
+    // Resolve explicit carryover links across this directorate's plans. A closed
+    // original also closes stale descendants, even when their titles changed.
+    const allTasks = [...currentPlans, ...priorPlans].flatMap((plan) => plan.tasks);
+    const tasksById = new Map(allTasks.map((task) => [task.id, task]));
+    const relatedTaskIds = new Map(allTasks.map((task) => [task.id, new Set<string>()]));
+    for (const task of allTasks) {
+      if (task.carriedFromTaskId && tasksById.has(task.carriedFromTaskId)) {
+        relatedTaskIds.get(task.id).add(task.carriedFromTaskId);
+        relatedTaskIds.get(task.carriedFromTaskId).add(task.id);
+      }
+    }
+
+    const collectRelatedTaskIds = (seedIds: Iterable<string>): Set<string> => {
+      const visited = new Set<string>();
+      const queue = [...seedIds];
+      for (let index = 0; index < queue.length; index++) {
+        const taskId = queue[index];
+        if (visited.has(taskId)) continue;
+        visited.add(taskId);
+        for (const relatedId of relatedTaskIds.get(taskId) || []) {
+          if (!visited.has(relatedId)) queue.push(relatedId);
+        }
+      }
+      return visited;
+    };
+    const closedTaskIds = collectRelatedTaskIds(allTasks.filter((task) =>
+      task.status === TaskStatus.COMPLETED ||
+      task.status === TaskStatus.CANCELLED ||
+      task.completionPercentage >= 100
+    ).map((task) => task.id));
+    const activeTaskIds = collectRelatedTaskIds(currentPlans.flatMap((plan) =>
+      plan.tasks.map((task) => task.id)
+    ));
+
+    // Keep only the newest occurrence of each title and each linked task.
     const seenTitles = new Set<string>();
+    const seenTaskIds = new Set<string>();
     const result = [];
     const now = new Date().getTime();
 
@@ -908,37 +1009,21 @@ export class DailyPlansService {
         if (!normalizedTitle) continue;
 
         // If already active in today's plan, skip it completely
-        if (activeTodayTitles.has(normalizedTitle)) {
+        if (activeTodayTitles.has(normalizedTitle) || activeTaskIds.has(task.id)) {
           continue;
         }
 
         // If we already saw a newer occurrence of this task title, skip older occurrences
-        if (seenTitles.has(normalizedTitle)) {
+        if (seenTitles.has(normalizedTitle) || seenTaskIds.has(task.id)) {
           continue;
         }
 
         seenTitles.add(normalizedTitle);
-
-        // If the latest prior occurrence of this task is COMPLETED, CANCELLED, or reached 100%,
-        // it is finished and must NEVER appear as pending/incomplete
-        const isCompleted =
-          task.status === TaskStatus.COMPLETED ||
-          task.status === TaskStatus.CANCELLED ||
-          task.completionPercentage >= 100;
-
-        if (isCompleted) {
-          continue;
+        for (const relatedId of collectRelatedTaskIds([task.id])) {
+          seenTaskIds.add(relatedId);
         }
 
-        // Also check if any continuation of this task was completed or cancelled
-        const continuationCompleted = task.continuations?.some(
-          (c) =>
-            c.status === TaskStatus.COMPLETED ||
-            c.status === TaskStatus.CANCELLED ||
-            c.completionPercentage >= 100
-        );
-
-        if (continuationCompleted) {
+        if (closedTaskIds.has(task.id)) {
           continue;
         }
 

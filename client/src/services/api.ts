@@ -88,13 +88,31 @@ class ApiService {
       } else {
         localStorage.removeItem(this.userKey);
       }
+      window.dispatchEvent(new CustomEvent('ports:auth_changed', {
+        detail: { authenticated: Boolean(user && this.getToken()), userId: user?.id || null },
+      }));
     }
   }
 
   logout() {
     if (typeof window !== 'undefined') {
+      const authToken = this.getToken();
+      const deviceToken = localStorage.getItem('ports_device_token');
       localStorage.removeItem(this.tokenKey);
       localStorage.removeItem(this.userKey);
+      localStorage.removeItem('ports_device_token');
+      window.dispatchEvent(new CustomEvent('ports:auth_changed', {
+        detail: { authenticated: false, userId: null },
+      }));
+      // Capture the old credentials so logout remains immediate and cannot unlink a new account's device.
+      if (authToken && deviceToken) {
+        void fetch(`${getApiBaseUrl()}/notifications/unregister-device`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ token: deviceToken }),
+          keepalive: true,
+        }).catch(() => { console.warn('Could not remove the previous session device registration.'); });
+      }
     }
   }
 
@@ -119,7 +137,7 @@ class ApiService {
     });
 
     if (!response.ok) {
-      if (response.status === 401 && token) {
+      if (response.status === 401 && token && this.getToken() === token) {
         this.logout();
         window.dispatchEvent(new CustomEvent('ports:session_expired'));
       }
@@ -339,20 +357,36 @@ class ApiService {
     }
   }
 
-  /**
-   * Register device push notification token on server
-   */
+  /** Inspect server configuration and registered devices for the authenticated account. */
+  async getPushNotificationStatus(): Promise<{
+    serverConfigured: boolean;
+    registeredDevices: number;
+    platforms: string[];
+  }> {
+    return this.request('/notifications/push-status');
+  }
+
+  async getNotification(id: string): Promise<any> {
+    return this.request(`/notifications/${encodeURIComponent(id)}`);
+  }
+
+  /** Register the current native device with the authenticated account. */
   async registerDeviceToken(token: string, platform = 'android'): Promise<boolean> {
     if (!token) return false;
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), 15000);
     try {
       const res = await this.request<{ success: boolean }>('/notifications/register-device', {
         method: 'POST',
         body: JSON.stringify({ token, platform }),
+        signal: abortController.signal,
       });
       return res?.success ?? false;
     } catch (err) {
       console.warn('Failed to register device token on server', err);
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -361,15 +395,20 @@ class ApiService {
    */
   async unregisterDeviceToken(token: string): Promise<boolean> {
     if (!token) return false;
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), 15000);
     try {
       const res = await this.request<{ success: boolean }>('/notifications/unregister-device', {
         method: 'POST',
         body: JSON.stringify({ token }),
+        signal: abortController.signal,
       });
       return res?.success ?? false;
     } catch (err) {
       console.warn('Failed to unregister device token on server', err);
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

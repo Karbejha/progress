@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsGateway } from '../events/events.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Role, Priority, TaskStatus, Prisma } from '@prisma/client';
 import { CreateTodoDto } from './dto/create-todo.dto';
 import { UpdateTodoDto } from './dto/update-todo.dto';
 import { randomUUID } from 'crypto';
 import { normalizePlanDate, progressDate, dailyExecutiveTasks, averageDailyRate, recordExecutiveProgress, withDailyExecutiveProgress } from '../common/daily-progress';
+import { collectLinkedPlanTasks } from '../common/plan-task-links';
 import { MAX_TODO_ATTACHMENTS, removeAttachmentFiles } from '../attachments/attachment-files';
 
 @Injectable()
@@ -18,6 +20,7 @@ export class TodosService {
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
+    private notificationsService: NotificationsService,
   ) {}
 
   private async replaceAttachments(tx: Prisma.TransactionClient, userId: string, todoId: string, ids: string[]) {
@@ -481,6 +484,22 @@ export class TodosService {
       status: planTask.status,
       completionPercentage: currentPct,
     });
+    await this.notificationsService.createNotificationForRoles(
+      [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
+      {
+        type: 'task',
+        title: 'إضافة مهمة إلى الخطة اليومية',
+        message: `أضافت (${dir?.name || 'المديرية'}) المهمة "${planTask.title}" إلى خطة اليوم.`,
+        referenceId: `task-added-${planTask.id}`,
+        metadata: {
+          taskId: planTask.id, taskTitle: planTask.title,
+          directorateId: user.directorateId, directorateName: dir?.name,
+          status: planTask.status, completionPercentage: currentPct,
+          planDate: today.toISOString(),
+        },
+      },
+      user.id,
+    );
     this.eventsGateway.emitTodoUpdated(user.id);
 
     return {
@@ -564,6 +583,22 @@ export class TodosService {
         task,
       });
 
+      await this.notificationsService.createNotificationForDirectorate(
+        directorateId,
+        {
+          type: 'executive-task',
+          title: isJoint ? 'تكليف مشترك من الإدارة العامة' : 'تكليف من الإدارة العامة',
+          message: `وردك تكليف من ${user.fullName || 'الإدارة العامة'}: "${task.title}"`,
+          referenceId: `exec-task-${task.id}`,
+          metadata: {
+            taskId: task.id, taskTitle: task.title, description: task.description,
+            priority: task.priority, dueDate: task.dueDate?.toISOString(), isShared: isJoint,
+            assignedByName: user.fullName, directorateId, directorateName: directorate.name,
+          },
+        },
+        user.id,
+      );
+
       createdTasks.push(task);
     }
 
@@ -622,11 +657,13 @@ export class TodosService {
 
       // Find user and their directorate
       let directorateId: string | null = null;
+      let actor: { id: string; role: Role; fullName: string; directorateId: string | null } | null = null;
       if (todo.userId) {
         const user = await this.prisma.user.findUnique({
           where: { id: todo.userId },
-          select: { directorateId: true },
+          select: { id: true, role: true, fullName: true, directorateId: true },
         });
+        actor = user;
         directorateId = user?.directorateId || null;
       }
 
@@ -653,23 +690,27 @@ export class TodosService {
         : null;
 
       const tasksToUpdateMap = new Map<string, any>();
+      const hasExplicitPlanTaskLinks = explicitPlanTaskIds.size > 0;
 
       // A. Match tasks in today's daily plan first (highest priority)
       if (todayPlan && todayPlan.tasks && todayPlan.tasks.length > 0) {
         const cleanTodoTitle = (todo.title || '').trim().toLowerCase();
+        const hasTodayTodoLink = todayPlan.tasks.some((task) =>
+          task.description?.includes(`[معرف المفكرة: ${todo.id}]`)
+        );
 
         for (const task of todayPlan.tasks) {
+          if (task.dailyPlan.directorateId !== directorateId) continue;
           const taskTitle = (task.title || '').trim().toLowerCase();
           const isExplicitId = explicitPlanTaskIds.has(task.id);
-          const isCarriedId = task.carriedFromTaskId && explicitPlanTaskIds.has(task.carriedFromTaskId);
           const isTodoIdMatch = task.description?.includes(`[معرف المفكرة: ${todo.id}]`);
+          // Explicit links take precedence over legacy title inference. A task
+          // with the same title can belong to a different agenda item.
           const isTitleMatch =
-            cleanTodoTitle &&
-            (taskTitle === cleanTodoTitle ||
-              cleanTodoTitle.includes(taskTitle) ||
-              taskTitle.includes(cleanTodoTitle));
+            !hasExplicitPlanTaskLinks && !hasTodayTodoLink &&
+            cleanTodoTitle && taskTitle === cleanTodoTitle;
 
-          if (isExplicitId || isCarriedId || isTodoIdMatch || isTitleMatch) {
+          if (isExplicitId || isTodoIdMatch || isTitleMatch) {
             tasksToUpdateMap.set(task.id, task);
             explicitPlanTaskIds.add(task.id);
 
@@ -694,22 +735,33 @@ export class TodosService {
             where: { id: pId },
             include: { dailyPlan: { include: { directorate: true } } },
           });
-          if (pTask) {
+          if (directorateId && pTask?.dailyPlan.directorateId === directorateId) {
             tasksToUpdateMap.set(pTask.id, pTask);
           }
         }
       }
 
+      // An agenda link may name any copy in a carry-over chain. Follow both
+      // directions so completion/reopening cannot leave ancestors or siblings
+      // stale. Relation-only copies receive progress, never metadata.
+      const directlyLinkedPlanTaskIds = new Set(tasksToUpdateMap.keys());
+      if (syncProgress && directorateId) {
+        const family = await collectLinkedPlanTasks(this.prisma, [...tasksToUpdateMap.values()], directorateId);
+        for (const [id, task] of family) tasksToUpdateMap.set(id, task);
+      }
+
       // Update all matched PlanTasks
+      const changedPlanTasks = new Map<string, any>();
       for (const [taskId, planTask] of tasksToUpdateMap) {
+        const syncDetails = directlyLinkedPlanTaskIds.has(taskId);
         const updateData: any = syncProgress ? {
           status: nextStatus,
           completionPercentage: nextPercentage,
         } : {};
-        if (options?.title !== undefined && options.title.trim()) {
+        if (syncDetails && options?.title !== undefined && options.title.trim()) {
           updateData.title = options.title.trim();
         }
-        if (options?.description !== undefined) {
+        if (syncDetails && options?.description !== undefined) {
           // Clean system tags from the description, then re-append the todo-link tag
           const cleanDesc = (options.description || '')
             .replace(/\[تم تحويلها إلى الخطة اليومية الصباحية\]/g, '')
@@ -727,7 +779,7 @@ export class TodosService {
             ? `${cleanDesc}\n${existingHasTag ? todoLinkTag : todoLinkTag}`
             : (existingHasTag ? todoLinkTag : null);
         }
-        if (options?.priority !== undefined) {
+        if (syncDetails && options?.priority !== undefined) {
           updateData.priority = options.priority;
         }
 
@@ -735,6 +787,9 @@ export class TodosService {
           where: { id: taskId },
           data: updateData,
         });
+        if (this.hasNotificationChanges(planTask, updateData)) {
+          changedPlanTasks.set(taskId, { ...planTask, ...updatedPlanTask });
+        }
 
         // Recalculate summary overall rate if daily summary exists
         const allPlanTasks = await this.prisma.planTask.findMany({
@@ -757,6 +812,52 @@ export class TodosService {
           status: updatedPlanTask.status,
           completionPercentage: updatedPlanTask.completionPercentage,
         });
+      }
+
+      // A single agenda save may synchronize many historical copies. Send one
+      // notification per carry-over family, using its most recent changed copy.
+      const planNotifications = new Map<string, any>();
+      const familyParents = new Map<string, string>();
+      const familyRoot = (id: string): string => {
+        const parent = familyParents.get(id);
+        if (!parent || parent === id) return id;
+        const root = familyRoot(parent);
+        familyParents.set(id, root);
+        return root;
+      };
+      for (const task of tasksToUpdateMap.values()) {
+        if (!task.carriedFromTaskId || !tasksToUpdateMap.has(task.carriedFromTaskId)) continue;
+        const roots = [familyRoot(task.id), familyRoot(task.carriedFromTaskId)].sort();
+        familyParents.set(roots[1], roots[0]);
+      }
+      for (const task of changedPlanTasks.values()) {
+        const familyId = familyRoot(task.id);
+        const selected = planNotifications.get(familyId);
+        if (!selected || task.dailyPlan.planDate > selected.dailyPlan.planDate) {
+          planNotifications.set(familyId, task);
+        }
+      }
+      for (const task of planNotifications.values()) {
+        const notification = {
+          type: 'task', title: 'تحديث حالة مهمة',
+          message: `قامت (${task.dailyPlan.directorate.name}) بتحديث: "${task.title}" (${task.completionPercentage}%).`,
+          referenceId: `task-up-${task.id}`,
+          metadata: {
+            taskId: task.id, taskTitle: task.title, status: task.status,
+            completionPercentage: task.completionPercentage,
+            directorateId: task.dailyPlan.directorateId,
+            directorateName: task.dailyPlan.directorate.name,
+            planDate: task.dailyPlan.planDate.toISOString(),
+            description: task.description, priority: task.priority,
+          },
+        };
+        if (actor?.role === Role.GENERAL_DIRECTOR || actor?.role === Role.ASSISTANT_DIRECTOR) {
+          await this.notificationsService.createNotificationForDirectorate(task.dailyPlan.directorateId, notification, todo.userId);
+        } else {
+          await this.notificationsService.createNotificationForRoles(
+            [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER], notification, todo.userId,
+          );
+        }
       }
 
       // 2. Check if linked to ExecutiveTask(s)
@@ -790,6 +891,8 @@ export class TodosService {
           where: { id: execTaskId },
           include: { directorate: true },
         });
+        const isExecutive = actor?.role === Role.GENERAL_DIRECTOR || actor?.role === Role.ASSISTANT_DIRECTOR;
+        if (execTask && !isExecutive && execTask.directorateId !== directorateId) continue;
         if (execTask) {
           const execUpdateData: any = syncProgress ? {
             status: nextStatus,
@@ -841,12 +944,48 @@ export class TodosService {
             task: withDailyExecutiveProgress(updated, date),
             directorateId: execTask.directorateId,
             directorateName: execTask.directorate.name,
-            updatedByRole: 'DIRECTOR',
+            updatedByRole: actor?.role || Role.DIRECTOR,
           });
+          if (this.hasNotificationChanges(execTask, execUpdateData)) {
+            const notification = {
+              type: 'executive-task-update',
+              title: 'تحديث تكليف من الإدارة العامة',
+              message: `تم تحديث التكليف "${updated.title}" (${updated.completionPercentage}%).`,
+              referenceId: `exec-task-update-${updated.id}-${updated.updatedAt.toISOString()}`,
+              metadata: {
+                taskId: updated.id, taskTitle: updated.title, status: updated.status,
+                completionPercentage: updated.completionPercentage, todayTargetMet: updated.todayTargetMet,
+                completionNote: updated.completionNote, completionNoteUpdatedAt: updated.completionNoteUpdatedAt?.toISOString(),
+                directorateId: execTask.directorateId, directorateName: execTask.directorate.name,
+                updatedByName: actor?.fullName,
+              },
+            };
+            if (actor?.role === Role.GENERAL_DIRECTOR || actor?.role === Role.ASSISTANT_DIRECTOR) {
+              await this.notificationsService.createNotificationForDirectorate(execTask.directorateId, notification, todo.userId);
+            } else {
+              await this.notificationsService.createNotificationForRoles(
+                [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER], notification, todo.userId,
+              );
+            }
+          }
         }
       }
     } catch (err) {
       console.error('Failed to sync linked entities from todo:', err);
     }
+  }
+
+  private hasNotificationChanges(current: any, changes: Record<string, any>): boolean {
+    return Object.entries(changes).some(([key, value]) => {
+      if (key === 'description') {
+        const content = (text: string | null | undefined) => (text || '')
+          .replace(/\[معرف (?:المهمة|التكليف|المفكرة):[^\]]*\]/g, '')
+          .replace(/\[تم (?:تحويلها إلى الخطة اليومية الصباحية|إدراجها في الخطة اليومية(?: بتاريخ:[^\]]*)?|تحويلها إلى تكليف تنفيذي رسمي|إسنادها كتكليف تنفيذي)\]/g, '')
+          .trim();
+        return content(value) !== content(current[key]);
+      }
+      if (key === 'dueDate') return value?.toISOString() !== current[key]?.toISOString();
+      return value !== current[key];
+    });
   }
 }

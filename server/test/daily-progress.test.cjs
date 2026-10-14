@@ -153,7 +153,7 @@ test('PostgreSQL: dashboard, summaries, plan edits and agenda use the same daily
   const assignments = new ExecutiveTasksService(prisma, noDelivery, noDelivery);
   const summaries = new DailySummariesService(prisma, noDelivery, noDelivery);
   const plans = new DailyPlansService(prisma, noDelivery, noDelivery);
-  const todos = new TodosService(prisma, noDelivery);
+  const todos = new TodosService(prisma, noDelivery, noDelivery);
   let directorate;
   let user;
   try {

@@ -75,7 +75,7 @@ test('PostgreSQL and HTTP: private attachments survive refresh and progress edit
   assert.equal(url.pathname, '/progress_daily_regression', 'Use the isolated regression database');
   const prisma = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const events = { emitTodoUpdated() {} };
-  const todos = new TodosService(prisma, events);
+  const todos = new TodosService(prisma, events, new Proxy({}, { get: () => () => Promise.resolve() }));
   const attachments = new AttachmentsService(prisma);
   const users = [];
   const uploads = [];

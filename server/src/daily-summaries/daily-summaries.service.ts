@@ -163,21 +163,24 @@ export class DailySummariesService {
     });
 
     // Persist notification for executive users
-    this.notificationsService.createNotificationForRoles(
+    await this.notificationsService.createNotificationForRoles(
       [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
       {
         type: 'summary',
         title: 'تسليم ملخص الإنجاز',
         message: `سلّمت (${summary.directorate.name}) ملخص نهاية الدوام بنسبة إنجاز ${summary.overallCompletionRate}%.`,
-        referenceId: `summary-sub-${summary.directorateId}-${dto.date || new Date().toISOString().split('T')[0]}`,
+        referenceId: `summary-sub-${summary.directorateId}-${summaryDate.toISOString().split('T')[0]}`,
         metadata: {
           directorateId: summary.directorateId,
           directorateName: summary.directorate.name,
           directorName: user.fullName,
           overallCompletionRate: summary.overallCompletionRate,
           urgentFlag: summary.urgentFlag,
+          summaryDate: summaryDate.toISOString(),
+          summaryText: summary.summaryText,
         },
       },
+      user.id,
     );
 
     return summary;

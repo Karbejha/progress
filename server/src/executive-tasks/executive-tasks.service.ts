@@ -90,6 +90,7 @@ export class ExecutiveTasksService {
           status: s.status,
           completionPercentage: s.completionPercentage,
           completionNote: s.completionNote || null,
+          completionNoteUpdatedAt: s.completionNoteUpdatedAt || null,
           todayTargetMet: s.todayTargetMet || false,
         }));
 
@@ -292,7 +293,7 @@ export class ExecutiveTasksService {
       });
 
       // Persist notification for directorate users
-      this.notificationsService.createNotificationForDirectorate(
+      await this.notificationsService.createNotificationForDirectorate(
         directorateId,
         {
           type: 'executive-task',
@@ -310,6 +311,7 @@ export class ExecutiveTasksService {
             isShared: isJoint,
           },
         },
+        user.id,
       );
     }
 
@@ -395,9 +397,11 @@ export class ExecutiveTasksService {
     const hasPriorityChanged = dataToUpdate.priority !== undefined && dataToUpdate.priority !== existingTask.priority;
     const hasDueDateChanged = dataToUpdate.dueDate !== undefined && (dataToUpdate.dueDate?.toISOString() !== existingTask.dueDate?.toISOString());
     const hasTodayTargetMetChanged = dataToUpdate.todayTargetMet !== undefined && dataToUpdate.todayTargetMet !== existingTask.todayTargetMet;
+    const hasDirectorateChanged = dataToUpdate.directorateId !== undefined && dataToUpdate.directorateId !== existingTask.directorateId;
+    const hasAssigneeChanged = dataToUpdate.assignedToUserId !== undefined && dataToUpdate.assignedToUserId !== existingTask.assignedToUserId;
 
     const hasAttachmentsChanged = !!(dto.attachmentIds && dto.attachmentIds.length > 0);
-    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged || hasTodayTargetMetChanged || hasAttachmentsChanged;
+    const hasChanges = hasStatusChanged || hasPercentageChanged || hasNoteChanged || hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged || hasTodayTargetMetChanged || hasAttachmentsChanged || hasDirectorateChanged || hasAssigneeChanged;
 
     if (hasAttachmentsChanged) {
       const category = user.role === Role.DIRECTOR ? 'TASK_COMPLETION' : 'EXECUTIVE_TASK';
@@ -409,6 +413,18 @@ export class ExecutiveTasksService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const targetMet = await recordExecutiveProgress(tx, id, dataToUpdate);
+      // The task is locked by recordExecutiveProgress. Compare the latest saved
+      // reply so repeated saves and unrelated edits keep its original timestamp.
+      if (dataToUpdate.completionNote !== undefined) {
+        const current = await tx.executiveTask.findUniqueOrThrow({
+          where: { id },
+          select: { completionNote: true },
+        });
+        const nextNote = (dataToUpdate.completionNote || '').trim();
+        if (nextNote !== (current.completionNote || '').trim()) {
+          dataToUpdate.completionNoteUpdatedAt = nextNote ? new Date() : null;
+        }
+      }
       return tx.executiveTask.update({
         where: { id },
         data: { ...dataToUpdate, todayTargetMet: targetMet },
@@ -445,7 +461,7 @@ export class ExecutiveTasksService {
           notificationMsg += ' وتم توثيق إنجاز مستهدف اليوم بنجاح ✔️';
         }
 
-        this.notificationsService.createNotificationForRoles(
+        await this.notificationsService.createNotificationForRoles(
           [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
           {
             type: 'executive-task-update',
@@ -460,9 +476,31 @@ export class ExecutiveTasksService {
               completionPercentage: updated.completionPercentage,
               status: updated.status,
               todayTargetMet: updated.todayTargetMet,
+              completionNote: updated.completionNote,
+              completionNoteUpdatedAt: updated.completionNoteUpdatedAt,
             },
           },
+          user.id,
         );
+      } else if (isExecutive) {
+        await this.notifyDirectorateTaskUpdate(updated, user);
+
+        if (existingTask.sharedGroupId && (hasTitleChanged || hasDescChanged || hasPriorityChanged || hasDueDateChanged)) {
+          const peers = await this.prisma.executiveTask.findMany({
+            where: { sharedGroupId: existingTask.sharedGroupId, id: { not: updated.id }, AND: [activeExecutiveTaskWhere] },
+            include: { directorate: true, dailyProgress: { where: { progressDate: progressDate() } } },
+          });
+          for (const peer of peers) {
+            const dailyPeer = withDailyExecutiveProgress(peer, normalizePlanDate());
+            this.eventsGateway.emitExecutiveTaskUpdated({
+              task: dailyPeer,
+              directorateId: peer.directorateId,
+              directorateName: peer.directorate.name,
+              updatedByRole: user.role,
+            });
+            await this.notifyDirectorateTaskUpdate(dailyPeer, user);
+          }
+        }
       }
     }
 
@@ -491,6 +529,27 @@ export class ExecutiveTasksService {
     }
 
     return enriched;
+  }
+
+  private async notifyDirectorateTaskUpdate(task: any, user: any) {
+    await this.notificationsService.createNotificationForDirectorate(
+      task.directorateId,
+      {
+        type: 'executive-task-update',
+        title: 'تحديث تكليف من الإدارة العامة',
+        message: `قام ${user.fullName} بتحديث التكليف "${task.title}" (${task.completionPercentage}%).`,
+        referenceId: `exec-task-update-${task.id}-${task.updatedAt.toISOString()}`,
+        metadata: {
+          taskId: task.id, taskTitle: task.title,
+          directorateId: task.directorateId, directorateName: task.directorate.name,
+          completionPercentage: task.completionPercentage, status: task.status,
+          todayTargetMet: task.todayTargetMet, completionNote: task.completionNote,
+          completionNoteUpdatedAt: task.completionNoteUpdatedAt?.toISOString(),
+          priority: task.priority, dueDate: task.dueDate?.toISOString(), updatedByName: user.fullName,
+        },
+      },
+      user.id,
+    );
   }
 
   /**

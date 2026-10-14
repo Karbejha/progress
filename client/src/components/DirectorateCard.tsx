@@ -73,14 +73,14 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
         statusBadge: (
           <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-100/80 border border-emerald-200 text-emerald-800">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            {item.hasSummary ? 'ملخص منجز' : 'إنجاز 100%'}
+            ملخص الإنجاز مرسل
           </span>
         ),
         progressBar: 'bg-emerald-600',
         footerStatus: (
           <span className="flex items-center gap-1 text-emerald-700 font-bold">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            {item.hasSummary ? 'ملخص منجز' : 'تكليفات منجزة'}
+            ملخص الإنجاز مرسل
           </span>
         ),
       };
@@ -88,26 +88,21 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
 
     if (isInProgress) {
       return {
-        cardBg: 'bg-gradient-to-b from-[#f8faf9] via-white to-white',
-        cardBorder: 'border-[#d2d1c9] hover:border-[#0c3e35] shadow-xs hover:shadow-md',
-        topLine: 'bg-gradient-to-r from-[#0c3e35] to-[#1a5b4f] h-2',
-        iconBox: 'bg-[#edece4] border-[#d2d1c9] text-[#0c3e35] group-hover:bg-[#0c3e35] group-hover:text-white',
+        cardBg: 'bg-gradient-to-b from-blue-50/60 via-white to-white',
+        cardBorder: 'border-blue-200 hover:border-blue-500 shadow-xs hover:shadow-md',
+        topLine: 'bg-gradient-to-r from-blue-600 to-sky-500 h-2',
+        iconBox: 'bg-blue-100/70 border-blue-200 text-blue-800 group-hover:bg-blue-600 group-hover:text-white',
         statusBadge: (
-          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-[#0c3e35]/5 border border-[#0c3e35]/15 text-[#0c3e35]">
-            <Clock className="w-3.5 h-3.5 text-[#0c3e35]" />
-            قيد المتابعة
+          <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+            <Clock className="w-3.5 h-3.5 text-blue-600" />
+            خطة مسجلة
           </span>
         ),
-        progressBar:
-          item.completionRate >= 80
-            ? 'bg-emerald-600'
-            : item.completionRate >= 40
-            ? 'bg-[#0c3e35]'
-            : 'bg-[#d4af37]',
+        progressBar: 'bg-blue-600',
         footerStatus: (
-          <span className="flex items-center gap-1 text-[#0c3e35] font-bold">
+          <span className="flex items-center gap-1 text-blue-800 font-bold">
             <Clock className="w-3.5 h-3.5" />
-            {item.hasPlan ? 'قيد المتابعة' : 'متابعة التكليفات'}
+            بانتظار ملخص الإنجاز
           </span>
         ),
       };
@@ -187,7 +182,15 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
           </div>
         </div>
 
-        {/* Daily Focus / Tasks / Executive Tasks Preview / Awaiting Notice */}
+        {/* Assigned work must not hide the missing morning plan. */}
+        {isAwaitingPlan && (
+          <div className="p-2.5 rounded-xl bg-amber-50/50 border border-dashed border-amber-200/80 mb-4 text-xs text-amber-900/80 font-medium flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            لم تسجل خطة صباحية بعد
+          </div>
+        )}
+
+        {/* Daily Focus / Tasks / Executive Tasks Preview */}
         {item.generalFocus ? (
           <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
             <span className="text-[#0c3e35] font-bold ml-1">التركيز:</span>
@@ -218,17 +221,7 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             <span className="text-[#0c3e35] font-bold ml-1">ملخص الإنجاز:</span>
             {item.summaryText || 'تم توثيق الإنجاز اليومي'}
           </div>
-        ) : (
-          <div className="p-2.5 rounded-xl bg-amber-50/50 border border-dashed border-amber-200/80 mb-4 text-xs flex items-center justify-between">
-            <span className="text-amber-900/80 font-medium flex items-center gap-1.5 truncate">
-              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              لم تسجل خطة صباحية بعد
-            </span>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-100/80 text-amber-800 border border-amber-200 font-bold shrink-0">
-              متأخر
-            </span>
-          </div>
-        )}
+        ) : null}
       </div>
 
       {/* Progress & Bottom Bar */}

@@ -42,8 +42,8 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
             : isDone
             ? 'bg-emerald-50/70 border-emerald-300'
             : inProgress
-            ? 'bg-white border-[#0c3e35]/40 hover:border-[#0c3e35]'
-            : 'bg-white border-[#d2d1c9] hover:border-slate-400'
+            ? 'bg-blue-50/70 border-blue-300 hover:border-blue-500'
+            : 'bg-amber-50/70 border-amber-300 hover:border-amber-500'
         } hover:scale-[1.02]`}
       >
         {isUrgent && (
@@ -63,18 +63,23 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
 
         <div className="mt-3 pt-2 border-t border-[#e5e4dc] flex items-center justify-between text-[11px]">
           <span className="font-extrabold text-[#0c3e35]">{dir.completionRate}%</span>
-          {isDone ? (
+          {isUrgent ? (
+            <span className="text-red-700 font-bold flex items-center gap-0.5">
+              <AlertTriangle className="w-3 h-3" />
+              تنبيه عاجل
+            </span>
+          ) : isDone ? (
             <span className="text-emerald-700 font-bold flex items-center gap-0.5">
               <CheckCircle2 className="w-3 h-3" />
-              منجز
+              ملخص مرسل
             </span>
           ) : inProgress ? (
-            <span className="text-[#0c3e35] font-bold flex items-center gap-0.5">
+            <span className="text-blue-800 font-bold flex items-center gap-0.5">
               <Clock className="w-3 h-3" />
-              متابع
+              خطة مسجلة
             </span>
           ) : (
-            <span className="text-[#8daaa2]">بانتظار</span>
+            <span className="text-amber-800 font-bold">بانتظار الخطة</span>
           )}
         </div>
       </div>
@@ -100,18 +105,18 @@ export const OrgHierarchyChart: React.FC<OrgHierarchyChartProps> = ({
         <div className="flex items-center gap-2.5 text-xs flex-wrap">
           <span className="flex items-center gap-1.5 text-emerald-800 bg-emerald-100/70 px-3 py-1 rounded-xl border border-emerald-300 font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-600" />
-            ملخص الإنجاز منجز
+            ملخص الإنجاز مرسل
           </span>
-          <span className="flex items-center gap-1.5 text-[#0c3e35] bg-white px-3 py-1 rounded-xl border border-[#0c3e35]/30 font-bold">
-            <span className="w-2 h-2 rounded-full bg-[#0c3e35]" />
-            الخطة قيد المتابعة
+          <span className="flex items-center gap-1.5 text-blue-800 bg-blue-50 px-3 py-1 rounded-xl border border-blue-300 font-bold">
+            <span className="w-2 h-2 rounded-full bg-blue-600" />
+            خطة مسجلة
           </span>
           <span className="flex items-center gap-1.5 text-red-700 bg-red-100/70 px-3 py-1 rounded-xl border border-red-300 font-bold">
             <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
             تنبيه عاجل
           </span>
-          <span className="flex items-center gap-1.5 text-[#5e736e] bg-white px-3 py-1 rounded-xl border border-[#d2d1c9]">
-            <span className="w-2 h-2 rounded-full bg-slate-400" />
+          <span className="flex items-center gap-1.5 text-amber-800 bg-amber-50 px-3 py-1 rounded-xl border border-amber-300 font-bold">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
             بانتظار الخطة
           </span>
         </div>

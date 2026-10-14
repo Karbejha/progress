@@ -2,6 +2,45 @@
 
 import { api } from '../services/api';
 
+const pendingReadRequests = new Map<string, Promise<void>>();
+const pendingReadsKey = (userId: string) => `ports_pending_notification_reads_${userId}`;
+const getPendingReads = (userId: string): string[] => {
+  try {
+    const value = JSON.parse(localStorage.getItem(pendingReadsKey(userId)) || '[]');
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && !!id) : [];
+  } catch { return []; }
+};
+
+/** Retry offline read acknowledgements only for the account that created them. */
+export function flushPendingNotificationReads(userId: string): Promise<void> {
+  if (typeof window === 'undefined' || !userId || api.getCurrentUser()?.id !== userId || !api.getToken()) {
+    return Promise.resolve();
+  }
+  const existing = pendingReadRequests.get(userId);
+  if (existing) return existing;
+  const request = (async () => {
+    try {
+      while (api.getCurrentUser()?.id === userId && api.getToken()) {
+        const batch = getPendingReads(userId).slice(0, 500);
+        if (!batch.length) break;
+        await api.markNotificationsRead(batch);
+        const remaining = getPendingReads(userId).filter((id) => !batch.includes(id));
+        localStorage.setItem(pendingReadsKey(userId), JSON.stringify(remaining));
+      }
+    } catch {
+      // The durable queue is retried on reconnect, focus and the inbox refresh.
+    }
+  })().finally(() => { pendingReadRequests.delete(userId); });
+  pendingReadRequests.set(userId, request);
+  return request;
+}
+
+const persistReadKeys = (userId: string, keys: string[]) => {
+  const pending = Array.from(new Set([...getPendingReads(userId), ...keys]));
+  localStorage.setItem(pendingReadsKey(userId), JSON.stringify(pending));
+  void flushPendingNotificationReads(userId);
+};
+
 export const getReadAnnouncementIds = (userId: string): string[] => {
   if (typeof window === 'undefined' || !userId) return [];
   try {
@@ -33,7 +72,7 @@ export const markAnnouncementAsRead = (userId: string, announcementId: string): 
     }
     // Persist to server
     api.markAnnouncementRead(announcementId).catch(() => {});
-    api.markNotificationsRead([announcementId]).catch(() => {});
+    persistReadKeys(userId, [announcementId]);
   } catch (e) {
     console.error('Failed to mark announcement as read', e);
   }
@@ -52,7 +91,7 @@ export const markAllAnnouncementsAsRead = (userId: string, announcementIds: stri
       })
     );
     // Persist to server
-    api.markNotificationsRead(announcementIds).catch(() => {});
+    persistReadKeys(userId, announcementIds);
     announcementIds.forEach((id) => {
       api.markAnnouncementRead(id).catch(() => {});
     });
@@ -121,7 +160,7 @@ export const markNotificationAsRead = (userId: string, notifId: string): void =>
       );
     }
     // Persist to server
-    api.markNotificationsRead([notifId]).catch(() => {});
+    persistReadKeys(userId, [notifId]);
   } catch (e) {
     console.error('Failed to mark notification as read', e);
   }
@@ -140,7 +179,7 @@ export const markAllNotificationsAsRead = (userId: string, notifIds: string[]): 
       })
     );
     // Persist to server
-    api.markNotificationsRead(notifIds).catch(() => {});
+    persistReadKeys(userId, notifIds);
   } catch (e) {
     console.error('Failed to mark all notifications as read', e);
   }

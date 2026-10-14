@@ -1,5 +1,7 @@
 'use client';
 
+import { ReplyTimestamp } from './ReplyTimestamp';
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
@@ -42,6 +44,7 @@ export interface NotificationDetailItem {
   directorateIcon?: string;
   completionPercentage?: number;
   completionNote?: string;
+  completionNoteUpdatedAt?: string | null;
   taskStatus?: string;
   dueDate?: string;
   isShared?: boolean;
@@ -148,6 +151,11 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
     payload.task?.completionNote ||
     payload.completionNote ||
     '';
+
+  const completionNoteUpdatedAt =
+    data.completionNoteUpdatedAt ??
+    payload.task?.completionNoteUpdatedAt ??
+    payload.completionNoteUpdatedAt;
 
   const taskDescription =
     data.taskDescription ||
@@ -411,6 +419,7 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
                     <p className="text-xs text-[#0c3e35] font-medium leading-relaxed whitespace-pre-line pt-1">
                       {completionNote}
                     </p>
+                    <ReplyTimestamp value={completionNoteUpdatedAt} />
                   </div>
                 )}
 

@@ -2,7 +2,7 @@
 
 import { io, Socket } from 'socket.io-client';
 import { User } from '../types';
-import { getApiBaseUrl } from '../services/api';
+import { api, getApiBaseUrl } from '../services/api';
 
 export type SocketConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'error';
 
@@ -11,6 +11,8 @@ let currentJoinedUser: User | null = null;
 let cachedTargetUrl: string = '';
 let connectionStatus: SocketConnectionStatus = 'disconnected';
 let lastErrorMessage: string | null = null;
+let authenticatedToken: string | null = null;
+let lifecycleListenersInstalled = false;
 const statusListeners = new Set<(status: SocketConnectionStatus, error?: string | null) => void>();
 
 function notifyStatusChange(status: SocketConnectionStatus, error?: string | null) {
@@ -57,7 +59,12 @@ export const getSocketStatus = () => {
 export const joinUserRooms = (user: User | null) => {
   currentJoinedUser = user;
   const s = getSocket();
-  if (!s || !user) return;
+  if (!s) return;
+  if (!user || !api.getToken()) {
+    s.disconnect();
+    notifyStatusChange('disconnected');
+    return;
+  }
 
   if (s.connected) {
     s.emit('join', {
@@ -72,13 +79,15 @@ export const joinUserRooms = (user: User | null) => {
 };
 
 export const forceReconnectSocket = (): Socket => {
-  if (socket) {
-    try {
-      socket.disconnect();
-    } catch {}
-    socket = null;
+  const s = getSocket();
+  if (s) {
+    s.disconnect();
+    if (api.getToken()) {
+      notifyStatusChange('connecting');
+      s.connect();
+    }
   }
-  return getSocket();
+  return s;
 };
 
 export const getSocket = (): Socket => {
@@ -96,14 +105,16 @@ export const getSocket = (): Socket => {
 
   if (!socket) {
     cachedTargetUrl = targetSocketUrl;
-    notifyStatusChange('connecting');
+    authenticatedToken = api.getToken();
+    notifyStatusChange(authenticatedToken ? 'connecting' : 'disconnected');
 
     socket = io(targetSocketUrl, {
       path: '/socket.io',
       transports: ['polling', 'websocket'],
       upgrade: true,
       rememberUpgrade: true,
-      autoConnect: true,
+      auth: (callback) => callback({ token: api.getToken() }),
+      autoConnect: !!authenticatedToken,
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -127,27 +138,38 @@ export const getSocket = (): Socket => {
     socket.on('disconnect', (reason) => {
       notifyStatusChange('disconnected', reason);
 
-      if (reason === 'io server disconnect' || reason === 'transport close' || reason === 'ping timeout') {
-        setTimeout(() => {
-          socket?.connect();
-        }, 1000);
-      }
     });
 
     socket.on('connect_error', (error) => {
       notifyStatusChange('error', error.message);
     });
 
-    // Reconnect automatically when app returns from background / network reconnects
+  }
+
+  if (!lifecycleListenersInstalled) {
+    lifecycleListenersInstalled = true;
+    const synchronizeAuth = () => {
+      const token = api.getToken();
+      currentJoinedUser = api.getCurrentUser();
+      if (token !== authenticatedToken || !token) socket?.disconnect();
+      authenticatedToken = token;
+      if (token && socket && !socket.connected) {
+        notifyStatusChange('connecting');
+        socket.connect();
+      } else if (!token) notifyStatusChange('disconnected');
+    };
+    window.addEventListener('ports:auth_changed', synchronizeAuth);
+    window.addEventListener('ports:session_expired', synchronizeAuth);
+    // Reconnect automatically when app returns from background / network reconnects.
     window.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && socket && !socket.connected) {
+      if (document.visibilityState === 'visible' && api.getToken() && socket && !socket.connected) {
         notifyStatusChange('connecting');
         socket.connect();
       }
     });
 
     window.addEventListener('online', () => {
-      if (socket && !socket.connected) {
+      if (api.getToken() && socket && !socket.connected) {
         notifyStatusChange('connecting');
         socket.connect();
       }

@@ -6,3 +6,5 @@ dist
 npm-debug.log
 Dockerfile
 .dockerignore
+firebase-service-account.json
+firebase/

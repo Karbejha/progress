@@ -222,6 +222,7 @@ export interface ExecutiveCoTask {
   status: TaskStatus;
   completionPercentage: number;
   completionNote?: string | null;
+  completionNoteUpdatedAt?: string | null;
 }
 
 export interface ExecutiveTask {
@@ -233,6 +234,7 @@ export interface ExecutiveTask {
   status: TaskStatus;
   completionPercentage: number;
   completionNote?: string;
+  completionNoteUpdatedAt?: string | null;
   todayTargetMet?: boolean;
   dailyCompletionPercentage?: number;
   dailyStartCompletionPercentage?: number;
@@ -295,6 +297,7 @@ export interface GroupedExecutiveTask {
     status: TaskStatus;
     completionPercentage: number;
     completionNote?: string | null;
+    completionNoteUpdatedAt?: string | null;
   }>;
 }
 

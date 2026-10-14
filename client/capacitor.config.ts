@@ -29,7 +29,8 @@ const config: CapacitorConfig = {
       splashImmersive: true,
     },
     PushNotifications: {
-      presentationOptions: ['badge', 'sound', 'alert'],
+      // Foreground push and socket delivery share one local notification per database ID.
+      presentationOptions: [],
     },
   },
 };

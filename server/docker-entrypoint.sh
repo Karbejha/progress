@@ -4,6 +4,7 @@ set -e
 echo "🌊 Starting General Directorate of Ports Backend..."
 
 echo "⏳ Synchronizing Prisma database schema..."
+npx prisma db execute --file ./prisma/prepare-device-tokens.sql --schema ./prisma/schema.prisma
 npx prisma db push
 
 if [ "${SEED_ON_START:-true}" = "true" ]; then

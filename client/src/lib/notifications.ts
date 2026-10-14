@@ -1,9 +1,11 @@
 'use client';
 
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, PluginListenerHandle } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { LocalNotifications, Channel } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { api } from '../services/api';
+import { isNotificationForUser, normalizeNotificationPayload, toNotificationIntegerId } from './notificationPayload';
 
 export interface AnnouncementNotificationPayload {
   id: string;
@@ -32,22 +34,23 @@ export interface FeedbackNotificationPayload {
 
 export interface GenericNotificationPayload {
   id: string;
+  userId?: string;
   type?: string;
   title: string;
-  message?: string;
-  referenceId?: string;
-  metadata?: any;
+  message?: string | null;
+  referenceId?: string | null;
+  metadata?: Record<string, any> | null;
   createdAt?: string;
 }
 
+const DEVICE_TOKEN_KEY = 'ports_device_token';
 const CHANNELS: Channel[] = [
   {
     id: 'ports_announcements',
     name: 'التعاميم والتوجيهات الإدارية الرسمية',
-    description: 'إشعارات التعاميم الإدارية الصادرة من الإدارة العليا للمديرية العامة للموانئ',
-    importance: 5, // MAX importance for heads-up banner & sound
-    visibility: 1, // Public on lock screen
-    sound: undefined, // Default system notification sound
+    description: 'التعاميم الإدارية الصادرة عن المديرية العامة للموانئ',
+    importance: 5,
+    visibility: 1,
     vibration: true,
     lights: true,
     lightColor: '#0c3e35',
@@ -55,446 +58,304 @@ const CHANNELS: Channel[] = [
   {
     id: 'ports_urgent',
     name: 'التكاليف والتنبيهات العاجلة',
-    description: 'إشعارات التكاليف التنفيذية المباشرة والملاحظات الإدارية الطارئة',
+    description: 'التكاليف التنفيذية والملاحظات الإدارية العاجلة',
     importance: 5,
     visibility: 1,
-    sound: undefined,
     vibration: true,
     lights: true,
     lightColor: '#d4af37',
   },
 ];
 
-let isInitialized = false;
+let initialization: Promise<void> | null = null;
+let permissionRequest: Promise<boolean> | null = null;
+let registration: Promise<void> | null = null;
+let deviceSync: Promise<void> | null = null;
+let deviceSyncKey = '';
+let deviceSyncAttempts = 0;
+let registeredSession = '';
+let nativeOperations = Promise.resolve();
+let nativeAppActive = true;
+let pendingClick: Record<string, any> | null = null;
+let clickSubscribers = 0;
+const displayedNotifications = new Set<string>();
 
-/**
- * Convert string ID or hash to a 32-bit positive integer required by Android notification IDs
- */
-function toIntegerId(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash % 2147483647);
+function authenticatedSession(): string {
+  const token = api.getToken();
+  const userId = api.getCurrentUser()?.id;
+  return token && userId ? `${userId}:${token}` : '';
 }
 
-/**
- * Register with FCM (Firebase Cloud Messaging) for native push notifications
- */
-export async function registerPushNotifications(): Promise<void> {
-  if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return;
+function belongsToCurrentUser(payload: { userId?: string }): boolean {
+  return Boolean(api.getToken()) && isNotificationForUser(payload, api.getCurrentUser()?.id);
+}
 
-  try {
-    const permStatus = await PushNotifications.checkPermissions();
-    if (permStatus.receive === 'prompt') {
-      const res = await PushNotifications.requestPermissions();
-      if (res.receive !== 'granted') return;
-    } else if (permStatus.receive !== 'granted') {
-      return;
+function dispatchNotificationClick(detail: Record<string, any>): void {
+  if (!belongsToCurrentUser(detail)) return;
+  if (!clickSubscribers) {
+    pendingClick = detail;
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('ports:notification_clicked', { detail }));
+}
+
+/** Mount the authenticated Header listener before draining a cold-start notification tap. */
+export function subscribeToNotificationClicks(
+  listener: (event: CustomEvent<Record<string, any>>) => void,
+): () => void {
+  const handler = listener as EventListener;
+  window.addEventListener('ports:notification_clicked', handler);
+  clickSubscribers++;
+  if (pendingClick) {
+    const detail = pendingClick;
+    pendingClick = null;
+    if (belongsToCurrentUser(detail)) listener(new CustomEvent('ports:notification_clicked', { detail }));
+  }
+  return () => {
+    window.removeEventListener('ports:notification_clicked', handler);
+    clickSubscribers = Math.max(0, clickSubscribers - 1);
+  };
+}
+
+async function syncDeviceToken(): Promise<void> {
+  const token = localStorage.getItem(DEVICE_TOKEN_KEY);
+  const session = authenticatedSession();
+  const syncKey = `${session}:${token}`;
+  if (deviceSync) {
+    // A refreshed token or a new account must be bound after the previous request finishes.
+    return deviceSyncKey === syncKey ? deviceSync : deviceSync.then(() => syncDeviceToken());
+  }
+  if (!token || !session || registeredSession === `${session}:${token}`) return;
+  deviceSyncKey = syncKey;
+  deviceSyncAttempts++;
+  deviceSync = (async () => {
+    const success = await api.registerDeviceToken(token, Capacitor.getPlatform());
+    if (success && authenticatedSession() === session && localStorage.getItem(DEVICE_TOKEN_KEY) === token) {
+      registeredSession = `${session}:${token}`;
     }
-
-    // Register with FCM / APNs
-    await PushNotifications.register();
-
-    // Listeners for token registration
-    await PushNotifications.removeAllListeners();
-
-    await PushNotifications.addListener('registration', async (token) => {
-      console.log('FCM Device Token registered:', token.value);
-      try {
-        await api.registerDeviceToken(token.value, Capacitor.getPlatform());
-        localStorage.setItem('ports_device_token', token.value);
-      } catch (err) {
-        console.warn('Failed to register device token on backend:', err);
-      }
-    });
-
-    await PushNotifications.addListener('registrationError', (error) => {
-      console.warn('FCM registration error:', error);
-    });
-
-    await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('FCM push received in foreground:', notification);
-      window.dispatchEvent(
-        new CustomEvent('ports:push_received', { detail: notification })
-      );
-    });
-
-    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      console.log('User tapped push notification:', action);
-      const data = action.notification.data;
-      if (data) {
-        window.dispatchEvent(
-          new CustomEvent('ports:notification_clicked', { detail: data })
-        );
-      }
-    });
-  } catch (err) {
-    console.warn('Could not initialize push notifications plugin:', err);
-  }
+  })().finally(() => { deviceSync = null; deviceSyncKey = ''; });
+  return deviceSync;
 }
 
-/**
- * Initialize Android notification channels and tap action listeners
- */
-export async function initNotificationService(): Promise<void> {
-  if (typeof window === 'undefined' || isInitialized) return;
+function queueNativeOperation(operation: () => Promise<void>): Promise<void> {
+  const next = nativeOperations.then(operation, operation);
+  nativeOperations = next.catch(() => undefined);
+  return next;
+}
 
-  try {
-    if (Capacitor.isNativePlatform()) {
-      // Create high-priority Android notification channels
-      for (const ch of CHANNELS) {
-        await LocalNotifications.createChannel(ch).catch((err) => {
-          console.warn(`Failed to create channel ${ch.id}:`, err);
-        });
-      }
+async function detachNativeDevice(): Promise<void> {
+  registeredSession = '';
+  pendingClick = null;
+  displayedNotifications.clear();
+  localStorage.removeItem(DEVICE_TOKEN_KEY);
+  await queueNativeOperation(async () => {
+    // Rotate the FCM token even if the server is offline during logout.
+    await PushNotifications.unregister().catch(() => {
+      console.warn('Could not unregister native push notifications.');
+    });
+    localStorage.removeItem(DEVICE_TOKEN_KEY);
+    await Promise.allSettled([
+      PushNotifications.removeAllDeliveredNotifications(),
+      LocalNotifications.removeAllDeliveredNotifications(),
+    ]);
+  });
+}
 
-      // Handle user clicking the notification banner on Android
-      await LocalNotifications.addListener(
-        'localNotificationActionPerformed',
-        (notificationAction) => {
-          const extra = notificationAction.notification.extra;
-          if (extra) {
-            window.dispatchEvent(
-              new CustomEvent('ports:notification_clicked', { detail: extra })
-            );
-          }
+async function initializeNativeService(): Promise<void> {
+  if (initialization) return initialization;
+  initialization = (async () => {
+    const listeners: PluginListenerHandle[] = [];
+    try {
+      if (Capacitor.getPlatform() === 'android') {
+        // Push and local notifications share these Android system channels.
+        for (const channel of CHANNELS) {
+          // Channels are unavailable on Android 7 (the app's supported minimum is API 24).
+          await LocalNotifications.createChannel(channel).catch(() => {
+            console.warn('Could not configure an Android notification channel.');
+          });
         }
-      );
-
-      // Register for FCM Push Notifications
-      registerPushNotifications().catch((err) => {
-        console.warn('FCM Push registration deferred:', err);
+      }
+      nativeAppActive = (await App.getState()).isActive;
+      // Listeners must exist before register() emits a token or replays a cold-start tap.
+      listeners.push(await PushNotifications.addListener('registration', (token) => {
+        if (!authenticatedSession()) return;
+        localStorage.setItem(DEVICE_TOKEN_KEY, token.value);
+        void syncDeviceToken().catch(() => {
+          console.warn('Could not bind the native push token; registration will retry.');
+        });
+      }));
+      listeners.push(await PushNotifications.addListener('registrationError', () => {
+        console.warn('Native push notification registration failed.');
+      }));
+      listeners.push(await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        const detail = normalizeNotificationPayload(notification.data, notification);
+        if (!detail || !belongsToCurrentUser(detail)) return;
+        // Native foreground presentation is disabled: FCM and socket delivery share this ID.
+        void notifyGeneric(detail as GenericNotificationPayload);
+        window.dispatchEvent(new CustomEvent('ports:push_received', { detail }));
+      }));
+      listeners.push(await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        const detail = normalizeNotificationPayload(action.notification.data, action.notification);
+        if (detail) dispatchNotificationClick(detail);
+      }));
+      listeners.push(await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        const detail = normalizeNotificationPayload(action.notification.extra, action.notification);
+        if (detail) dispatchNotificationClick(detail);
+      }));
+      listeners.push(await App.addListener('appStateChange', (state) => {
+        nativeAppActive = state.isActive;
+        if (state.isActive) void registerPushNotifications(false);
+      }));
+      window.addEventListener('ports:auth_changed', (event) => {
+        const loggedOut = (event as CustomEvent<{ authenticated: boolean }>).detail?.authenticated === false;
+        if (loggedOut) void detachNativeDevice();
+        else if (registration) void registration.then(() => registerPushNotifications());
+        else void registerPushNotifications();
       });
+      // Retry backend binding after transient connectivity failures without another permission prompt.
+      window.setInterval(() => {
+        if (nativeAppActive && authenticatedSession()) void registerPushNotifications(false);
+      }, 60000);
+    } catch (error) {
+      await Promise.allSettled(listeners.map((listener) => listener.remove()));
+      initialization = null;
+      throw error;
     }
+  })();
+  return initialization;
+}
 
-    isInitialized = true;
-  } catch (e) {
-    console.error('Error initializing notification service:', e);
+/** Initializes once; calling again after login binds the token to that authenticated session. */
+export async function initNotificationService(): Promise<void> {
+  if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return;
+  try {
+    await initializeNativeService();
+    if (authenticatedSession()) await registerPushNotifications();
+  } catch {
+    console.warn('Could not initialize native notification service.');
   }
 }
 
-/**
- * Request notification permissions from Android 13+ or web browser
- */
+export async function registerPushNotifications(requestPermission = true): Promise<void> {
+  if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return;
+  if (registration) return registration;
+  registration = (async () => {
+    await initializeNativeService();
+    const session = authenticatedSession();
+    if (!session) return;
+    const permitted = requestPermission
+      ? await requestNotificationPermissions()
+      : (await LocalNotifications.checkPermissions()).display === 'granted'
+        && (await PushNotifications.checkPermissions()).receive === 'granted';
+    if (!permitted || authenticatedSession() !== session) return;
+    const previousSyncAttempts = deviceSyncAttempts;
+    await queueNativeOperation(async () => {
+      if (authenticatedSession() !== session) return;
+      // Recheck the native token on resume/retry: it can rotate outside this JS session.
+      await PushNotifications.register();
+    });
+    // Network binding must not hold the native queue and delay token deletion during logout.
+    if (authenticatedSession() === session) {
+      if (deviceSyncAttempts === previousSyncAttempts) await syncDeviceToken();
+      else if (deviceSync) await deviceSync;
+    }
+  })().catch(() => {
+    console.warn('Could not register native push notifications; registration will retry.');
+  }).finally(() => { registration = null; });
+  return registration;
+}
+
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
-
-  try {
+  if (permissionRequest) return permissionRequest;
+  permissionRequest = (async () => {
     if (Capacitor.isNativePlatform()) {
-      const status = await LocalNotifications.checkPermissions();
-      if (status.display === 'granted') {
-        return true;
+      let local = await LocalNotifications.checkPermissions();
+      if (local.display === 'prompt' || local.display === 'prompt-with-rationale') {
+        local = await LocalNotifications.requestPermissions();
       }
-      const requestRes = await LocalNotifications.requestPermissions();
-      return requestRes.display === 'granted';
-    } else if ('Notification' in window) {
-      if (Notification.permission === 'granted') {
-        return true;
+      if (local.display !== 'granted') return false;
+      let push = await PushNotifications.checkPermissions();
+      if (push.receive === 'prompt' || push.receive === 'prompt-with-rationale') {
+        push = await PushNotifications.requestPermissions();
       }
-      if (Notification.permission !== 'denied') {
-        const perm = await Notification.requestPermission();
-        return perm === 'granted';
-      }
+      return push.receive === 'granted';
     }
-  } catch (e) {
-    console.warn('Could not request notification permissions:', e);
-  }
-
-  return false;
+    if ('Notification' in window) {
+      if (Notification.permission === 'granted') return true;
+      if (Notification.permission !== 'denied') return (await Notification.requestPermission()) === 'granted';
+    }
+    return false;
+  })().catch(() => false).finally(() => { permissionRequest = null; });
+  return permissionRequest;
 }
 
-/**
- * Dispatch an official Circular (تعميم) notification to the phone's notification bar
- */
-export async function notifyCircular(payload: AnnouncementNotificationPayload): Promise<void> {
-  if (typeof window === 'undefined') return;
-
-  const isUrgent = payload.priority === 'URGENT' || payload.priority === 'HIGH';
-  const prefix = isUrgent ? '🚨 تعميم إداري عاجل' : '📢 تعميم إداري رسمي';
-  const notifTitle = `${prefix}: ${payload.title}`;
-  const senderText = payload.authorName ? `صادر عن: ${payload.authorName}` : 'المدير العام للموانئ';
-  const bodyText = `${senderText}\n${payload.content ? payload.content.slice(0, 140) : ''}`;
-  const notifId = toIntegerId(`announcement-${payload.id}`);
-
-  try {
-    if (Capacitor.isNativePlatform()) {
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            title: notifTitle,
-            body: bodyText,
-            channelId: isUrgent ? 'ports_urgent' : 'ports_announcements',
-            smallIcon: 'ic_launcher_round',
-            iconColor: '#0c3e35',
-            autoCancel: true,
-            extra: {
-              type: 'announcement',
-              id: payload.id,
-              title: payload.title,
-              content: payload.content,
-              authorName: payload.authorName,
-              authorTitle: payload.authorTitle,
-              priority: payload.priority,
-              createdAt: payload.createdAt || new Date().toISOString(),
-            },
-          },
-        ],
-      });
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      const webNotif = new Notification(notifTitle, {
-        body: bodyText,
-        icon: '/icon.png',
-        badge: '/icon.png',
-        tag: `circular-${payload.id}`,
-        requireInteraction: isUrgent,
-      });
-
-      webNotif.onclick = () => {
-        window.focus();
-        window.dispatchEvent(
-          new CustomEvent('ports:notification_clicked', {
-            detail: {
-              type: 'announcement',
-              id: payload.id,
-              title: payload.title,
-              content: payload.content,
-              authorName: payload.authorName,
-              authorTitle: payload.authorTitle,
-              priority: payload.priority,
-              createdAt: payload.createdAt || new Date().toISOString(),
-            },
-          })
-        );
-      };
-    }
-  } catch (err) {
-    console.error('Failed to dispatch circular notification:', err);
-  }
-}
-
-/**
- * Dispatch an Executive Task (تكليف إداري) notification to the phone's notification bar
- */
-export async function notifyExecutiveTask(payload: ExecutiveTaskNotificationPayload): Promise<void> {
-  if (typeof window === 'undefined') return;
-
-  const notifTitle = payload.isShared
-    ? '📌 تكليف إداري مشترك من المدير العام'
-    : '📌 تكليف جديد من المدير العام للموانئ';
-  const bodyText = `وردك تكليف رسمي: "${payload.title}"`;
-  const notifId = toIntegerId(`exec-task-${payload.id}`);
-
-  try {
-    if (Capacitor.isNativePlatform()) {
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            title: notifTitle,
-            body: bodyText,
-            channelId: 'ports_urgent',
-            smallIcon: 'ic_launcher_round',
-            iconColor: '#0c3e35',
-            autoCancel: true,
-            extra: {
-              type: 'executive-task',
-              id: payload.id,
-              title: payload.title,
-              directorateName: payload.directorateName,
-              assignedByName: payload.assignedByName,
-              isShared: payload.isShared,
-            },
-          },
-        ],
-      });
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      const webNotif = new Notification(notifTitle, {
-        body: bodyText,
-        icon: '/icon.png',
-        badge: '/icon.png',
-        tag: `task-${payload.id}`,
-      });
-
-      webNotif.onclick = () => {
-        window.focus();
-        window.dispatchEvent(
-          new CustomEvent('ports:notification_clicked', {
-            detail: {
-              type: 'executive-task',
-              id: payload.id,
-              title: payload.title,
-              directorateName: payload.directorateName,
-              assignedByName: payload.assignedByName,
-              isShared: payload.isShared,
-            },
-          })
-        );
-      };
-    }
-  } catch (err) {
-    console.error('Failed to dispatch executive task notification:', err);
-  }
-}
-
-/**
- * Dispatch a Feedback (توجيه وملاحظة) notification to the phone's notification bar
- */
-export async function notifyFeedback(payload: FeedbackNotificationPayload): Promise<void> {
-  if (typeof window === 'undefined') return;
-
-  const notifTitle = '💬 توجيه وملاحظة من المدير العام';
-  const bodyText = `${payload.fromUserName ? `${payload.fromUserName}: ` : ''}${payload.feedbackText}`;
-  const notifId = toIntegerId(`feedback-${Date.now()}`);
-
-  try {
-    if (Capacitor.isNativePlatform()) {
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            title: notifTitle,
-            body: bodyText,
-            channelId: 'ports_urgent',
-            smallIcon: 'ic_launcher_round',
-            iconColor: '#0c3e35',
-            autoCancel: true,
-            extra: {
-              type: 'feedback',
-              feedbackText: payload.feedbackText,
-              fromUserName: payload.fromUserName,
-              rating: payload.rating,
-            },
-          },
-        ],
-      });
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      const webNotif = new Notification(notifTitle, {
-        body: bodyText,
-        icon: '/icon.png',
-        badge: '/icon.png',
-        tag: `feedback-${Date.now()}`,
-      });
-
-      webNotif.onclick = () => {
-        window.focus();
-        window.dispatchEvent(
-          new CustomEvent('ports:notification_clicked', {
-            detail: {
-              type: 'feedback',
-              feedbackText: payload.feedbackText,
-              fromUserName: payload.fromUserName,
-              rating: payload.rating,
-            },
-          })
-        );
-      };
-    }
-  } catch (err) {
-    console.error('Failed to dispatch feedback notification:', err);
-  }
-}
-
-/**
- * Dispatch any notification (Circular, Executive Task, Feedback, Plan, Summary, or Generic Note)
- * to the mobile notification bar with maximum priority, sound, and heads-up banner.
- */
+/** One system notification for one canonical database notification, across push and socket delivery. */
 export async function notifyGeneric(item: GenericNotificationPayload): Promise<void> {
-  if (typeof window === 'undefined' || !item) return;
-
-  const notifType = (item.type || '').toLowerCase();
-
-  // If announcement / circular
-  if (notifType === 'announcement' || notifType.includes('circular')) {
-    return notifyCircular({
-      id: item.referenceId || item.id,
-      title: item.title,
-      content: item.message || item.title || '',
-      authorName: item.metadata?.authorName,
-      authorTitle: item.metadata?.authorTitle,
-      priority: item.metadata?.priority || 'HIGH',
-      createdAt: item.createdAt,
-    });
-  }
-
-  // If executive task
-  if (notifType.includes('task') || notifType === 'executive-task') {
-    return notifyExecutiveTask({
-      id: item.referenceId || item.id,
-      title: item.title,
-      directorateName: item.metadata?.directorateName,
-      assignedByName: item.metadata?.assignedByName || item.metadata?.authorName,
-      isShared: item.metadata?.isShared,
-    });
-  }
-
-  // If feedback / note
-  if (notifType.includes('feedback') || notifType.includes('note')) {
-    return notifyFeedback({
-      directorateId: item.metadata?.directorateId,
-      fromUserName: item.metadata?.fromUserName || item.metadata?.authorName,
-      feedbackText: item.message || item.title,
-      rating: item.metadata?.rating,
-    });
-  }
-
-  // General Notification fallback
-  const notifId = toIntegerId(`generic-${item.id}`);
-  const notifTitle = item.title || 'إشعار إداري رسمي جديد';
-  const bodyText = item.message || '';
-
+  if (typeof window === 'undefined' || !item?.id || !belongsToCurrentUser(item)) return;
+  const native = Capacitor.isNativePlatform();
+  // FCM notification payloads are displayed by Android while the app is in the background.
+  if (native && (!nativeAppActive || document.visibilityState === 'hidden')) return;
+  const session = authenticatedSession();
+  const userId = api.getCurrentUser()!.id;
+  const key = `${userId}:${item.id}`;
+  if (displayedNotifications.has(key)) return;
+  displayedNotifications.add(key);
+  if (displayedNotifications.size > 1000) displayedNotifications.delete(displayedNotifications.values().next().value!);
+  const detail = normalizeNotificationPayload({ ...item, userId })!;
   try {
-    if (Capacitor.isNativePlatform()) {
+    if (native) {
+      if ((await LocalNotifications.checkPermissions()).display !== 'granted') {
+        displayedNotifications.delete(key);
+        return;
+      }
+      if (authenticatedSession() !== session || !nativeAppActive || document.visibilityState === 'hidden') {
+        displayedNotifications.delete(key);
+        return;
+      }
       await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            title: notifTitle,
-            body: bodyText,
-            channelId: 'ports_urgent',
-            smallIcon: 'ic_launcher_round',
-            iconColor: '#0c3e35',
-            autoCancel: true,
-            extra: {
-              type: item.type,
-              id: item.id,
-              referenceId: item.referenceId,
-              title: item.title,
-              message: item.message,
-              metadata: item.metadata,
-              createdAt: item.createdAt || new Date().toISOString(),
-            },
-          },
-        ],
+        notifications: [{
+          id: toNotificationIntegerId(item.id),
+          title: item.title || 'إشعار إداري جديد',
+          body: item.message || '',
+          channelId: detail.type === 'announcement' && detail.priority !== 'URGENT' && detail.priority !== 'HIGH'
+            ? 'ports_announcements' : 'ports_urgent',
+          smallIcon: 'ic_stat_notification',
+          iconColor: '#0c3e35',
+          autoCancel: true,
+          extra: detail,
+        }],
       });
     } else if ('Notification' in window && Notification.permission === 'granted') {
-      const webNotif = new Notification(notifTitle, {
-        body: bodyText,
-        icon: '/icon.png',
-        badge: '/icon.png',
-        tag: `generic-${item.id}`,
+      const notification = new Notification(item.title || 'إشعار إداري جديد', {
+        body: item.message || '', icon: '/icon.png', badge: '/icon.png', tag: `ports-${item.id}`,
       });
-
-      webNotif.onclick = () => {
+      notification.onclick = () => {
         window.focus();
-        window.dispatchEvent(
-          new CustomEvent('ports:notification_clicked', {
-            detail: {
-              type: item.type,
-              id: item.id,
-              referenceId: item.referenceId,
-              title: item.title,
-              message: item.message,
-              metadata: item.metadata,
-              createdAt: item.createdAt || new Date().toISOString(),
-            },
-          })
-        );
+        notification.close();
+        dispatchNotificationClick(detail);
       };
+    } else {
+      displayedNotifications.delete(key);
     }
-  } catch (err) {
-    console.error('Failed to dispatch generic notification:', err);
+  } catch {
+    displayedNotifications.delete(key);
+    console.warn('Could not display a system notification.');
   }
+}
+
+export async function notifyCircular(payload: AnnouncementNotificationPayload): Promise<void> {
+  return notifyGeneric({ id: `announcement-${payload.id}`, referenceId: payload.id,
+    type: 'announcement', title: payload.title, message: payload.content,
+    metadata: { ...payload }, createdAt: payload.createdAt });
+}
+
+export async function notifyExecutiveTask(payload: ExecutiveTaskNotificationPayload): Promise<void> {
+  return notifyGeneric({ id: `executive-task-${payload.id}`, referenceId: payload.id,
+    type: 'executive-task', title: 'تكليف إداري جديد', message: payload.title, metadata: { ...payload } });
+}
+
+export async function notifyFeedback(payload: FeedbackNotificationPayload): Promise<void> {
+  return notifyGeneric({ id: `feedback-${Date.now()}`, type: 'feedback', title: 'توجيه وملاحظة إدارية',
+    message: payload.feedbackText, metadata: { ...payload } });
 }

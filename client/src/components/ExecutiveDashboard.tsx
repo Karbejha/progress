@@ -839,7 +839,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                 title={statusFilter === 'COMPLETED' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات التي أنجزت ملخصها اليومي'}
               >
                 <span className={`w-2 h-2 rounded-full ${statusFilter === 'COMPLETED' ? 'bg-white' : 'bg-emerald-600'}`}></span>
-                <span>ملخص منجز / مكتملة</span>
+                <span>ملخص الإنجاز مرسل</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                   statusFilter === 'COMPLETED' ? 'bg-white/20 text-white' : 'bg-emerald-200/70 text-emerald-900'
                 }`}>
@@ -852,15 +852,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                 onClick={() => setStatusFilter(statusFilter === 'IN_PROGRESS' ? 'ALL' : 'IN_PROGRESS')}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
                   statusFilter === 'IN_PROGRESS'
-                    ? 'bg-[#0c3e35] text-white border-[#0c3e35] shadow-xs ring-2 ring-[#0c3e35]/30'
-                    : 'bg-white border-[#0c3e35]/25 text-[#0c3e35] hover:bg-[#0c3e35]/5'
+                    ? 'bg-blue-700 text-white border-blue-700 shadow-xs ring-2 ring-blue-400/30'
+                    : 'bg-blue-50/90 border-blue-200 text-blue-800 hover:bg-blue-100'
                 }`}
-                title={statusFilter === 'IN_PROGRESS' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات قيد العمل ولديها خطة أو تكليفات جارية'}
+                title={statusFilter === 'IN_PROGRESS' ? 'انقر لإلغاء التصفية' : 'تصفية حسب المديريات التي سجلت خطتها الصباحية وبانتظار إرسال ملخص الإنجاز'}
               >
-                <span className={`w-2 h-2 rounded-full ${statusFilter === 'IN_PROGRESS' ? 'bg-[#d4af37]' : 'bg-[#0c3e35]'}`}></span>
-                <span>قيد العمل والمتابعة</span>
+                <span className={`w-2 h-2 rounded-full ${statusFilter === 'IN_PROGRESS' ? 'bg-white' : 'bg-blue-600'}`}></span>
+                <span>خطة مسجلة</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  statusFilter === 'IN_PROGRESS' ? 'bg-white/20 text-white' : 'bg-[#0c3e35]/10 text-[#0c3e35]'
+                  statusFilter === 'IN_PROGRESS' ? 'bg-white/20 text-white' : 'bg-blue-200/70 text-blue-900'
                 }`}>
                   {statusCounts.IN_PROGRESS}
                 </span>
@@ -930,8 +930,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                 {statusFilter !== 'ALL' && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-[#d2d1c9] text-[11px] font-bold text-[#0c3e35] shadow-2xs">
                     الحالة: {
-                      statusFilter === 'COMPLETED' ? 'ملخص منجز / مكتملة' :
-                      statusFilter === 'IN_PROGRESS' ? 'قيد العمل والمتابعة' :
+                      statusFilter === 'COMPLETED' ? 'ملخص الإنجاز مرسل' :
+                      statusFilter === 'IN_PROGRESS' ? 'خطة مسجلة' :
                       statusFilter === 'PENDING' ? 'بانتظار الخطة الصباحية' :
                       statusFilter === 'URGENT' ? 'تنبيه عاجل' : statusFilter
                     }

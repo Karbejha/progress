@@ -39,3 +39,4 @@ coverage/
 *.tsbuildinfo
 .turbo/
 server/firebase-service-account.json
+server/firebase/*.json

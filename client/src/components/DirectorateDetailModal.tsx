@@ -29,6 +29,7 @@ import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
 import { getCleanTodoDescription } from './TodosView';
 import { newestTasksFirst } from '../lib/taskOrder';
+import { ReplyTimestamp } from './ReplyTimestamp';
 
 interface DirectorateDetailModalProps {
   item: DirectorateOverviewItem | null;
@@ -380,6 +381,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                         <div className="text-[11px] text-[#05261e] mt-1 pt-1 border-t border-[#d2d1c9]/50">
                           <strong>رد مدير المديرية: </strong>
                           <span className="whitespace-pre-wrap leading-relaxed">{t.completionNote}</span>
+                          <ReplyTimestamp value={t.completionNoteUpdatedAt} />
                         </div>
                       )}
                     </div>

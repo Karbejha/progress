@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { User, Announcement } from '../types';
+import { User } from '../types';
 import { api } from '../services/api';
 import { getSocket, joinUserRooms, onSocketStatusChange, forceReconnectSocket, getSocketStatus, SocketConnectionStatus } from '../lib/socket';
 import { playSubtleChime, playUrgentAlert, isSoundEnabled, setSoundEnabled } from '../lib/audio';
@@ -10,6 +10,7 @@ import {
   markAllNotificationsAsRead,
   markAnnouncementAsRead,
   syncReadNotificationsFromServer,
+  flushPendingNotificationReads,
 } from '../lib/announcements';
 import {
   Shield,
@@ -44,13 +45,12 @@ import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementD
 import { NotificationDetailsModal, NotificationDetailItem } from './NotificationDetailsModal';
 import { QuickTodoDrawer } from './QuickTodoDrawer';
 import { App } from '@capacitor/app';
+import { InboxNotification, PersistedNotification, toInboxNotification, mergeInboxNotifications, isInboxNotificationRead } from '../lib/notificationInbox';
 import { Capacitor } from '@capacitor/core';
 import {
   initNotificationService,
   requestNotificationPermissions,
-  notifyCircular,
-  notifyExecutiveTask,
-  notifyFeedback,
+  subscribeToNotificationClicks,
   notifyGeneric,
 } from '../lib/notifications';
 
@@ -61,19 +61,7 @@ interface HeaderProps {
   onViewChange?: (view: 'DASHBOARD' | 'TODOS') => void;
 }
 
-interface LiveNotification {
-  id: string;
-  title: string;
-  message: string;
-  content?: string;
-  authorName?: string;
-  authorTitle?: string;
-  priority?: string;
-  createdAt?: string;
-  type: 'plan' | 'task' | 'summary' | 'feedback' | 'announcement';
-  time: string;
-  fullPayload?: any;
-}
+type LiveNotification = InboxNotification;
 
 export const Header: React.FC<HeaderProps> = ({
   currentUser,
@@ -81,19 +69,20 @@ export const Header: React.FC<HeaderProps> = ({
   activeView = 'DASHBOARD',
   onViewChange,
 }) => {
-  const [isConnected, setIsConnected] = useState(false);
   const [socketStatus, setSocketStatus] = useState<SocketConnectionStatus>('disconnected');
   const [socketError, setSocketError] = useState<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [testNotifSending, setTestNotifSending] = useState(false);
-  const [testNotifSuccess, setTestNotifSuccess] = useState(false);
+  const [pushStatus, setPushStatus] = useState<{ serverConfigured: boolean; registeredDevices: number; platforms: string[] } | null>(null);
+  const [pushStatusError, setPushStatusError] = useState(false);
 
   const [notifications, setNotifications] = useState<LiveNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
   const [soundOn, setSoundOn] = useState<boolean>(true);
+  const unreadCount = notifications.filter((n) => !isInboxNotificationRead(n, readNotifIds)).length;
+  const notificationsRef = React.useRef(notifications);
+  notificationsRef.current = notifications;
 
   // TO-DO List state
   const [pendingTodosCount, setPendingTodosCount] = useState(0);
@@ -112,12 +101,22 @@ export const Header: React.FC<HeaderProps> = ({
     currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR';
   const isObserver = currentUser?.role === 'OBSERVER';
 
+  useEffect(() => {
+    if (!showStatusModal || !currentUser) return;
+    let active = true;
+    setPushStatus(null);
+    setPushStatusError(false);
+    api.getPushNotificationStatus().then((status) => {
+      if (active) setPushStatus(status);
+    }).catch(() => { if (active) setPushStatusError(true); });
+    return () => { active = false; };
+  }, [showStatusModal, currentUser?.id]);
+
   // Real-time socket status listener
   useEffect(() => {
     const unsubscribe = onSocketStatusChange((status, err) => {
       setSocketStatus(status);
       setSocketError(err || null);
-      setIsConnected(status === 'connected');
     });
     return () => unsubscribe();
   }, []);
@@ -186,657 +185,152 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, []);
 
-  // Initialize Native Android & Web Notifications
-  useEffect(() => {
-    initNotificationService();
-    if (currentUser) {
-      requestNotificationPermissions();
-    }
-
-    const handleExternalNotificationClick = (e: any) => {
-      const detail = e.detail;
-      if (!detail) return;
-      if (detail.type === 'announcement') {
-        setSelectedAnnouncement({
-          id: detail.id,
-          isAnnouncement: true,
-          type: 'announcement',
-          title: detail.title,
-          content: detail.content,
-          authorName: detail.authorName || 'المدير العام للموانئ',
-          authorTitle: detail.authorTitle || 'المدير العام',
-          priority: detail.priority || 'NORMAL',
-          createdAt: detail.createdAt,
-        });
-        setShowNotifications(false);
-      } else if (detail.type === 'feedback') {
-        setSelectedAnnouncement({
-          id: detail.id || `feedback-${Date.now()}`,
-          isAnnouncement: false,
-          type: 'feedback',
-          title: detail.title || 'توجيه وتكليف من المدير العام',
-          content: detail.content || detail.feedbackText,
-          authorName: detail.fromUserName || detail.authorName || 'المدير العام للموانئ',
-          authorTitle: 'المدير العام',
-          priority: detail.priority || 'HIGH',
-          createdAt: detail.createdAt || new Date().toISOString(),
-        });
-        setShowNotifications(false);
-      } else {
-        // Handle executive-task, task, plan, summary from native or external clicks
-        setSelectedNotificationDetail({
-          id: detail.id,
-          title: detail.title || 'تحديث تكليف رسمي',
-          message: detail.body || detail.title || '',
-          content: detail.content || detail.description,
-          type: detail.type === 'executive-task' ? 'task' : (detail.type || 'task'),
-          createdAt: detail.createdAt || new Date().toISOString(),
-          authorName: detail.assignedByName,
-          directorateName: detail.directorateName,
-          fullPayload: detail,
-        });
-        setShowNotifications(false);
-      }
-    };
-
-    window.addEventListener('ports:notification_clicked', handleExternalNotificationClick);
-    return () => {
-      window.removeEventListener('ports:notification_clicked', handleExternalNotificationClick);
-    };
-  }, [currentUser]);
-
-  // Load read status & comprehensive notifications (Executive tasks, Announcements, Plans, Summaries)
-  useEffect(() => {
-    if (!currentUser) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return;
-    }
-
-    // Join authorized WebSocket rooms
-    joinUserRooms(currentUser);
-
-    // Reset and sync read tracking for this user
-    setNotifications([]);
-    setUnreadCount(0);
-    const initialReads = getReadNotificationIds(currentUser.id);
-    setReadNotifIds(initialReads);
-
-    const handleReadUpdate = (e: any) => {
-      if (e.detail?.userId === currentUser.id) {
-        setReadNotifIds(e.detail.readIds || getReadNotificationIds(currentUser.id));
-      }
-    };
-
-    window.addEventListener('announcements:read_updated', handleReadUpdate);
-    window.addEventListener('notifications:read_updated', handleReadUpdate);
-
-    // Fetch existing historical/offline notifications from server
-    const fetchInitialNotifications = async () => {
-      try {
-        const loadedNotifs: LiveNotification[] = [];
-
-        // 1. Fetch persistent read keys from server (PostgreSQL database)
-        let serverReadKeys: string[] = [];
-        try {
-          serverReadKeys = await api.getReadNotificationKeys();
-        } catch (e) {
-          console.debug('Could not fetch server read notification keys:', e);
-        }
-
-        const discoveredReadKeys: string[] = [...serverReadKeys];
-
-        // 2. Fetch persisted notifications from the database
-        try {
-          const dbNotifs = await api.getNotifications(150);
-          dbNotifs.forEach((n: any) => {
-            const notifType = (['plan', 'summary', 'task', 'feedback', 'announcement'].includes(n.type))
-              ? n.type
-              : (n.type === 'executive-task' ? 'feedback' : (n.type === 'executive-task-update' ? 'task' : 'plan'));
-
-            loadedNotifs.push({
-              id: n.id,
-              title: n.title,
-              message: n.message,
-              content: n.metadata?.content || n.metadata?.description || undefined,
-              authorName: n.metadata?.authorName || n.metadata?.fromUserName || n.metadata?.assignedByName || n.metadata?.directorName || undefined,
-              authorTitle: n.metadata?.authorTitle || n.metadata?.fromUserTitle || undefined,
-              priority: n.metadata?.priority || undefined,
-              createdAt: n.createdAt,
-              type: notifType as LiveNotification['type'],
-              time: n.createdAt
-                ? new Date(n.createdAt).toLocaleDateString('ar-SY', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-                : 'اليوم',
-              fullPayload: {
-                ...(n.metadata || {}),
-                referenceId: n.referenceId,
-                dbId: n.id,
-              },
-            });
-          });
-        } catch (err) {
-          console.debug('Failed to load persisted notifications', err);
-        }
-
-        // 3. Also fetch announcements to get rich data and read status (for DIRECTOR role)
-        if (currentUser.role === 'DIRECTOR') {
-          try {
-            const anns = await api.getAnnouncements();
-            const targetAnns = anns.filter((a) => a.authorId !== currentUser.id);
-            targetAnns.forEach((a) => {
-              if (a.isReadByMe) {
-                discoveredReadKeys.push(a.id);
-              }
-              // Only add if not already present from DB notifications
-              if (!loadedNotifs.some((n) => n.id === a.id || n.fullPayload?.referenceId === a.id)) {
-                loadedNotifs.push({
-                  id: a.id,
-                  title: 'تعميم إداري رسمي',
-                  message: a.title,
-                  content: a.content,
-                  authorName: a.author?.fullName || 'المدير العام للموانئ',
-                  authorTitle: a.author?.title || 'المدير العام',
-                  priority: a.priority,
-                  createdAt: a.createdAt,
-                  type: 'announcement',
-                  time: a.createdAt
-                    ? new Date(a.createdAt).toLocaleDateString('ar-SY', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                    : 'اليوم',
-                  fullPayload: {
-                    ...a,
-                    referenceId: a.id,
-                  },
-                });
-              }
-            });
-          } catch (err) {
-            console.debug('Failed to load announcements in header', err);
-          }
-        }
-
-        // Deduplicate by id (keep the first occurrence which has richer data from DB)
-        const seenIds = new Set<string>();
-        const deduped = loadedNotifs.filter((n) => {
-          if (seenIds.has(n.id)) return false;
-          seenIds.add(n.id);
-          return true;
-        });
-
-        // Sort notifications by date descending
-        deduped.sort((a, b) => {
-          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return tB - tA;
-        });
-
-        // Hydrate and sync with localStorage so offline & online are 100% in sync
-        const finalReadKeys = syncReadNotificationsFromServer(currentUser.id, discoveredReadKeys);
-        setReadNotifIds(finalReadKeys);
-
-        // Compute unread count strictly against combined server + local reads (checks both id and referenceId)
-        const isItemRead = (n: LiveNotification) => {
-          return finalReadKeys.includes(n.id) || (!!n.fullPayload?.referenceId && finalReadKeys.includes(n.fullPayload.referenceId));
-        };
-        const unreadItems = deduped.filter((n) => !isItemRead(n));
-        setUnreadCount(unreadItems.length);
-
-        setNotifications(deduped);
-      } catch (err) {
-        console.error('Failed to load initial notifications in header', err);
-      }
-    };
-
-    fetchInitialNotifications();
-
-    return () => {
-      window.removeEventListener('announcements:read_updated', handleReadUpdate);
-      window.removeEventListener('notifications:read_updated', handleReadUpdate);
-    };
-  }, [currentUser]);
-
-  // Background Recovery and Missed Notification Catch-up
+  // Push clicks can arrive before React mounts after a cold start.
   useEffect(() => {
     if (!currentUser) return;
-
-    let isSubscribed = true;
-    let lastCheckedTime = localStorage.getItem(`ports_last_checked_${currentUser.id}`) || new Date().toISOString();
-
-    const recoverMissedNotifications = async () => {
-      try {
-        const sinceIso = lastCheckedTime;
-        const nowIso = new Date().toISOString();
-
-        // 1. Fetch any notifications created since last check
-        const missedNotifs = await api.getNotificationsSince(sinceIso);
-
-        // Also update read keys from server in case user read notifications on another device
-        const serverReadKeys = await api.getReadNotificationKeys();
-        if (serverReadKeys && serverReadKeys.length) {
-          const updatedReads = syncReadNotificationsFromServer(currentUser.id, serverReadKeys);
-          setReadNotifIds(updatedReads);
+    let active = true;
+    const unsubscribe = subscribeToNotificationClicks(async (event) => {
+      const detail = event.detail;
+      if (!detail || (detail.userId && detail.userId !== currentUser.id)) return;
+      const notificationId = detail.notificationId || detail.dbId;
+      let item = notificationsRef.current.find((n) => n.id === notificationId);
+      if (!item && notificationId) {
+        try {
+          const record = await api.getNotification(notificationId);
+          if (!active) return;
+          if (record) item = toInboxNotification(record);
+        } catch (error) {
+          console.warn('Could not load clicked notification:', error);
         }
-
-        if (missedNotifs && missedNotifs.length > 0) {
-          const currentReads = getReadNotificationIds(currentUser.id);
-          const newItemsToAdd: LiveNotification[] = [];
-
-          for (const n of missedNotifs) {
-            const notifType = (['plan', 'summary', 'task', 'feedback', 'announcement'].includes(n.type))
-              ? n.type
-              : (n.type === 'executive-task' ? 'feedback' : (n.type === 'executive-task-update' ? 'task' : 'plan'));
-
-            const isAlreadyRead = currentReads.includes(n.id) || (n.referenceId && currentReads.includes(n.referenceId));
-
-            // If not read, show mobile heads-up notification and chime!
-            if (!isAlreadyRead) {
-              await notifyGeneric({
-                id: n.id,
-                type: n.type,
-                title: n.title,
-                message: n.message,
-                referenceId: n.referenceId,
-                metadata: n.metadata,
-                createdAt: n.createdAt,
-              });
-
-              if (n.metadata?.priority === 'URGENT' || n.type === 'executive-task') {
-                playUrgentAlert();
-              } else {
-                playSubtleChime();
-              }
-            }
-
-            newItemsToAdd.push({
-              id: n.id,
-              title: n.title,
-              message: n.message,
-              content: n.metadata?.content || n.metadata?.description || undefined,
-              authorName: n.metadata?.authorName || n.metadata?.fromUserName || n.metadata?.assignedByName || n.metadata?.directorName || undefined,
-              authorTitle: n.metadata?.authorTitle || n.metadata?.fromUserTitle || undefined,
-              priority: n.metadata?.priority || undefined,
-              createdAt: n.createdAt,
-              type: notifType as LiveNotification['type'],
-              time: n.createdAt
-                ? new Date(n.createdAt).toLocaleDateString('ar-SY', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : 'اليوم',
-              fullPayload: {
-                ...(n.metadata || {}),
-                referenceId: n.referenceId,
-                dbId: n.id,
-              },
-            });
-          }
-
-          if (isSubscribed && newItemsToAdd.length > 0) {
-            setNotifications((prev) => {
-              const existingIds = new Set(prev.map((p) => p.id));
-              const freshItems = newItemsToAdd.filter((item) => !existingIds.has(item.id));
-              if (freshItems.length === 0) return prev;
-
-              const combined = [...freshItems, ...prev];
-              // Update unread count
-              const unreadNew = freshItems.filter((item) => {
-                return !currentReads.includes(item.id) && (!item.fullPayload?.referenceId || !currentReads.includes(item.fullPayload.referenceId));
-              });
-              if (unreadNew.length > 0) {
-                setUnreadCount((c) => c + unreadNew.length);
-              }
-              return combined.slice(0, 150);
-            });
-          }
+      }
+      if (!active) return;
+      if (!item) {
+        let metadata = detail.metadata || {};
+        if (typeof metadata === 'string') {
+          try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
         }
-
-        lastCheckedTime = nowIso;
-        localStorage.setItem(`ports_last_checked_${currentUser.id}`, nowIso);
-      } catch (err) {
-        console.warn('Failed to recover missed notifications:', err);
+        item = toInboxNotification({
+          id: notificationId || detail.id || detail.referenceId,
+          type: detail.type || 'feedback',
+          title: detail.title || 'إشعار جديد',
+          message: detail.message || detail.body || '',
+          referenceId: detail.referenceId || detail.id,
+          metadata: { ...detail, ...metadata },
+          createdAt: detail.createdAt || new Date().toISOString(),
+        });
       }
-    };
+      handleNotificationClick(item);
+    });
+    void initNotificationService().then(() => requestNotificationPermissions()).catch(console.warn);
+    return () => { active = false; unsubscribe(); };
+  }, [currentUser?.id]);
 
-    // 1. Listen for Capacitor App state changes (background -> foreground)
-    let appStateListener: any;
-    if (Capacitor.isNativePlatform()) {
-      appStateListener = App.addListener('appStateChange', (state) => {
-        if (state.isActive) {
-          recoverMissedNotifications();
-        }
-      });
-    }
-
-    // 2. Listen for Web page visibility changes & window focus & push received
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        recoverMissedNotifications();
-      }
-    };
-    const handleWindowFocus = () => {
-      recoverMissedNotifications();
-    };
-    const handlePushReceived = () => {
-      recoverMissedNotifications();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
-    window.addEventListener('ports:push_received', handlePushReceived);
-
-    // 3. Periodic heartbeat polling (every 40 seconds when active)
-    const intervalId = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        recoverMissedNotifications();
-      }
-    }, 40000);
-
-    return () => {
-      isSubscribed = false;
-      if (appStateListener && typeof appStateListener.remove === 'function') {
-        appStateListener.remove();
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('ports:push_received', handlePushReceived);
-      clearInterval(intervalId);
-    };
-  }, [currentUser]);
-
-  // Real-time Socket Event Listeners with Safe Named Callbacks
+  // The inbox and live events use the same database IDs. Reconciliation never
+  // replays old unread notifications into the phone's notification tray.
   useEffect(() => {
+    setNotifications([]);
+    setReadNotifIds(currentUser ? getReadNotificationIds(currentUser.id) : []);
+    setSelectedAnnouncement(null);
+    setSelectedNotificationDetail(null);
+    if (!currentUser) { joinUserRooms(null); return; }
+
+    let active = true;
+    let refreshing = false;
+    let refreshRequested = false;
+    const seenIds = new Set<string>();
     const socket = getSocket();
-    if (!socket) return;
-
-    if (socket.connected && currentUser) {
-      joinUserRooms(currentUser);
-    }
-
-    const handleConnect = () => {
-      if (currentUser) {
-        joinUserRooms(currentUser);
-      }
+    const updateReads = () => {
+      if (active) setReadNotifIds(getReadNotificationIds(currentUser.id));
     };
-
-    const addNotif = (notif: Omit<LiveNotification, 'id' | 'time'> & { id?: string }) => {
-      const notifId = notif.id || Math.random().toString();
-      const currentReads = getReadNotificationIds(currentUser?.id || '');
-      const isAlreadyRead =
-        currentReads.includes(notifId) ||
-        (!!notif.fullPayload?.referenceId && currentReads.includes(notif.fullPayload.referenceId));
-
-      const newN: LiveNotification = {
-        ...notif,
-        id: notifId,
-        time: new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setNotifications((prev) => {
-        const wasAlreadyInList = prev.some((p) => p.id === newN.id);
-        const updatedList = [newN, ...prev.filter((p) => p.id !== newN.id).slice(0, 150)];
-
-        // Only increment unread count if this is a genuinely new notification (not already in list and not already read)
-        if (!isAlreadyRead && !wasAlreadyInList) {
-          setUnreadCount((c) => c + 1);
-        }
-
-        return updatedList;
-      });
+    const handleReadUpdate = (event: any) => {
+      if (event.detail?.userId === currentUser.id) updateReads();
     };
-
-    const handlePlanSubmitted = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
-      if (!isExec) return;
-
-      const dateStr = data.planDate ? data.planDate.split('T')[0] : new Date().toISOString().split('T')[0];
-      const notifId = `plan-sub-${data.directorateId || Math.random()}-${dateStr}`;
-      const currentReads = getReadNotificationIds(currentUser?.id || '');
-      const isAlreadyRead = currentReads.includes(notifId);
-
-      addNotif({
-        id: notifId,
-        title: 'رفع خطة صباحية',
-        message: `قامت ${data.directorateName} باعتماد خطة اليوم (${data.tasksCount} مهام).`,
-        type: 'plan',
-        fullPayload: data,
-      });
-
-      if (!isAlreadyRead) {
-        playSubtleChime();
-      }
-    };
-
-    const handleTaskUpdated = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
-      if (!isExec) return;
-
-      // Use deterministic ID: same task same day = same notification (replaces rather than duplicates)
-      const taskKey = data.taskId || data.id || `unknown-${Date.now()}`;
-      addNotif({
-        id: `task-up-${taskKey}`,
-        title: 'تحديث حالة مهمة',
-        message: `قامت ${data.directorateName} بتحديث: "${data.taskTitle}" (${data.completionPercentage}%).`,
-        type: 'task',
-        fullPayload: data,
-      });
-    };
-
-    const handleSummarySubmitted = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
-      if (!isExec) return;
-
-      const notifId = `summary-sub-${data.directorateId || Math.random()}-${new Date().toISOString().split('T')[0]}`;
-      const currentReads = getReadNotificationIds(currentUser?.id || '');
-      const isAlreadyRead = currentReads.includes(notifId);
-
-      addNotif({
-        id: notifId,
-        title: 'تسليم ملخص الإنجاز',
-        message: `سلّمت ${data.directorateName} ملخص نهاية الدوام بنسبة ${data.overallCompletionRate}%.`,
-        type: 'summary',
-        fullPayload: data,
-      });
-
-      if (!isAlreadyRead) {
-        if (data.urgentFlag) {
-          playUrgentAlert();
-        } else {
-          playSubtleChime();
-        }
-      }
-    };
-
-    const handleFeedbackSent = (data: any) => {
-      // Use deterministic ID based on feedback data to prevent duplicates on reconnection
-      const feedbackKey = data.feedbackId || data.id || data.createdAt || `${data.fromUserId}-${data.feedbackText?.slice(0, 20)}-${data.dailyPlanId || ''}`;
-
-      if (data.isReply || data.fromRole === 'DIRECTOR') {
-        const isExecutive = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
-        if (isExecutive) {
-          const notifId = `feedback-reply-${feedbackKey}`;
-          const currentReads = getReadNotificationIds(currentUser?.id || '');
-          const isAlreadyRead = currentReads.includes(notifId);
-
-          addNotif({
-            id: notifId,
-            title: `رد وتوضيح من ${data.fromUserName} (${data.directorateName || 'المديرية'})`,
-            message: data.feedbackText,
-            content: data.feedbackText,
-            authorName: data.fromUserName,
-            authorTitle: data.fromUserTitle || 'مدير المديرية',
-            type: 'feedback',
-            fullPayload: data,
-          });
-
-          if (!isAlreadyRead) {
-            playSubtleChime();
-
-            notifyFeedback({
-              directorateId: data.directorateId,
-              fromUserName: data.fromUserName,
-              feedbackText: data.feedbackText,
-              rating: data.rating,
-            });
+    const refresh = async () => {
+      if (refreshing) { refreshRequested = true; return; }
+      refreshing = true;
+      try {
+        do {
+          refreshRequested = false;
+          void flushPendingNotificationReads(currentUser.id);
+          const [records, reads] = await Promise.allSettled([
+            api.getNotifications(150), api.getReadNotificationKeys(),
+          ]);
+          if (!active) return;
+          if (reads.status === 'fulfilled') {
+            syncReadNotificationsFromServer(currentUser.id, reads.value);
+            updateReads();
           }
-        }
-      } else {
-        if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId && currentUser.directorateId === data.directorateId) {
-          const notifId = `feedback-${feedbackKey}`;
-          const currentReads = getReadNotificationIds(currentUser?.id || '');
-          const isAlreadyRead = currentReads.includes(notifId);
-
-          addNotif({
-            id: notifId,
-            title: 'توجيه من المدير العام',
-            message: data.feedbackText,
-            content: data.feedbackText,
-            authorName: data.fromUserName || 'المدير العام',
-            type: 'feedback',
-            fullPayload: data,
-          });
-
-          if (!isAlreadyRead) {
-            playSubtleChime();
-
-            notifyFeedback({
-              directorateId: data.directorateId,
-              fromUserName: data.fromUserName,
-              feedbackText: data.feedbackText,
-              rating: data.rating,
-            });
+          if (records.status === 'fulfilled') {
+            const items = records.value.map(toInboxNotification);
+            items.forEach((n: LiveNotification) => seenIds.add(n.id));
+            setNotifications((previous) => mergeInboxNotifications(previous, items));
+          } else {
+            console.warn('Could not refresh notification inbox:', records.reason);
           }
+        } while (active && refreshRequested);
+      } finally { refreshing = false; }
+    };
+    const handleCreated = (record: PersistedNotification) => {
+      if (!active || !record?.id || record.userId !== currentUser.id) return;
+      const item = toInboxNotification(record);
+      const alreadySeen = seenIds.has(item.id);
+      seenIds.add(item.id);
+      setNotifications((previous) => mergeInboxNotifications(previous, [item]));
+      if (!alreadySeen && !isInboxNotificationRead(item, getReadNotificationIds(currentUser.id))) {
+        void notifyGeneric(record).catch(console.warn);
+        if (!Capacitor.isNativePlatform()) {
+          if (item.priority === 'URGENT' || item.priority === 'HIGH') playUrgentAlert();
+          else playSubtleChime();
         }
       }
     };
-
-    const handleAnnouncementCreated = (data: any) => {
-      if (data.authorId && data.authorId === currentUser?.id) return;
-
-      const currentReads = getReadNotificationIds(currentUser?.id || '');
-      const isAlreadyRead = currentReads.includes(data.id);
-
-      addNotif({
-        id: data.id,
-        title: 'تعميم إداري رسمي',
-        message: data.title,
-        content: data.content,
-        authorName: data.authorName || 'المدير العام للموانئ',
-        authorTitle: 'المدير العام',
-        priority: data.priority || 'NORMAL',
-        createdAt: data.createdAt || new Date().toISOString(),
-        type: 'announcement',
-        fullPayload: data,
-      });
-
-      if (!isAlreadyRead) {
-        if (data.priority === 'URGENT' || data.priority === 'HIGH') {
-          playUrgentAlert();
-        } else {
-          playSubtleChime();
-        }
-
-        notifyCircular({
-          id: data.id,
-          title: data.title,
-          content: data.content,
-          authorName: data.authorName || 'المدير العام للموانئ',
-          authorTitle: data.authorTitle || 'المدير العام',
-          priority: data.priority || 'NORMAL',
-          createdAt: data.createdAt || new Date().toISOString(),
-        });
-      }
+    const handleServerReads = (data: { readKeys?: string[] }) => {
+      if (!active || !Array.isArray(data?.readKeys)) return;
+      syncReadNotificationsFromServer(currentUser.id, data.readKeys);
+      updateReads();
     };
-
-    const handleExecutiveTaskCreated = (data: any) => {
-      if (currentUser?.role === 'DIRECTOR' && currentUser?.directorateId === data.directorateId) {
-        const notifId = `exec-task-${data.task?.id || Math.random()}`;
-        const currentReads = getReadNotificationIds(currentUser?.id || '');
-        const isAlreadyRead = currentReads.includes(notifId);
-
-        addNotif({
-          id: notifId,
-          title: data.task?.isShared ? 'تكليف مشترك من المدير العام' : 'تكليف جديد من المدير العام',
-          message: `وردك تكليف من المدير العام: "${data.task?.title}"`,
-          content: data.task?.description || data.task?.title,
-          authorName: data.assignedByName || 'المدير العام',
-          priority: data.task?.priority || 'NORMAL',
-          type: 'feedback',
-          fullPayload: data,
-        });
-
-        if (!isAlreadyRead) {
-          playUrgentAlert();
-
-          notifyExecutiveTask({
-            id: data.task?.id || `${Date.now()}`,
-            title: data.task?.title,
-            directorateName: data.directorateName,
-            assignedByName: data.assignedByName,
-            isShared: data.task?.isShared,
-          });
-        }
-      }
+    const handleConnect = () => { void refresh(); };
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
     };
-
-    const handleExecutiveTaskUpdated = (data: any) => {
-      const isExec = currentUser?.role === 'GENERAL_DIRECTOR' || currentUser?.role === 'ASSISTANT_DIRECTOR' || currentUser?.role === 'OBSERVER';
-      if (isExec && data.updatedByRole === 'DIRECTOR') {
-        const notifId = `exec-task-update-${data.task?.id || Math.random()}`;
-        const currentReads = getReadNotificationIds(currentUser?.id || '');
-        const isAlreadyRead = currentReads.includes(notifId);
-
-        addNotif({
-          id: notifId,
-          title: 'تحديث إنجاز تكليف المدير العام',
-          message: `قامت (${data.directorateName}) بتحديث التكليف "${data.task?.title}" إلى (${data.task?.completionPercentage}%).`,
-          type: 'task',
-          fullPayload: data,
-        });
-
-        if (!isAlreadyRead) {
-          playSubtleChime();
-        }
-      }
-    };
-
-    const handleTodoUpdated = () => {
-      loadTodosCount();
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
-    };
-
+    const handleTodoUpdated = () => window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+    // Business events also trigger reconciliation during rolling server upgrades.
+    const refreshEvents = ['plan:submitted', 'task:updated', 'summary:submitted',
+      'feedback:sent', 'announcement:created', 'executive-task:created', 'executive-task:updated'];
     socket.on('connect', handleConnect);
-    socket.on('plan:submitted', handlePlanSubmitted);
-    socket.on('task:updated', handleTaskUpdated);
-    socket.on('summary:submitted', handleSummarySubmitted);
-    socket.on('feedback:sent', handleFeedbackSent);
-    socket.on('announcement:created', handleAnnouncementCreated);
-    socket.on('executive-task:created', handleExecutiveTaskCreated);
-    socket.on('executive-task:updated', handleExecutiveTaskUpdated);
+    socket.on('notification:created', handleCreated);
+    socket.on('notifications:read', handleServerReads);
     socket.on('todo:updated', handleTodoUpdated);
-
+    refreshEvents.forEach((name) => socket.on(name, handleConnect));
+    window.addEventListener('announcements:read_updated', handleReadUpdate);
+    window.addEventListener('notifications:read_updated', handleReadUpdate);
+    window.addEventListener('ports:push_received', handleConnect);
+    window.addEventListener('online', handleConnect);
+    window.addEventListener('focus', handleVisible);
+    document.addEventListener('visibilitychange', handleVisible);
+    const appStateListener = Capacitor.isNativePlatform()
+      ? App.addListener('appStateChange', (state) => { if (state.isActive) void refresh(); })
+      : null;
+    const interval = setInterval(handleVisible, 40000);
+    joinUserRooms(currentUser);
+    void refresh();
     return () => {
+      active = false;
       socket.off('connect', handleConnect);
-      socket.off('plan:submitted', handlePlanSubmitted);
-      socket.off('task:updated', handleTaskUpdated);
-      socket.off('summary:submitted', handleSummarySubmitted);
-      socket.off('feedback:sent', handleFeedbackSent);
-      socket.off('announcement:created', handleAnnouncementCreated);
-      socket.off('executive-task:created', handleExecutiveTaskCreated);
-      socket.off('executive-task:updated', handleExecutiveTaskUpdated);
+      socket.off('notification:created', handleCreated);
+      socket.off('notifications:read', handleServerReads);
       socket.off('todo:updated', handleTodoUpdated);
+      refreshEvents.forEach((name) => socket.off(name, handleConnect));
+      window.removeEventListener('announcements:read_updated', handleReadUpdate);
+      window.removeEventListener('notifications:read_updated', handleReadUpdate);
+      window.removeEventListener('ports:push_received', handleConnect);
+      window.removeEventListener('online', handleConnect);
+      window.removeEventListener('focus', handleVisible);
+      document.removeEventListener('visibilitychange', handleVisible);
+      void appStateListener?.then((listener) => listener.remove()).catch(console.warn);
+      clearInterval(interval);
     };
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   const handleOpenNotifications = () => {
     setShowNotifications(!showNotifications);
@@ -846,55 +340,26 @@ export const Header: React.FC<HeaderProps> = ({
   const handleMarkAllAsRead = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentUser) return;
-
-    const allKeys: string[] = [];
-    notifications.forEach((n) => {
-      if (n.id) allKeys.push(n.id);
-      if (n.fullPayload?.referenceId) allKeys.push(n.fullPayload.referenceId);
+    markAllNotificationsAsRead(currentUser.id, notifications.map((n) => n.id));
+    notifications.filter((n) => n.type === 'announcement').forEach((n) => {
+      const announcementId = n.fullPayload?.referenceId || n.id;
+      markAnnouncementAsRead(currentUser.id, announcementId);
     });
-
-    const uniqueKeys = Array.from(new Set(allKeys.filter(Boolean)));
-    if (uniqueKeys.length > 0) {
-      uniqueKeys.forEach((k) => markNotificationAsRead(currentUser.id, k));
-      setReadNotifIds((prev) => Array.from(new Set([...prev, ...uniqueKeys])));
-
-      // Explicitly persist all notification IDs to backend database
-      api.markNotificationsRead(uniqueKeys).catch(() => { });
-
-      // Also trigger server-side read for announcements
-      notifications
-        .filter((n) => n.type === 'announcement' && n.id)
-        .forEach((n) => {
-          api.markAnnouncementRead(n.id).catch(() => { });
-        });
-    }
-
-    setUnreadCount(0);
+    setReadNotifIds(getReadNotificationIds(currentUser.id));
   };
 
   const handleNotificationClick = (n: LiveNotification) => {
     if (currentUser && n.id) {
-      const keysToMark = [n.id];
-      if (n.fullPayload?.referenceId && n.fullPayload.referenceId !== n.id) {
-        keysToMark.push(n.fullPayload.referenceId);
-      }
-
-      keysToMark.forEach((k) => markNotificationAsRead(currentUser.id, k));
-      setReadNotifIds((prev) => Array.from(new Set([...prev, ...keysToMark])));
-      setUnreadCount((c) => Math.max(0, c - 1));
-
-      // Persist to backend database immediately
-      api.markNotificationsRead(keysToMark).catch(() => { });
-
+      markNotificationAsRead(currentUser.id, n.id);
       if (n.type === 'announcement') {
-        markAnnouncementAsRead(currentUser.id, n.id);
-        api.markAnnouncementRead(n.id).catch(() => { });
+        markAnnouncementAsRead(currentUser.id, n.fullPayload?.referenceId || n.id);
       }
+      setReadNotifIds(getReadNotificationIds(currentUser.id));
     }
 
     if (n.type === 'announcement') {
       setSelectedAnnouncement({
-        id: n.id,
+        id: n.fullPayload?.referenceId || n.id,
         isAnnouncement: true,
         type: 'announcement',
         title: n.fullPayload?.title || n.message,
@@ -1104,7 +569,7 @@ export const Header: React.FC<HeaderProps> = ({
                             </div>
                           ) : (
                             notifications.map((n) => {
-                              const isRead = readNotifIds.includes(n.id) || (!!n.fullPayload?.referenceId && readNotifIds.includes(n.fullPayload.referenceId));
+                              const isRead = isInboxNotificationRead(n, readNotifIds);
 
                               return (
                                 <div
@@ -1369,7 +834,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#d2d1c9]">
               <h3 className="text-base font-extrabold text-[#0c3e35] flex items-center gap-2">
                 <Activity className="w-5 h-5 text-[#d4af37]" />
-                <span>حالة الاتصال المباشر بالخادم (Real-time Gateway)</span>
+                <span>حالة الاتصال والإشعارات</span>
               </h3>
               <button
                 onClick={() => setShowStatusModal(false)}
@@ -1407,8 +872,18 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               )}
 
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] leading-relaxed">
-                💡 <strong>معلومة:</strong> يعمل هذا الاتصال على استلام التعاميم الإدارية والتكاليف اللحظية فور صدورها من المدير العام وإرسال إشعار فوري لهاتفك المحمول.
+              <div className="p-3 rounded-xl bg-white border border-[#d2d1c9] space-y-2">
+                <div className="text-[#0c3e35] font-bold">إشعارات الهاتف أثناء إغلاق التطبيق</div>
+                {pushStatus ? (
+                  <>
+                    <div>خدمة الإرسال: {pushStatus.serverConfigured ? 'مهيأة' : 'تحتاج إلى إعداد على الخادم'}</div>
+                    <div>الأجهزة المرتبطة بحسابك: {pushStatus.registeredDevices}</div>
+                    <p className="text-[#5e736e] leading-relaxed">يلزم السماح بالإشعارات في إعدادات الهاتف. هذه الحالة تعرض الإعداد والارتباط؛ تأكيد الاستلام يحتاج تجربة على الهاتف.</p>
+                  </>
+                ) : <p className="text-[#5e736e]">{pushStatusError ? 'تعذر التحقق من حالة إشعارات الهاتف' : 'جاري التحقق...'}</p>}
+                {!Capacitor.isNativePlatform() && (
+                  <p className="text-[#5e736e] leading-relaxed">الإشعارات أثناء الإغلاق متاحة في تطبيق Android. إشعارات المتصفح تتطلب بقاء الصفحة مفتوحة.</p>
+                )}
               </div>
             </div>
 

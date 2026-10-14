@@ -53,7 +53,7 @@ test('PostgreSQL: completion survives agenda metadata, title matching and refres
   const prisma = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const noDelivery = new Proxy({}, { get: () => () => Promise.resolve() });
   const assignments = new ExecutiveTasksService(prisma, noDelivery, noDelivery);
-  const todos = new TodosService(prisma, noDelivery);
+  const todos = new TodosService(prisma, noDelivery, noDelivery);
   let directorate;
   let user;
   try {

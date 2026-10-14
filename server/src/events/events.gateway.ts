@@ -6,10 +6,14 @@ import {
   OnGatewayDisconnect,
   SubscribeMessage,
   ConnectedSocket,
-  MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { Notification, Role } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+
+type SocketUser = { id: string; role: Role; directorateId: string | null; isActive: boolean };
 
 @WebSocketGateway({
   cors: {
@@ -22,52 +26,104 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   private logger: Logger = new Logger('EventsGateway');
 
+  constructor(private jwtService: JwtService, private prisma: PrismaService) {}
+
   afterInit(server: Server) {
+    // Authenticate before Socket.IO accepts the connection or any room request.
+    server.use(async (client, next) => {
+      try {
+        const authorization = client.handshake.headers.authorization;
+        const token = client.handshake.auth?.token ||
+          (typeof authorization === 'string' && authorization.startsWith('Bearer ')
+            ? authorization.slice(7)
+            : null);
+        if (typeof token !== 'string' || !token) throw new Error('Missing token');
+        const payload = await this.jwtService.verifyAsync<{ sub: string; exp?: number }>(token);
+        if (typeof payload.sub !== 'string' || !payload.sub) throw new Error('Missing user');
+        const user = await this.findSocketUser(payload.sub);
+        if (!user?.isActive) throw new Error('Inactive user');
+        client.data.authenticatedUser = user;
+        client.data.tokenExpiresAt = payload.exp;
+        next();
+      } catch {
+        next(new Error('Unauthorized'));
+      }
+    });
     this.logger.log('WebSocket Gateway initialized with secure rooms');
   }
 
-  handleConnection(client: Socket) {
-    client.join('room:authenticated');
-    this.logger.log(`Client connected: ${client.id} and joined room:authenticated`);
+  async handleConnection(client: Socket) {
+    const user = client.data.authenticatedUser as SocketUser | undefined;
+    if (!user?.isActive) {
+      client.disconnect(true);
+      return;
+    }
+    // An established connection must not continue delivering private data after
+    // the JWT expires. Reconnecting then goes through authentication again.
+    if (client.data.tokenExpiresAt) {
+      const remainingMs = client.data.tokenExpiresAt * 1000 - Date.now();
+      if (remainingMs <= 0) {
+        client.disconnect(true);
+        return;
+      }
+      const expiryTimer = setTimeout(() => client.disconnect(true), remainingMs);
+      expiryTimer.unref();
+      client.data.expiryTimer = expiryTimer;
+    }
+    await this.joinAuthenticatedRooms(client, user);
+    this.logger.log(`Authenticated client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
+    if (client.data.expiryTimer) clearTimeout(client.data.expiryTimer);
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
   @SubscribeMessage('join')
-  handleJoinRoom(
-    @ConnectedSocket() client: Socket,
-    @MessageBody()
-    data: {
-      userId?: string;
-      role?: string;
-      directorateId?: string;
-    },
-  ) {
-    if (!data) return;
-
-    // Join general authenticated room
-    client.join('room:authenticated');
-
-    if (data.userId) {
-      client.join(`room:user_${data.userId}`);
+  async handleJoinRoom(@ConnectedSocket() client: Socket) {
+    // The legacy join payload is intentionally ignored: identity, role and
+    // directorate are always obtained from the verified session and database.
+    const id = (client.data.authenticatedUser as SocketUser | undefined)?.id;
+    const user = id ? await this.findSocketUser(id) : null;
+    if (!user?.isActive) {
+      client.disconnect(true);
+      return { status: 'unauthorized' };
     }
-
-    // Join executive room if leadership
-    if (data.role === 'GENERAL_DIRECTOR' || data.role === 'ASSISTANT_DIRECTOR') {
-      client.join('room:executive');
-      this.logger.log(`Socket ${client.id} joined room:executive (User: ${data.userId || 'Unknown'})`);
-    }
-
-    // Join directorate room if assigned
-    if (data.directorateId) {
-      const dirRoom = `room:directorate_${data.directorateId}`;
-      client.join(dirRoom);
-      this.logger.log(`Socket ${client.id} joined ${dirRoom}`);
-    }
-
+    await this.joinAuthenticatedRooms(client, user);
     return { status: 'joined', socketId: client.id };
+  }
+
+  private findSocketUser(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, directorateId: true, isActive: true },
+    });
+  }
+
+  private async joinAuthenticatedRooms(client: Socket, user: SocketUser) {
+    const rooms = ['room:authenticated', `room:user_${user.id}`];
+    if (user.role === Role.GENERAL_DIRECTOR || user.role === Role.ASSISTANT_DIRECTOR || user.role === Role.OBSERVER) {
+      rooms.push('room:executive');
+    }
+    if (user.directorateId) rooms.push(`room:directorate_${user.directorateId}`);
+    for (const room of (client.data.authenticatedRooms || []) as string[]) {
+      if (!rooms.includes(room)) await client.leave(room);
+    }
+    await client.join(rooms);
+    client.data.authenticatedRooms = rooms;
+    client.data.authenticatedUser = user;
+  }
+
+  emitNotificationCreated(userId: string, notification: Notification) {
+    this.server.to(`room:user_${userId}`).emit('notification:created', notification);
+  }
+
+  emitNotificationsRead(userId: string, readKeys: string[]) {
+    this.server.to(`room:user_${userId}`).emit('notifications:read', { readKeys });
+  }
+
+  disconnectUserSessions(userId: string) {
+    this.server.in(`room:user_${userId}`).disconnectSockets(true);
   }
 
   // Real-time broadcast helpers to targeted rooms
@@ -134,7 +190,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     createdAt?: string;
   }) {
     this.logger.log(`Broadcasting announcement:created: ${payload.title} to all connected clients`);
-    this.server.emit('announcement:created', payload);
+    this.server.to('room:authenticated').emit('announcement:created', payload);
   }
 
   emitExecutiveTaskCreated(payload: {
@@ -172,6 +228,7 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   emitUserStatusChanged(payload: { userId: string; directorateId: string | null; isActive: boolean }) {
     this.server.to('room:authenticated').emit('user:status-changed', payload);
+    if (!payload.isActive) this.disconnectUserSessions(payload.userId);
   }
 }
 

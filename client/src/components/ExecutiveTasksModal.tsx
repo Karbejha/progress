@@ -8,6 +8,7 @@ import { getSocket } from '../lib/socket';
 import { DynamicIcon } from './Icons';
 import { PdfAttachmentPicker } from './PdfAttachmentPicker';
 import { PdfAttachmentCard } from './PdfAttachmentCard';
+import { ReplyTimestamp } from './ReplyTimestamp';
 import {
   X,
   Plus,
@@ -393,6 +394,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
         status: t.status,
         completionPercentage: t.completionPercentage,
         completionNote: t.completionNote,
+        completionNoteUpdatedAt: t.completionNoteUpdatedAt,
       });
     });
 
@@ -1089,7 +1091,10 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                                     {st.completionNote && (
                                       <div className="text-[11px] text-[#5e736e] bg-[#fcfbf7] p-1.5 rounded-lg border border-[#edece4] flex items-start gap-1">
                                         <MessageSquare className="w-3 h-3 text-[#0c3e35] shrink-0 mt-0.5" />
-                                        <span className="line-clamp-2">{st.completionNote}</span>
+                                        <div className="min-w-0 flex-1">
+                                          <span className="line-clamp-2">{st.completionNote}</span>
+                                          <ReplyTimestamp value={st.completionNoteUpdatedAt} />
+                                        </div>
                                       </div>
                                     )}
 
@@ -1315,6 +1320,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                               <div className="text-xs text-[#05261e]">
                                 <strong className="text-[#0c3e35]">تقرير ورد مدير المديرية: </strong>
                                 <span className="font-medium whitespace-pre-wrap leading-relaxed">{task.completionNote}</span>
+                                <ReplyTimestamp value={task.completionNoteUpdatedAt} />
                               </div>
                             </div>
                           )}

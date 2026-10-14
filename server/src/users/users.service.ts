@@ -136,6 +136,11 @@ export class UsersService {
     });
 
     const { password, ...result } = updated;
+    if (updated.role !== user.role || updated.directorateId !== user.directorateId) {
+      // A reconnect authenticates against the new database permissions before
+      // joining rooms, so the previous directorate cannot keep sending data.
+      this.eventsGateway.disconnectUserSessions(updated.id);
+    }
     return result;
   }
 
@@ -225,6 +230,7 @@ export class UsersService {
     const directorateId = user.directorateId;
 
     await this.prisma.user.delete({ where: { id } });
+    this.eventsGateway.disconnectUserSessions(id);
 
     // If this director was assigned to a directorate, check if the directorate
     // has no other users and no activity/plans/tasks. If completely unused, delete it.

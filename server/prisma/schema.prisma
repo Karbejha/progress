@@ -218,6 +218,7 @@ model ExecutiveTask {
   status               TaskStatus    @default(PENDING)
   completionPercentage Int           @default(0)
   completionNote       String?
+  completionNoteUpdatedAt DateTime?
   todayTargetMet       Boolean       @default(false)
 
   // Assigned by (Executive)
@@ -340,7 +341,7 @@ model DeviceToken {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String
+  token     String   @unique
   platform  String   @default("android") // android | ios | web
   updatedAt DateTime @default(now()) @updatedAt
 

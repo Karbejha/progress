@@ -35,9 +35,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       PORT: 4000
       SEED_ON_START: ${SEED_ON_START:-false}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/firebase/firebase-service-account.json
 
     volumes:
       - ports_uploads:/app/uploads
+      - ${FIREBASE_CONFIG_DIR:-./server/firebase}:/run/firebase:ro
 
     ports:
       - "${BACKEND_PORT:-4010}:4000"

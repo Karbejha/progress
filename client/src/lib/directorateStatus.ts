@@ -5,26 +5,21 @@ export type DirectorateSemanticStatus = 'URGENT' | 'COMPLETED' | 'IN_PROGRESS' |
 /**
  * Standard semantic status classification for directorates:
  * - URGENT: Directorate has urgent flag / critical alert.
- * - COMPLETED: Directorate submitted end-of-day summary, or reached 100% completion on existing tasks.
- * - IN_PROGRESS: Directorate registered morning plan or has active executive tasks.
- * - PENDING: Directorate has not yet registered morning plan and has no active tasks.
+ * - COMPLETED: Directorate submitted its end-of-day summary.
+ * - IN_PROGRESS: Directorate registered its morning plan and has not submitted its summary.
+ * - PENDING: Directorate has not registered its morning plan or submitted its summary.
+ * Assigned work and task completion rates do not count as daily report submissions.
  */
 export function getDirectorateStatus(item: DirectorateOverviewItem): DirectorateSemanticStatus {
   if (item.urgentFlag) {
     return 'URGENT';
   }
 
-  const isCompleted =
-    item.hasSummary ||
-    (item.completionRate === 100 &&
-      ((item.tasksCount ?? 0) > 0 || ((item.executiveTasks?.length ?? 0) > 0)));
-  if (isCompleted) {
+  if (item.hasSummary) {
     return 'COMPLETED';
   }
 
-  const isInProgress =
-    item.hasPlan || ((item.executiveTasks?.length ?? 0) > 0);
-  if (isInProgress) {
+  if (item.hasPlan) {
     return 'IN_PROGRESS';
   }
 

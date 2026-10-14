@@ -132,25 +132,19 @@ export class ExecutiveService {
         activeReportingDirectorates++;
       }
 
-      // Determine state tag
+      // Reporting state is independent of assigned work and task completion rates.
       let statusTag = 'لم يتم تقديم خطة';
-      let statusColor = 'gray';
+      let statusColor = 'amber';
 
-      if (hasSummary) {
+      if (isUrgent) {
+        statusTag = 'تنبيه عاجل';
+        statusColor = 'red';
+      } else if (hasSummary) {
         statusTag = 'تم تقديم الإنجاز المسائي';
         statusColor = 'emerald';
       } else if (hasPlan) {
         statusTag = 'قيد العمل والمتابعة';
         statusColor = 'blue';
-      } else if (execTasks.length > 0) {
-        const allDone = execTasks.every((t) => t.status === 'COMPLETED' || t.completionPercentage === 100);
-        if (allDone) {
-          statusTag = 'تم إنجاز تكليفات المدير العام';
-          statusColor = 'emerald';
-        } else {
-          statusTag = 'متابعة تكليفات المدير العام';
-          statusColor = 'blue';
-        }
       }
 
       return {
@@ -342,7 +336,7 @@ export class ExecutiveService {
 
     if (isDirectorReply) {
       // Persist notification for executive roles (General Director, Assistant, Observer)
-      this.notificationsService.createNotificationForRoles(
+      await this.notificationsService.createNotificationForRoles(
         [Role.GENERAL_DIRECTOR, Role.ASSISTANT_DIRECTOR, Role.OBSERVER],
         {
           type: 'feedback',
@@ -367,7 +361,7 @@ export class ExecutiveService {
       );
     } else {
       // Persist notification for directorate users
-      this.notificationsService.createNotificationForDirectorate(
+      await this.notificationsService.createNotificationForDirectorate(
         feedback.directorateId,
         {
           type: 'feedback',
@@ -613,7 +607,7 @@ export class ExecutiveService {
     });
 
     // Persist notification for all users except the author
-    this.notificationsService.createNotificationForAllUsers(
+    await this.notificationsService.createNotificationForAllUsers(
       {
         type: 'announcement',
         title: 'تعميم إداري رسمي',

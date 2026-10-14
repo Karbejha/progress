@@ -1,56 +1,41 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Role } from '@prisma/client';
+import { Notification, Role } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import type { Messaging } from 'firebase-admin/messaging';
+import { EventsGateway } from '../events/events.gateway';
+
+type NotificationData = {
+  type: string;
+  title: string;
+  message: string;
+  referenceId?: string;
+  metadata?: any;
+};
+
+type PushPayload = { title: string; body: string; data?: Record<string, string> };
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name);
+  private messagingPromise?: Promise<Messaging | null>;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly eventsGateway: EventsGateway) {}
 
   async onModuleInit() {
-    // Non-blocking table check for DeviceToken
-    this.ensureDeviceTokenTable().catch((err) => {
-      this.logger.warn('Error verifying DeviceToken table:', err);
-    });
-
-    // Non-blocking auto-backfill on module initialization
-    this.autoBackfillHistoricalNotifications().catch((err) => {
-      this.logger.error('Error during automatic notifications backfill:', err);
-    });
-  }
-
-  private async ensureDeviceTokenTable() {
-    try {
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "DeviceToken" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,
-          "token" TEXT NOT NULL,
-          "platform" TEXT NOT NULL DEFAULT 'android',
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "DeviceToken_userId_token_key" UNIQUE ("userId", "token")
-        );
-        CREATE INDEX IF NOT EXISTS "DeviceToken_userId_idx" ON "DeviceToken"("userId");
-      `);
-      this.logger.log('DeviceToken table verified successfully');
-    } catch (err: any) {
-      this.logger.debug(`DeviceToken table check skipped or already configured: ${err.message}`);
+    // Historical plans do not record whether they were silent autosaves. Replaying
+    // them on every boot invents alerts and races when several API workers start.
+    if (process.env.NOTIFICATION_HISTORY_BACKFILL === 'true') {
+      this.autoBackfillHistoricalNotifications().catch((err) => {
+        this.logger.error('Error during automatic notifications backfill:', err);
+      });
     }
   }
 
   /**
    * Create a single notification for a specific user.
    */
-  async createNotification(data: {
-    userId: string;
-    type: string;
-    title: string;
-    message: string;
-    referenceId?: string;
-    metadata?: any;
-  }) {
+  async createNotification(data: NotificationData & { userId: string }) {
     try {
       const notif = await this.prisma.notification.create({
         data: {
@@ -63,23 +48,64 @@ export class NotificationsService implements OnModuleInit {
         },
       });
 
-      // Send push notification to user's mobile device via FCM
-      this.sendPushToUser(data.userId, {
-        title: data.title,
-        body: data.message,
-        data: {
-          type: data.type,
-          referenceId: data.referenceId || '',
-          notificationId: notif.id,
-        },
-      }).catch((err) => {
-        this.logger.debug(`Push notification failed: ${err.message}`);
-      });
+      this.dispatchNotification(notif);
 
       return notif;
     } catch (error) {
       this.logger.error(`Failed to create notification for user ${data.userId}:`, error);
+      throw error;
     }
+  }
+
+  private async createNotificationsForUsers(users: { id: string }[], data: NotificationData) {
+    const uniqueIds = [...new Set(users.map((user) => user.id))];
+    if (!uniqueIds.length) return;
+    const createdAt = new Date();
+    const notifications = uniqueIds.map((userId) => ({
+      id: randomUUID(), userId, type: data.type, title: data.title, message: data.message,
+      referenceId: data.referenceId || null, metadata: data.metadata || null, createdAt,
+    }));
+    // Assign IDs before the batch insert so socket and push carry the exact saved IDs.
+    await this.prisma.notification.createMany({ data: notifications });
+    for (const notification of notifications) this.dispatchNotification(notification);
+  }
+
+  private dispatchNotification(notification: Notification) {
+    try {
+      this.eventsGateway.emitNotificationCreated(notification.userId, notification);
+    } catch (error) {
+      this.logger.warn('Persisted notification could not be delivered over its socket');
+    }
+    this.sendPushToUser(notification.userId, this.notificationPushPayload(notification)).catch(() => {
+      this.logger.warn('Persisted notification push delivery failed');
+    });
+  }
+
+  private notificationPushPayload(notification: Notification): PushPayload {
+    // FCM limits the full message to 4 KB. Detail is always available from its saved ID.
+    const truncate = (value: string, maxBytes: number) => {
+      let result = '';
+      let bytes = 0;
+      for (const character of value) {
+        const size = Buffer.byteLength(character, 'utf8');
+        if (bytes + size > maxBytes) break;
+        result += character;
+        bytes += size;
+      }
+      return result;
+    };
+    const title = truncate(notification.title, 200);
+    const body = truncate(notification.message, 800);
+    const data: Record<string, string> = {
+      id: notification.id, notificationId: notification.id, userId: notification.userId,
+      type: notification.type, referenceId: notification.referenceId || '',
+      title, message: body, createdAt: notification.createdAt.toISOString(),
+    };
+    if (notification.metadata) {
+      const metadata = JSON.stringify(notification.metadata);
+      if (Buffer.byteLength(metadata, 'utf8') <= 700) data.metadata = metadata;
+    }
+    return { title, body, data };
   }
 
   /**
@@ -100,39 +126,17 @@ export class NotificationsService implements OnModuleInit {
     try {
       const users = await this.prisma.user.findMany({
         where: {
+          isActive: true,
           role: { in: roles },
           ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
         },
         select: { id: true },
       });
 
-      if (users.length === 0) return;
-
-      await this.prisma.notification.createMany({
-        data: users.map((u) => ({
-          userId: u.id,
-          type: data.type,
-          title: data.title,
-          message: data.message,
-          referenceId: data.referenceId || null,
-          metadata: data.metadata || null,
-        })),
-      });
-
-      // Dispatch FCM Push Notifications
-      this.sendPushToMultipleUsers(
-        users.map((u) => u.id),
-        {
-          title: data.title,
-          body: data.message,
-          data: {
-            type: data.type,
-            referenceId: data.referenceId || '',
-          },
-        },
-      ).catch(() => {});
+      await this.createNotificationsForUsers(users, data);
     } catch (error) {
       this.logger.error(`Failed to create notifications for roles ${roles.join(',')}:`, error);
+      throw error;
     }
   }
 
@@ -153,39 +157,17 @@ export class NotificationsService implements OnModuleInit {
     try {
       const users = await this.prisma.user.findMany({
         where: {
+          isActive: true,
           directorateId,
           ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
         },
         select: { id: true },
       });
 
-      if (users.length === 0) return;
-
-      await this.prisma.notification.createMany({
-        data: users.map((u) => ({
-          userId: u.id,
-          type: data.type,
-          title: data.title,
-          message: data.message,
-          referenceId: data.referenceId || null,
-          metadata: data.metadata || null,
-        })),
-      });
-
-      // Dispatch FCM Push Notifications
-      this.sendPushToMultipleUsers(
-        users.map((u) => u.id),
-        {
-          title: data.title,
-          body: data.message,
-          data: {
-            type: data.type,
-            referenceId: data.referenceId || '',
-          },
-        },
-      ).catch(() => {});
+      await this.createNotificationsForUsers(users, data);
     } catch (error) {
       this.logger.error(`Failed to create notifications for directorate ${directorateId}:`, error);
+      throw error;
     }
   }
 
@@ -205,37 +187,14 @@ export class NotificationsService implements OnModuleInit {
   ) {
     try {
       const users = await this.prisma.user.findMany({
-        where: excludeUserId ? { id: { not: excludeUserId } } : {},
+        where: { isActive: true, ...(excludeUserId ? { id: { not: excludeUserId } } : {}) },
         select: { id: true },
       });
 
-      if (users.length === 0) return;
-
-      await this.prisma.notification.createMany({
-        data: users.map((u) => ({
-          userId: u.id,
-          type: data.type,
-          title: data.title,
-          message: data.message,
-          referenceId: data.referenceId || null,
-          metadata: data.metadata || null,
-        })),
-      });
-
-      // Dispatch FCM Push Notifications
-      this.sendPushToMultipleUsers(
-        users.map((u) => u.id),
-        {
-          title: data.title,
-          body: data.message,
-          data: {
-            type: data.type,
-            referenceId: data.referenceId || '',
-          },
-        },
-      ).catch(() => {});
+      await this.createNotificationsForUsers(users, data);
     } catch (error) {
       this.logger.error(`Failed to create notifications for all users:`, error);
+      throw error;
     }
   }
 
@@ -250,12 +209,18 @@ export class NotificationsService implements OnModuleInit {
       return await this.prisma.notification.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        take: limit,
+        take: Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.trunc(limit))) : 150,
       });
     } catch (error) {
       this.logger.error(`Failed to get notifications for user ${userId}:`, error);
-      return [];
+      throw error;
     }
+  }
+
+  async getNotification(userId: string, id: string) {
+    const notification = await this.prisma.notification.findFirst({ where: { userId, id } });
+    if (!notification) throw new NotFoundException('Notification not found');
+    return notification;
   }
 
   /**
@@ -264,6 +229,7 @@ export class NotificationsService implements OnModuleInit {
    */
   async getNotificationsSince(userId: string, since: Date) {
     if (!userId) return [];
+    if (!Number.isFinite(since.getTime())) throw new BadRequestException('Invalid notification recovery date');
 
     try {
       return await this.prisma.notification.findMany({
@@ -272,11 +238,10 @@ export class NotificationsService implements OnModuleInit {
           createdAt: { gt: since },
         },
         orderBy: { createdAt: 'desc' },
-        take: 50,
       });
     } catch (error) {
       this.logger.error(`Failed to get notifications since ${since.toISOString()} for user ${userId}:`, error);
-      return [];
+      throw error;
     }
   }
 
@@ -285,28 +250,31 @@ export class NotificationsService implements OnModuleInit {
    * Stores the token in the DeviceToken table, upserting to avoid duplicates.
    */
   async registerDeviceToken(userId: string, token: string, platform = 'android') {
-    if (!userId || !token) {
-      return { success: false, message: 'Missing userId or token' };
+    if (!userId || typeof token !== 'string' || !/^\S+$/.test(token) || token.length > 4096) {
+      throw new BadRequestException('A valid device token is required');
     }
-
-    try {
-      // Use raw upsert since DeviceToken model may not exist yet
-      await this.prisma.$executeRawUnsafe(
-        `INSERT INTO "DeviceToken" ("id", "userId", "token", "platform", "updatedAt")
-         VALUES (gen_random_uuid()::text, $1, $2, $3, CURRENT_TIMESTAMP)
-         ON CONFLICT ("userId", "token")
-         DO UPDATE SET "platform" = $3, "updatedAt" = CURRENT_TIMESTAMP`,
-        userId,
-        token,
-        platform,
-      );
-
-      this.logger.log(`Registered FCM token for user ${userId} (platform: ${platform})`);
-      return { success: true };
-    } catch (error) {
-      // If the table doesn't exist yet, log a warning instead of crashing
-      this.logger.warn(`Could not register device token (table may not exist yet): ${error.message}`);
-      return { success: false, message: 'Device token registration not available yet' };
+    if (!['android', 'ios', 'web'].includes(platform)) throw new BadRequestException('Invalid device platform');
+    // A physical installation belongs only to the currently signed-in user.
+    // Token uniqueness in the schema prevents concurrent registrations sharing it.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          // Serialize account transfers for one physical installation. Prisma's
+          // composite upsert may read an old owner while another transfer deletes it.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${token}, 0))`;
+          await tx.deviceToken.deleteMany({ where: { token, userId: { not: userId } } });
+          await tx.deviceToken.upsert({
+            where: { userId_token: { userId, token } },
+            create: { userId, token, platform },
+            update: { platform },
+          });
+        });
+        return { success: true };
+      } catch (error) {
+        if (attempt < 2 && ['P2002', 'P2025', 'P2034'].includes(error.code)) continue;
+        this.logger.error('Device token registration failed');
+        throw error;
+      }
     }
   }
 
@@ -318,18 +286,8 @@ export class NotificationsService implements OnModuleInit {
       return { success: false, message: 'Missing userId or token' };
     }
 
-    try {
-      await this.prisma.$executeRawUnsafe(
-        `DELETE FROM "DeviceToken" WHERE "userId" = $1 AND "token" = $2`,
-        userId,
-        token,
-      );
-      this.logger.log(`Unregistered FCM token for user ${userId}`);
-      return { success: true };
-    } catch (error) {
-      this.logger.warn(`Could not unregister device token: ${error.message}`);
-      return { success: false, message: 'Device token unregistration not available yet' };
-    }
+    await this.prisma.deviceToken.deleteMany({ where: { userId, token } });
+    return { success: true };
   }
 
   /**
@@ -337,105 +295,96 @@ export class NotificationsService implements OnModuleInit {
    * This is a no-op if Firebase Admin is not configured.
    * Uses dynamic import to avoid crashes if firebase-admin is not installed.
    */
-  async sendPushToUser(userId: string, payload: { title: string; body: string; data?: Record<string, string> }) {
+  protected getMessagingClient(): Promise<Messaging | null> {
+    if (!this.messagingPromise) this.messagingPromise = this.initializeMessaging();
+    return this.messagingPromise;
+  }
+
+  private async initializeMessaging(): Promise<Messaging | null> {
     try {
-      // Get all device tokens for this user
-      const tokens = await this.prisma.$queryRawUnsafe<{ token: string }[]>(
-        `SELECT "token" FROM "DeviceToken" WHERE "userId" = $1`,
-        userId,
-      );
-
-      if (!tokens || tokens.length === 0) return;
-
-      // Try to load firebase-admin dynamically
-      let admin: any;
-      try {
-        admin = await import('firebase-admin');
-      } catch {
-        // firebase-admin not installed, skip push
-        return;
+      const { getApps, getApp, initializeApp, cert, applicationDefault } = await import('firebase-admin/app');
+      const { getMessaging } = await import('firebase-admin/messaging');
+      // The legacy admin.apps property was removed in Firebase Admin v14.
+      if (getApps().some((app) => app.name === '[DEFAULT]')) return getMessaging(getApp());
+      const fs = await import('fs');
+      const path = await import('path');
+      const explicitPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      const candidates = explicitPath ? [path.resolve(explicitPath)] : [
+        path.resolve(process.cwd(), 'firebase-service-account.json'),
+        path.resolve(process.cwd(), 'server/firebase-service-account.json'),
+        path.resolve(__dirname, '../../firebase-service-account.json'),
+      ];
+      const accountPath = candidates.find((candidate) => fs.existsSync(candidate));
+      if (explicitPath && !accountPath) {
+        this.logger.warn('Firebase credential path is unavailable; push delivery disabled');
+        return null;
       }
-
-      // Ensure Firebase is initialized
-      if (!admin.apps?.length) {
-        try {
-          const fs = await import('fs');
-          const path = await import('path');
-          const candidatePaths = [
-            process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
-            path.resolve(process.cwd(), 'firebase-service-account.json'),
-            path.resolve(process.cwd(), 'server/firebase-service-account.json'),
-            path.resolve(__dirname, '../../firebase-service-account.json'),
-            './firebase-service-account.json',
-          ].filter(Boolean) as string[];
-
-          const resolvedPath = candidatePaths.find((p) => fs.existsSync(p));
-          if (resolvedPath) {
-            const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
-            const certFn = admin.cert || (admin.credential && admin.credential.cert);
-            admin.initializeApp({
-              credential: certFn ? certFn(serviceAccount) : undefined,
-            });
-            this.logger.log(`Firebase Admin initialized successfully using: ${resolvedPath}`);
-          } else {
-            this.logger.warn('Firebase service account file not found, push notifications disabled');
-            return;
-          }
-        } catch (initErr) {
-          this.logger.warn(`Firebase initialization failed: ${initErr.message}`);
-          return;
-        }
+      if (accountPath) {
+        const serviceAccount = JSON.parse(fs.readFileSync(accountPath, 'utf8'));
+        const app = initializeApp({ credential: cert(serviceAccount) });
+        this.logger.log('Firebase Admin initialized for push notifications');
+        return getMessaging(app);
       }
-
-      // Send to each registered device
-      let messaging: any;
-      if (typeof admin.messaging === 'function') {
-        messaging = admin.messaging();
-      } else {
-        const { getMessaging } = await import('firebase-admin/messaging');
-        messaging = getMessaging();
+      // Application default credentials support hosts with a Google-managed identity.
+      if (process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || process.env.FIREBASE_CONFIG) {
+        return getMessaging(initializeApp({ credential: applicationDefault() }));
       }
-      for (const { token } of tokens) {
-        try {
-          await messaging.send({
-            token,
-            notification: {
-              title: payload.title,
-              body: payload.body,
-            },
-            data: payload.data || {},
-            android: {
-              priority: 'high' as const,
-              notification: {
-                channelId: 'ports_urgent',
-                priority: 'max' as const,
-                defaultSound: true,
-                defaultVibrateTimings: true,
-                icon: 'ic_launcher_round',
-                color: '#0c3e35',
-              },
-            },
-          });
-        } catch (sendErr: any) {
-          // If token is invalid, remove it
-          if (
-            sendErr.code === 'messaging/registration-token-not-registered' ||
-            sendErr.code === 'messaging/invalid-registration-token'
-          ) {
-            this.logger.warn(`Removing invalid FCM token for user ${userId}`);
-            await this.prisma.$executeRawUnsafe(
-              `DELETE FROM "DeviceToken" WHERE "token" = $1`,
-              token,
-            ).catch(() => {});
-          } else {
-            this.logger.error(`Failed to send FCM to user ${userId}:`, sendErr);
-          }
-        }
-      }
-    } catch (error) {
-      // Graceful failure - push notifications are optional
-      this.logger.debug(`Push notification skipped for user ${userId}: ${error.message}`);
+      this.logger.warn('Firebase credentials are not configured; push delivery disabled');
+      return null;
+    } catch {
+      // Credential contents and private-key parse errors must not be logged.
+      this.logger.error('Firebase Admin initialization failed; check server credential configuration');
+      return null;
     }
+  }
+
+  async getPushStatus(userId: string) {
+    const [messaging, tokens] = await Promise.all([
+      this.getMessagingClient(),
+      this.prisma.deviceToken.findMany({ where: { userId }, select: { platform: true } }),
+    ]);
+    return {
+      serverConfigured: Boolean(messaging),
+      registeredDevices: tokens.length,
+      platforms: [...new Set(tokens.map((token) => token.platform))],
+    };
+  }
+
+  async sendPushToUser(userId: string, payload: PushPayload) {
+    const tokens = await this.prisma.deviceToken.findMany({
+      where: { userId, user: { isActive: true } }, select: { token: true, platform: true },
+    });
+    if (!tokens.length) return;
+    const messaging = await this.getMessagingClient();
+    if (!messaging) return;
+    await Promise.all(tokens.map(async ({ token }) => {
+      try {
+        await messaging.send({
+          token,
+          notification: { title: payload.title, body: payload.body },
+          data: payload.data || {},
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'ports_urgent', priority: 'max', defaultSound: true,
+              defaultVibrateTimings: true, icon: 'ic_stat_notification', color: '#0c3e35',
+            },
+          },
+          apns: {
+            headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+            payload: { aps: { sound: 'default' } },
+          },
+          webpush: { notification: { icon: '/pwa-icon.png' } },
+        });
+      } catch (error) {
+        if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(error.code)) {
+          await this.prisma.deviceToken.deleteMany({ where: { token, userId } });
+        } else {
+          // Include the code only: upstream error details may contain the token or payload.
+          this.logger.error(`FCM delivery failed for user ${userId} (${error.code || 'unknown'})`);
+        }
+      }
+    }));
   }
 
   /**
@@ -445,6 +394,7 @@ export class NotificationsService implements OnModuleInit {
     try {
       const users = await this.prisma.user.findMany({
         where: {
+          isActive: true,
           role: { in: roles as any },
           ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
         },
@@ -466,6 +416,7 @@ export class NotificationsService implements OnModuleInit {
     try {
       const users = await this.prisma.user.findMany({
         where: {
+          isActive: true,
           directorateId,
           ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
         },
@@ -502,95 +453,42 @@ export class NotificationsService implements OnModuleInit {
    */
   async getReadKeys(userId: string): Promise<string[]> {
     if (!userId) return [];
-
-    try {
-      // 1. Get all keys stored in NotificationRead table
-      const rows = await this.prisma.$queryRawUnsafe<{ notificationKey: string }[]>(
-        `SELECT "notificationKey" FROM "NotificationRead" WHERE "userId" = $1`,
-        userId
-      );
-      const notificationKeys = rows.map((r) => r.notificationKey);
-
-      // 2. Get announcement reads from AnnouncementRead table
-      const annReads = await this.prisma.announcementRead.findMany({
-        where: { userId },
-        select: { announcementId: true },
-      });
-      const announcementKeys = annReads.map((a) => a.announcementId);
-
-      // Merge and deduplicate
-      const allReadKeys = Array.from(new Set([...notificationKeys, ...announcementKeys]));
-      return allReadKeys;
-    } catch (error) {
-      this.logger.error(`Failed to get read notification keys for user ${userId}:`, error);
-      return [];
-    }
+    const [rows, announcementReads] = await Promise.all([
+      this.prisma.notificationRead.findMany({ where: { userId }, select: { notificationKey: true } }),
+      this.prisma.announcementRead.findMany({ where: { userId }, select: { announcementId: true } }),
+    ]);
+    return [...new Set([...rows.map((row) => row.notificationKey), ...announcementReads.map((row) => row.announcementId)])];
   }
 
-  /**
-   * Marks a list of notification keys as read for the user in PostgreSQL.
-   */
   async markKeysAsRead(userId: string, keys: string[]) {
-    if (!userId || !keys || !keys.length) {
-      return { success: true, count: 0, readKeys: [] };
+    const uniqueKeys = [...new Set((keys || []).map((key) => String(key).trim()).filter(Boolean))];
+    if (!userId || !uniqueKeys.length) {
+      return { success: true, count: 0, readKeys: userId ? await this.getReadKeys(userId) : [] };
     }
-
-    const uniqueKeys = Array.from(new Set(keys.map((k) => String(k).trim()).filter(Boolean)));
-    if (!uniqueKeys.length) {
-      return { success: true, count: 0, readKeys: [] };
-    }
-
-    try {
-      for (const key of uniqueKeys) {
-        // Upsert into NotificationRead table
-        await this.prisma.$executeRawUnsafe(
-          `INSERT INTO "NotificationRead" ("id", "userId", "notificationKey", "readAt")
-           VALUES (gen_random_uuid()::text, $1, $2, CURRENT_TIMESTAMP)
-           ON CONFLICT ("userId", "notificationKey") 
-           DO UPDATE SET "readAt" = CURRENT_TIMESTAMP`,
-          userId,
-          key
-        );
-
-        // If the key is an announcement ID, also upsert AnnouncementRead
-        try {
-          const ann = await this.prisma.announcement.findUnique({
-            where: { id: key },
-            select: { id: true },
-          });
-
-          if (ann) {
-            await this.prisma.announcementRead.upsert({
-              where: {
-                announcementId_userId: {
-                  announcementId: key,
-                  userId,
-                },
-              },
-              create: {
-                announcementId: key,
-                userId,
-              },
-              update: {
-                readAt: new Date(),
-              },
-            });
-          }
-        } catch {
-          // Key was not an announcement ID, ignore
-        }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.notificationRead.createMany({
+        data: uniqueKeys.map((notificationKey) => ({ userId, notificationKey })), skipDuplicates: true,
+      });
+      // The bell uses persisted notification IDs. Resolve them to announcement IDs
+      // so announcement read indicators agree with the bell on every device.
+      const notifications = await tx.notification.findMany({
+        where: { userId, id: { in: uniqueKeys }, type: 'announcement' }, select: { referenceId: true },
+      });
+      const announcementIds = [...new Set([...uniqueKeys, ...notifications.map((row) => row.referenceId).filter(Boolean)])];
+      const announcements = await tx.announcement.findMany({ where: { id: { in: announcementIds } }, select: { id: true } });
+      if (announcements.length) {
+        await tx.announcementRead.createMany({
+          data: announcements.map((announcement) => ({ userId, announcementId: announcement.id })), skipDuplicates: true,
+        });
       }
-
-      const allReadKeys = await this.getReadKeys(userId);
-      return {
-        success: true,
-        count: uniqueKeys.length,
-        readKeys: allReadKeys,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to mark notifications as read for user ${userId}:`, error);
-      throw error;
+    });
+    const readKeys = await this.getReadKeys(userId);
+    try {
+      this.eventsGateway.emitNotificationsRead(userId, readKeys);
+    } catch {
+      this.logger.warn('Notification read state saved; socket synchronization unavailable');
     }
+    return { success: true, count: uniqueKeys.length, readKeys };
   }
 
   /**

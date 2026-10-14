@@ -9,6 +9,7 @@ import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { TodoAttachmentPicker } from './TodoAttachmentPicker';
 import { TodoAttachmentCard } from './TodoAttachmentCard';
 import { saveTodoAttachments } from '../lib/todoAttachments';
+import { preserveTodoSystemTags } from '../lib/todoLinks';
 import {
   CheckCircle2,
   Clock,
@@ -660,21 +661,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
       return;
     }
 
-    // Preserve existing system tags if they existed in the original description
-    const rawDesc = currentTodo.description || '';
-    const tags: string[] = [];
-    if (rawDesc.includes('الخطة اليومية')) tags.push('[تم إدراجها في الخطة اليومية]');
-    if (rawDesc.includes('تكليف تنفيذي')) tags.push('[تم تحويلها إلى تكليف تنفيذي رسمي]');
-    const matchPlan = rawDesc.match(/\[معرف المهمة:\s*[^\]]+\]/);
-    if (matchPlan) tags.push(matchPlan[0]);
-    const matchExecs = rawDesc.match(/\[معرف التكليف:\s*[^\]]+\]/g);
-    if (matchExecs) tags.push(...matchExecs);
-
     const cleanDesc = inlineDescValue.trim();
-    let finalDesc: string | null = cleanDesc || null;
-    if (tags.length > 0) {
-      finalDesc = cleanDesc ? `${cleanDesc}\n${tags.join('\n')}` : tags.join('\n');
-    }
+    const finalDesc = preserveTodoSystemTags(cleanDesc, currentTodo.description) || null;
 
     const currentCleanDesc = getCleanTodoDescription(currentTodo.description);
     if (currentTodo.title === trimmedTitle && currentCleanDesc === cleanDesc) {
@@ -976,21 +964,8 @@ export const TodosView: React.FC<TodosViewProps> = ({ currentUser, onBackToDashb
     try {
       setSavingEdit(true);
       setEditError('');
-      // Preserve existing system tags if they existed in the original description
-      const rawDesc = editingTodo.description || '';
-      const tags: string[] = [];
-      if (rawDesc.includes('الخطة اليومية')) tags.push('[تم إدراجها في الخطة اليومية]');
-      if (rawDesc.includes('تكليف تنفيذي')) tags.push('[تم تحويلها إلى تكليف تنفيذي رسمي]');
-      const matchPlan = rawDesc.match(/\[معرف المهمة:\s*[^\]]+\]/);
-      if (matchPlan) tags.push(matchPlan[0]);
-      const matchExecs = rawDesc.match(/\[معرف التكليف:\s*[^\]]+\]/g);
-      if (matchExecs) tags.push(...matchExecs);
-
       const cleanDesc = editDesc.trim();
-      let finalDesc: string | undefined = cleanDesc || undefined;
-      if (tags.length > 0) {
-        finalDesc = cleanDesc ? `${cleanDesc}\n${tags.join('\n')}` : tags.join('\n');
-      }
+      const finalDesc = preserveTodoSystemTags(cleanDesc, editingTodo.description) || undefined;
 
       const updated = await saveTodoAttachments(api, editFiles, editAttachments, (attachmentIds) => api.updateTodo(editingTodo.id, {
         title: editTitle.trim(),
