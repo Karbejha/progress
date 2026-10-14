@@ -30,11 +30,13 @@ test('PostgreSQL: reply timestamps survive progress updates and refresh, track e
   const prisma = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const notifications = [];
   const noDelivery = new Proxy({}, { get: () => () => Promise.resolve() });
+  const captureNotification = (_audience, notification) => {
+    notifications.push(notification);
+    return Promise.resolve();
+  };
   const service = new ExecutiveTasksService(prisma, noDelivery, {
-    createNotificationForRoles: (_roles, notification) => {
-      notifications.push(notification);
-      return Promise.resolve();
-    },
+    createNotificationForRoles: captureNotification,
+    createNotificationForDirectorate: captureNotification,
   });
   let directorate;
   let otherDirectorate;
@@ -76,7 +78,14 @@ test('PostgreSQL: reply timestamps survive progress updates and refresh, track e
       const result = await service.updateTask(user, first.id, changes);
       assert.equal(result.completionNoteUpdatedAt.toISOString(), initialTime);
     }
+    const replyBeforeExecutiveEdit = await prisma.executiveTask.findUniqueOrThrow({ where: { id: first.id } });
     await service.updateTask({ ...user, role: Role.GENERAL_DIRECTOR }, first.id, { title: 'Updated task title' });
+    const ownNotification = notifications.findLast((notification) => notification.metadata.taskId === first.id);
+    const otherNotification = notifications.findLast((notification) => notification.metadata.taskId === other.id);
+    assert.equal(ownNotification.metadata.completionNote, replyBeforeExecutiveEdit.completionNote);
+    assert.equal(new Date(ownNotification.metadata.completionNoteUpdatedAt).toISOString(), initialTime);
+    assert.equal(otherNotification.metadata.completionNote, 'Other directorate response');
+    assert.equal(new Date(otherNotification.metadata.completionNoteUpdatedAt).toISOString(), otherTime.toISOString());
     assert.equal((await service.getTaskById(user, first.id)).completionNoteUpdatedAt.toISOString(), initialTime);
     assert.equal((await service.getTasks(user))[0].completionNoteUpdatedAt.toISOString(), initialTime);
 
