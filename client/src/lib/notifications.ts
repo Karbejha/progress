@@ -44,6 +44,39 @@ export interface GenericNotificationPayload {
 }
 
 const DEVICE_TOKEN_KEY = 'ports_device_token';
+const PERMISSION_REQUESTED_KEY = 'ports_notification_permission_requested';
+
+export interface NotificationPermissionStatus {
+  state: 'granted' | 'prompt' | 'denied' | 'unsupported' | 'unknown';
+  canRequest: boolean;
+}
+
+/** Reads system permission without opening a prompt. */
+export async function getNotificationPermissionStatus(): Promise<NotificationPermissionStatus> {
+  if (typeof window === 'undefined') return { state: 'unsupported', canRequest: false };
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const [local, push] = await Promise.all([
+        LocalNotifications.checkPermissions(), PushNotifications.checkPermissions(),
+      ]);
+      const states = [local.display, push.receive];
+      const canRequest = states.some((state) => state === 'prompt' || state === 'prompt-with-rationale');
+      const state = states.every((value) => value === 'granted') ? 'granted'
+        : states.some((value) => value === 'denied' || value === 'prompt-with-rationale') ? 'denied' : 'prompt';
+      return { state, canRequest };
+    }
+    if ('Notification' in window) {
+      return { state: Notification.permission === 'default' ? 'prompt' : Notification.permission,
+        canRequest: Notification.permission === 'default' };
+    }
+    return { state: 'unsupported', canRequest: false };
+  } catch { return { state: 'unknown', canRequest: false }; }
+}
+
+async function publishPermissionStatus(): Promise<void> {
+  const status = await getNotificationPermissionStatus();
+  window.dispatchEvent(new CustomEvent('ports:notification_permission_changed', { detail: status }));
+}
 const CHANNELS: Channel[] = [
   {
     id: 'ports_announcements',
@@ -244,9 +277,9 @@ export async function registerPushNotifications(requestPermission = true): Promi
     const session = authenticatedSession();
     if (!session) return;
     const permitted = requestPermission
-      ? await requestNotificationPermissions()
-      : (await LocalNotifications.checkPermissions()).display === 'granted'
-        && (await PushNotifications.checkPermissions()).receive === 'granted';
+      ? await requestNotificationPermissions({ automatic: true })
+      : (await getNotificationPermissionStatus()).state === 'granted';
+    if (!requestPermission) await publishPermissionStatus();
     if (!permitted || authenticatedSession() !== session) return;
     const previousSyncAttempts = deviceSyncAttempts;
     await queueNativeOperation(async () => {
@@ -265,17 +298,26 @@ export async function registerPushNotifications(requestPermission = true): Promi
   return registration;
 }
 
-export async function requestNotificationPermissions(): Promise<boolean> {
+export async function requestNotificationPermissions(options: { automatic?: boolean } = {}): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   if (permissionRequest) return permissionRequest;
   permissionRequest = (async () => {
     if (Capacitor.isNativePlatform()) {
       let local = await LocalNotifications.checkPermissions();
+      let push = await PushNotifications.checkPermissions();
+      if (local.display === 'granted' && push.receive === 'granted') return true;
+      const states = [local.display, push.receive];
+      // A previous refusal is respected even after upgrading from an older app.
+      // An explicit tap on Enable can still request again when Android allows it.
+      if (options.automatic && (localStorage.getItem(PERMISSION_REQUESTED_KEY) === 'true'
+        || states.some((state) => state === 'denied' || state === 'prompt-with-rationale'))) return false;
+      if (!states.some((state) => state === 'prompt' || state === 'prompt-with-rationale')) return false;
+      localStorage.setItem(PERMISSION_REQUESTED_KEY, 'true');
       if (local.display === 'prompt' || local.display === 'prompt-with-rationale') {
         local = await LocalNotifications.requestPermissions();
       }
       if (local.display !== 'granted') return false;
-      let push = await PushNotifications.checkPermissions();
+      push = await PushNotifications.checkPermissions();
       if (push.receive === 'prompt' || push.receive === 'prompt-with-rationale') {
         push = await PushNotifications.requestPermissions();
       }
@@ -286,7 +328,10 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       if (Notification.permission !== 'denied') return (await Notification.requestPermission()) === 'granted';
     }
     return false;
-  })().catch(() => false).finally(() => { permissionRequest = null; });
+  })().catch(() => false).finally(async () => {
+    permissionRequest = null;
+    await publishPermissionStatus();
+  });
   return permissionRequest;
 }
 

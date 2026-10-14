@@ -10,7 +10,7 @@ const settle = async () => {
   for (let i = 0; i < 5; i++) await new Promise(setImmediate);
 };
 
-function makeService({ loggedIn = true, backendAvailable = true } = {}) {
+function makeService({ loggedIn = true, backendAvailable = true, permission = 'granted' } = {}) {
   const window = new EventTarget();
   const store = new Map();
   const localStorage = {
@@ -22,7 +22,8 @@ function makeService({ loggedIn = true, backendAvailable = true } = {}) {
   const pushListeners = new Map();
   const localListeners = new Map();
   const appListeners = new Map();
-  const state = { userId: loggedIn ? 'user-a' : null, authToken: loggedIn ? 'session-a' : null, backendAvailable };
+  const state = { userId: loggedIn ? 'user-a' : null, authToken: loggedIn ? 'session-a' : null, backendAvailable,
+    localPermission: permission, pushPermission: permission, permissionResult: 'granted' };
   window.setInterval = (callback) => { state.retry = callback; return 1; };
   const listener = (map) => async (name, callback) => {
     calls.push(`listener:${name}`);
@@ -31,8 +32,12 @@ function makeService({ loggedIn = true, backendAvailable = true } = {}) {
   };
   const PushNotifications = {
     addListener: listener(pushListeners),
-    checkPermissions: async () => ({ receive: 'granted' }),
-    requestPermissions: async () => { calls.push('push-permission'); return { receive: 'granted' }; },
+    checkPermissions: async () => ({ receive: state.pushPermission }),
+    requestPermissions: async () => {
+      calls.push('push-permission');
+      state.pushPermission = state.permissionResult;
+      return { receive: state.pushPermission };
+    },
     register: async () => {
       calls.push('register');
       assert.ok(pushListeners.has('registration'));
@@ -48,8 +53,17 @@ function makeService({ loggedIn = true, backendAvailable = true } = {}) {
       calls.push(`channel:${channel.id}`);
       if (state.channelUnavailable) throw new Error('Unavailable below Android O');
     },
-    checkPermissions: async () => ({ display: 'granted' }),
-    requestPermissions: async () => { calls.push('local-permission'); return { display: 'granted' }; },
+    checkPermissions: async () => {
+      if (state.permissionCheckFails) throw new Error('Native bridge unavailable');
+      return { display: state.localPermission };
+    },
+    requestPermissions: async () => {
+      calls.push('local-permission');
+      state.localPermission = state.permissionResult;
+      // On Android both plugins use the same POST_NOTIFICATIONS permission.
+      state.pushPermission = state.permissionResult === 'granted' ? 'granted' : 'prompt-with-rationale';
+      return { display: state.localPermission };
+    },
     schedule: async (notification) => { calls.push(notification); },
     removeAllDeliveredNotifications: async () => { calls.push('clear-local'); },
   };
@@ -97,6 +111,100 @@ test('anonymous startup installs listeners and login registers exactly once with
   assert.equal(context.calls.filter((call) => call?.binding).length, 1);
   assert.equal(context.calls.filter((call) => call === 'listener:registration').length, 1);
   assert.equal(context.store.get('ports_device_token'), 'native-token');
+});
+
+test('first authenticated use requests system permission once before device registration', async () => {
+  const context = makeService({ loggedIn: false, permission: 'prompt' });
+  await context.service.initNotificationService();
+  assert.equal(context.calls.includes('local-permission'), false);
+  context.authChanged('user-a', 'session-a');
+  await settle();
+  assert.equal(context.calls.filter((call) => call === 'local-permission').length, 1);
+  assert.equal(context.calls.includes('push-permission'), false, 'Android needs one shared permission dialog');
+  assert.ok(context.calls.indexOf('local-permission') < context.calls.indexOf('register'));
+  assert.equal(context.store.get('ports_notification_permission_requested'), 'true');
+  assert.equal(context.calls.filter((call) => call?.binding).length, 1);
+  await context.service.initNotificationService();
+  assert.equal(context.calls.filter((call) => call === 'local-permission').length, 1);
+});
+
+test('a refusal is respected across resume and login; an explicit Enable tap can recover', async () => {
+  const context = makeService({ permission: 'prompt' });
+  context.state.permissionResult = 'denied';
+  const changes = [];
+  context.window.addEventListener('ports:notification_permission_changed', (event) => changes.push(event.detail));
+  await context.service.initNotificationService();
+  assert.equal(context.calls.includes('register'), false);
+  assert.equal(changes.at(-1).state, 'denied');
+  context.appListeners.get('appStateChange')({ isActive: true });
+  context.authChanged(null, null);
+  await settle();
+  context.authChanged('user-a', 'new-session');
+  await settle();
+  assert.equal(context.calls.filter((call) => call === 'local-permission').length, 1);
+  context.state.localPermission = 'prompt-with-rationale';
+  context.state.permissionResult = 'granted';
+  assert.equal(await context.service.requestNotificationPermissions(), true);
+  await context.service.registerPushNotifications(false);
+  assert.equal(context.calls.filter((call) => call === 'local-permission').length, 2);
+  assert.equal(changes.at(-1).state, 'granted');
+  assert.equal(context.calls.filter((call) => call?.binding).length, 1);
+});
+
+test('an existing refusal without the new marker does not trigger an unsolicited system prompt', async () => {
+  const context = makeService({ permission: 'prompt-with-rationale' });
+  await context.service.initNotificationService();
+  assert.equal(context.calls.includes('local-permission'), false);
+  const status = await context.service.getNotificationPermissionStatus();
+  assert.equal(status.state, 'denied');
+  assert.equal(status.canRequest, true);
+});
+
+test('dismissing an initial dialog keeps automatic retries quiet while an explicit retry is possible', async () => {
+  const context = makeService({ permission: 'prompt' });
+  context.state.permissionResult = 'prompt';
+  await context.service.initNotificationService();
+  context.state.localPermission = 'prompt';
+  context.state.pushPermission = 'prompt';
+  await context.service.registerPushNotifications();
+  assert.equal(context.calls.filter((call) => call === 'local-permission').length, 1);
+  context.state.permissionResult = 'granted';
+  assert.equal(await context.service.requestNotificationPermissions(), true);
+});
+
+test('concurrent callers share one initial permission dialog', async () => {
+  const context = makeService({ permission: 'prompt' });
+  const results = await Promise.all([
+    context.service.requestNotificationPermissions({ automatic: true }),
+    context.service.requestNotificationPermissions(),
+  ]);
+  assert.deepEqual(results, [true, true]);
+  assert.equal(context.calls.filter((call) => call === 'local-permission').length, 1);
+});
+
+test('permanent denial and older Android system blocking direct the user to settings', async () => {
+  const context = makeService({ permission: 'denied' });
+  context.state.pushPermission = 'granted';
+  await context.service.initNotificationService();
+  const status = await context.service.getNotificationPermissionStatus();
+  assert.equal(status.state, 'denied');
+  assert.equal(status.canRequest, false);
+  assert.equal(await context.service.requestNotificationPermissions(), false);
+  assert.equal(context.calls.includes('local-permission'), false);
+  context.state.localPermission = 'granted';
+  context.appListeners.get('appStateChange')({ isActive: true });
+  await settle();
+  assert.equal(context.calls.filter((call) => call?.binding).length, 1);
+});
+
+test('native permission check failure stays distinguishable from a user refusal and can recover', async () => {
+  const context = makeService({ permission: 'prompt' });
+  context.state.permissionCheckFails = true;
+  assert.equal((await context.service.getNotificationPermissionStatus()).state, 'unknown');
+  assert.equal(await context.service.requestNotificationPermissions({ automatic: true }), false);
+  assert.equal(context.store.has('ports_notification_permission_requested'), false);
+  context.state.permissionCheckFails = false;
+  assert.equal(await context.service.requestNotificationPermissions({ automatic: true }), true);
 });
 
 test('backend binding failure retries after resume and never records false success', async () => {

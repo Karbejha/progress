@@ -9,7 +9,7 @@ import { LoginForm } from '../components/LoginForm';
 import { ExecutiveDashboard } from '../components/ExecutiveDashboard';
 import { DirectorPortal } from '../components/DirectorPortal';
 import { TodosView } from '../components/TodosView';
-import { initNotificationService, requestNotificationPermissions } from '../lib/notifications';
+import { initNotificationService } from '../lib/notifications';
 import { initStatusBar } from '../lib/statusBar';
 import { getSocket } from '../lib/socket';
 
@@ -79,7 +79,6 @@ export default function Home() {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
-    requestNotificationPermissions();
   };
 
   const handleLogout = () => {

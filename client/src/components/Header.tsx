@@ -44,6 +44,7 @@ import { UsersManagementModal } from './UsersManagementModal';
 import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementDetailsModal';
 import { NotificationDetailsModal, NotificationDetailItem } from './NotificationDetailsModal';
 import { QuickTodoDrawer } from './QuickTodoDrawer';
+import { NotificationPermissionBanner } from './NotificationPermissionBanner';
 import { App } from '@capacitor/app';
 import { InboxNotification, PersistedNotification, toInboxNotification, mergeInboxNotifications, isInboxNotificationRead } from '../lib/notificationInbox';
 import { Capacitor } from '@capacitor/core';
@@ -221,7 +222,9 @@ export const Header: React.FC<HeaderProps> = ({
       }
       handleNotificationClick(item);
     });
-    void initNotificationService().then(() => requestNotificationPermissions()).catch(console.warn);
+    void initNotificationService().then(() => {
+      if (!Capacitor.isNativePlatform()) void requestNotificationPermissions();
+    }).catch(console.warn);
     return () => { active = false; unsubscribe(); };
   }, [currentUser?.id]);
 
@@ -800,6 +803,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </header>
+
+      {currentUser && <NotificationPermissionBanner key={currentUser.id} />}
 
       {/* Change Password Modal */}
       <ChangePasswordModal

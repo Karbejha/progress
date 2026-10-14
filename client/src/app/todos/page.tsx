@@ -8,7 +8,7 @@ import { api } from '../../services/api';
 import { Header } from '../../components/Header';
 import { LoginForm } from '../../components/LoginForm';
 import { TodosView } from '../../components/TodosView';
-import { initNotificationService, requestNotificationPermissions } from '../../lib/notifications';
+import { initNotificationService } from '../../lib/notifications';
 import { initStatusBar } from '../../lib/statusBar';
 
 export default function TodosPage() {
@@ -50,7 +50,6 @@ export default function TodosPage() {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
-    requestNotificationPermissions();
   };
 
   const handleLogout = () => {
