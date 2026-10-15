@@ -1140,7 +1140,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 }));
               }}
               category="TASK_COMPLETION"
-              label="إرفاق كتب ومحاضر إنجاز التكليف (PDF)"
+              label="إرفاق كتب ومحاضر إنجاز التكليف (PDF، Word، Excel، صور)"
               hint="يمكنك إرفاق عدة مستندات رسمية لتوثيق وإثبات إنجاز التكليف"
             />
           </div>
@@ -3418,7 +3418,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 attachments={summaryAttachments}
                 onAttachmentsChange={setSummaryAttachments}
                 category="DAILY_SUMMARY"
-                label="إرفاق التقارير الرسمية ومحاضر الكشف الثبوتية (PDF)"
+                label="إرفاق التقارير الرسمية ومحاضر الكشف الثبوتية (PDF، Word، Excel، صور)"
                 hint="يمكنك إرفاق عدة مستندات رسمية (تقارير تفصيلية، ضبوط ممسوحة، جداول)"
               />
             </div>

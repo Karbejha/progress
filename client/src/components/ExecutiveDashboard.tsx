@@ -1074,7 +1074,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                 attachments={announcementAttachments}
                 onAttachmentsChange={setAnnouncementAttachments}
                 category="ANNOUNCEMENT"
-                label="إرفاق نسخ التعميم المعتمدة والموقعة (PDF)"
+                label="إرفاق نسخ التعميم المعتمدة والموقعة (PDF، Word، Excel، صور)"
                 hint="يمكنك إرفاق عدة مستندات رسمية (نص التعميم الموقع، الجداول الملحقة، التعليمات التنفيذية)"
               />
 
@@ -1156,7 +1156,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
                           {ann.attachments && ann.attachments.length > 0 && (
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 flex items-center gap-1 shadow-2xs">
                               <FileText className="w-3 h-3 text-red-600" />
-                              <span>مرفق رسمي (PDF){ann.attachments.length > 1 ? ` (${ann.attachments.length})` : ''}</span>
+                              <span>مرفق رسمي{ann.attachments.length > 1 ? ` (${ann.attachments.length})` : ''}</span>
                             </span>
                           )}
                         </div>

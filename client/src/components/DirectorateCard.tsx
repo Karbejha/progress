@@ -151,10 +151,10 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             {item.summaryAttachments && item.summaryAttachments.length > 0 && (
               <span
                 className="flex items-center gap-1 text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 border border-red-200 shadow-2xs"
-                title={`مرفق تقرير رسمي PDF (${item.summaryAttachments.length})`}
+                title={`مرفق تقرير رسمي (${item.summaryAttachments.length})`}
               >
                 <FileText className="w-3 h-3 text-red-600" />
-                <span>PDF{item.summaryAttachments.length > 1 ? ` (${item.summaryAttachments.length})` : ''}</span>
+                <span>مرفقات{item.summaryAttachments.length > 1 ? ` (${item.summaryAttachments.length})` : ''}</span>
               </span>
             )}
             {theme.statusBadge}

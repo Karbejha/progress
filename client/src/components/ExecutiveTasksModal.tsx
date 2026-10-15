@@ -764,7 +764,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                 attachments={taskAttachments}
                 onAttachmentsChange={setTaskAttachments}
                 category="EXECUTIVE_TASK"
-                label="إرفاق كتب وقرارات التكليف الرسمية (PDF)"
+                label="إرفاق كتب وقرارات التكليف الرسمية (PDF، Word، Excel، صور)"
                 hint="يمكنك إرفاق عدة مستندات رسمية، كتب وزارية، أو قرارات إدارية معتمدة"
               />
 
@@ -1468,7 +1468,7 @@ export const ExecutiveTasksModal: React.FC<ExecutiveTasksModalProps> = ({
                 attachments={editAttachments}
                 onAttachmentsChange={setEditAttachments}
                 category="TASK_COMPLETION"
-                label="إرفاق كتب رد أو محاضر إنجاز جديدة (PDF)"
+                label="إرفاق كتب رد أو محاضر إنجاز جديدة (PDF، Word، Excel، صور)"
                 compact
               />
             </div>

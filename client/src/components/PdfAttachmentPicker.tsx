@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { api } from '../services/api';
 import { Attachment } from '../types';
+import { OFFICIAL_FILE_ACCEPT, OFFICIAL_FILE_HINT, officialFileError, canPreviewAttachment, attachmentTypeLabel } from '../lib/officialAttachments';
 import {
   FileText,
   UploadCloud,
@@ -13,6 +14,7 @@ import {
   Paperclip,
   Plus,
   Eye,
+  Download,
   Trash2,
 } from 'lucide-react';
 
@@ -45,8 +47,8 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
   attachment,
   onAttachmentChange,
   category = 'GENERAL',
-  label = 'المستندات والتقارير الرسمية المرفقة (PDF)',
-  hint = 'يمكنك إرفاق عدة مستندات رسمية (حتى 25 ميغابايت لكل ملف بصيغة PDF)',
+  label = 'المستندات والتقارير الرسمية المرفقة (PDF، Word، Excel، صور)',
+  hint = OFFICIAL_FILE_HINT,
   compact = false,
   maxFiles = 10,
 }) => {
@@ -84,14 +86,9 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
 
     // Validate all files
     for (const f of files) {
-      const isPdf =
-        f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
-      if (!isPdf) {
-        setError(`الملف (${f.name}) ليس بصيغة PDF. يُسمح فقط بمستندات PDF الرسمية.`);
-        return;
-      }
-      if (f.size > 25 * 1024 * 1024) {
-        setError(`الملف (${f.name}) يتجاوز الحد الأقصى المسموح به (25 ميغابايت).`);
+      const validationError = officialFileError(f);
+      if (validationError) {
+        setError(validationError);
         return;
       }
     }
@@ -109,7 +106,7 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
 
       updateList([...currentList, ...newlyUploaded]);
     } catch (err: any) {
-      console.error('Failed to upload PDF attachment:', err);
+      console.error('Failed to upload attachment:', err);
       setError(err?.message || 'حدث خطأ أثناء رفع أحد الملفات، يرجى المحاولة ثانية.');
     } finally {
       setUploading(false);
@@ -170,13 +167,13 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept={OFFICIAL_FILE_ACCEPT}
         multiple
         className="hidden"
         onChange={handleFileChange}
       />
 
-      {/* List of Attached PDF Documents */}
+      {/* List of attached documents and images */}
       {hasFiles && (
         <div className="space-y-2">
           {currentList.map((att, idx) => (
@@ -201,7 +198,7 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
                     </span>
                     <span>•</span>
                     <span className="text-emerald-700 font-bold">
-                      مستند PDF رسمي #{idx + 1}
+                      {attachmentTypeLabel(att.mimeType)} #{idx + 1}
                     </span>
                   </div>
                 </div>
@@ -209,14 +206,14 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
 
               <div className="flex items-center gap-1.5 shrink-0">
                 <a
-                  href={api.getAttachmentUrl(att.id)}
+                  href={api.getAttachmentUrl(att.id, !canPreviewAttachment(att.mimeType))}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10.5px] font-bold text-[#0c3e35] bg-[#edece4] hover:bg-[#d2d1c9] transition cursor-pointer"
-                  title="معاينة المستند في تبويب جديد"
+                  title={canPreviewAttachment(att.mimeType) ? 'معاينة الملف في تبويب جديد' : 'تحميل الملف'}
                 >
-                  <Eye className="w-3 h-3 text-[#d4af37]" />
-                  <span>معاينة</span>
+                  {canPreviewAttachment(att.mimeType) ? <Eye className="w-3 h-3 text-[#d4af37]" /> : <Download className="w-3 h-3 text-[#d4af37]" />}
+                  <span>{canPreviewAttachment(att.mimeType) ? 'معاينة' : 'تحميل'}</span>
                 </a>
                 <button
                   type="button"
@@ -265,7 +262,7 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
           {hasFiles ? (
             <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#0c3e35] hover:text-[#072923]">
               <Plus className="w-4 h-4 text-[#d4af37]" />
-              <span>إضافة مستند رسمي آخر (PDF)...</span>
+              <span>إضافة ملف آخر...</span>
               <span className="text-[10.5px] text-[#8daaa2] font-medium mr-1">
                 (متبقي {maxFiles - currentList.length} متاح)
               </span>
@@ -277,15 +274,15 @@ export const PdfAttachmentPicker: React.FC<PdfAttachmentPickerProps> = ({
               </div>
               <div className="text-center sm:text-right space-y-1">
                 <p className="text-xs font-extrabold text-[#0c3e35] leading-snug">
-                  <span className="sm:hidden">اضغط لاختيار مستندات PDF</span>
-                  <span className="hidden sm:inline">انقر لاختيار مستندات PDF أو اسحبها إلى هنا</span>
+                  <span className="sm:hidden">اضغط لاختيار ملفات أو صور</span>
+                  <span className="hidden sm:inline">انقر لاختيار ملفات أو صور أو اسحبها إلى هنا</span>
                   <span className="text-[11px] font-medium text-[#5e736e] block sm:inline sm:mr-1.5">
                     (يمكنك تحديد عدة ملفات)
                   </span>
                 </p>
                 {hint && (
                   <p className="text-[10px] sm:text-[10.5px] text-[#8daaa2] font-medium leading-relaxed">
-                    {hint}
+                    {hint}{hint !== OFFICIAL_FILE_HINT && <><br />{OFFICIAL_FILE_HINT}</>}
                   </p>
                 )}
               </div>

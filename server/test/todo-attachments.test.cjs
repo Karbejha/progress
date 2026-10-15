@@ -18,7 +18,7 @@ const { JwtService } = require('@nestjs/jwt');
 const { attachmentMimeType, MAX_ATTACHMENT_SIZE } = require('../src/attachments/attachment-files');
 const { saveTodoAttachments, todoFileError } = require('../../client/src/lib/todoAttachments');
 
-test('personal files accept common formats while official uploads remain PDF-only', () => {
+test('personal files accept common formats while official workflows reject unsupported formats', () => {
   for (const [name, mime] of [
     ['report.PDF', 'application/pdf'], ['photo.png', 'image/png'],
     ['plan.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
@@ -32,7 +32,7 @@ test('personal files accept common formats while official uploads remain PDF-onl
     assert.throws(() => attachmentMimeType({ originalname: name, mimetype: 'application/pdf' }, 'TODO'));
     assert.ok(todoFileError({ name, size: 100 }));
   }
-  assert.throws(() => attachmentMimeType({ originalname: 'photo.png', mimetype: 'image/png' }, 'ANNOUNCEMENT'));
+  assert.throws(() => attachmentMimeType({ originalname: 'archive.zip', mimetype: 'application/zip' }, 'ANNOUNCEMENT'));
   assert.ok(todoFileError({ name: 'empty.pdf', size: 0 }));
   assert.ok(todoFileError({ name: 'large.pdf', size: MAX_ATTACHMENT_SIZE + 1 }));
 });
@@ -202,10 +202,26 @@ test('PostgreSQL and HTTP: private attachments survive refresh and progress edit
       assert.equal((await request(`/attachments/${draft.id}?onlyUnlinked=1`, { method: 'DELETE' })).status, 200);
       assert.equal(fs.existsSync(path.resolve(draft.fileUrl)), false);
     });
-    await t.test('unsupported, empty and oversize files are rejected; official uploads remain PDF-only', async () => {
+    await t.test('official uploads store Word, Excel and images and serve them with the correct disposition', async () => {
+      for (const [name, mime, preview] of [
+        ['جدول.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', false],
+        ['جدول.xls', 'application/vnd.ms-excel', false],
+        ['تقرير.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', false],
+        ['تقرير.doc', 'application/msword', false],
+        ['صورة.png', 'image/png', true], ['صورة.jpg', 'image/jpeg', true], ['صورة.webp', 'image/webp', true],
+      ]) {
+        const file = await upload(name, 'application/octet-stream', 'DAILY_SUMMARY');
+        assert.equal(file.fileName, name);
+        assert.equal(file.mimeType, mime);
+        const response = await request(`/attachments/${file.id}/download`);
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get('content-disposition'), preview ? /^inline;/ : /^attachment;/);
+      }
+    });
+    await t.test('unsupported, empty and oversize files are rejected in personal and official uploads', async () => {
       for (const [name, content, category] of [
         ['script.html', 'html', 'TODO'], ['empty.pdf', '', 'TODO'],
-        ['large.pdf', new Uint8Array(MAX_ATTACHMENT_SIZE + 1), 'TODO'], ['photo.png', 'image', 'GENERAL'],
+        ['large.pdf', new Uint8Array(MAX_ATTACHMENT_SIZE + 1), 'TODO'], ['script.html', 'html', 'GENERAL'],
       ]) {
         const form = new FormData();
         form.append('file', new Blob([content]), name);

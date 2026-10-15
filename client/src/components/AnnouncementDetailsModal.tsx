@@ -268,7 +268,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
                   <div className="pt-4 border-t border-[#e5e4dc] space-y-2">
                     <span className="text-xs font-bold text-[#0c3e35] flex items-center gap-1.5">
                       <FileText className="w-4 h-4 text-red-600" />
-                      <span>النسخة الرسمية المعتمدة والموقعة (PDF):</span>
+                      <span>المرفقات الرسمية المعتمدة والموقعة:</span>
                     </span>
                     <div className="space-y-2">
                       {data.attachments.map((att) => (

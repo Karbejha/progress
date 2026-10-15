@@ -313,7 +313,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
                   attachments={taskAttachments}
                   onAttachmentsChange={setTaskAttachments}
                   category="EXECUTIVE_TASK"
-                  label="إرفاق كتب وقرارات التكليف الوزاري / الرئاسي (PDF)"
+                  label="إرفاق كتب وقرارات التكليف الوزاري / الرئاسي (PDF، Word، Excel، صور)"
                   compact
                 />
 

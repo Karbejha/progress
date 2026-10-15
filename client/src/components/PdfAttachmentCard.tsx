@@ -3,6 +3,7 @@
 import React from 'react';
 import { Attachment } from '../types';
 import { api } from '../services/api';
+import { canPreviewAttachment, attachmentTypeLabel } from '../lib/officialAttachments';
 import { formatFileSize } from './PdfAttachmentPicker';
 import { FileText, Eye, Download, ExternalLink, ShieldCheck } from 'lucide-react';
 
@@ -16,11 +17,13 @@ interface PdfAttachmentCardProps {
 export const PdfAttachmentCard: React.FC<PdfAttachmentCardProps> = ({
   attachment,
   title,
-  badgeText = 'مستند رسمي PDF',
+  badgeText,
   variant = 'default',
 }) => {
   const previewUrl = api.getAttachmentUrl(attachment.id, false);
   const downloadUrl = api.getAttachmentUrl(attachment.id, true);
+  const canPreview = canPreviewAttachment(attachment.mimeType);
+  const fileBadge = badgeText || `مرفق رسمي (${attachmentTypeLabel(attachment.mimeType)})`;
 
   if (variant === 'compact') {
     return (
@@ -40,7 +43,7 @@ export const PdfAttachmentCard: React.FC<PdfAttachmentCardProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <a
+          {canPreview && <a
             href={previewUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -49,7 +52,7 @@ export const PdfAttachmentCard: React.FC<PdfAttachmentCardProps> = ({
           >
             <Eye className="w-3 h-3 text-[#d4af37]" />
             <span>معاينة</span>
-          </a>
+          </a>}
           <a
             href={downloadUrl}
             className="p-1 rounded-lg text-[#0c3e35] hover:bg-[#edece4] transition cursor-pointer"
@@ -89,14 +92,14 @@ export const PdfAttachmentCard: React.FC<PdfAttachmentCardProps> = ({
               <span>•</span>
               <span className="text-emerald-800 font-bold flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                {badgeText}
+                {fileBadge}
               </span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-          <a
+          {canPreview && <a
             href={previewUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -104,7 +107,7 @@ export const PdfAttachmentCard: React.FC<PdfAttachmentCardProps> = ({
           >
             <Eye className="w-3.5 h-3.5 text-[#d4af37]" />
             <span>معاينة المستند</span>
-          </a>
+          </a>}
           <a
             href={downloadUrl}
             className="flex items-center gap-1 px-3 py-2 rounded-xl bg-[#edece4] hover:bg-[#d2d1c9] text-[#0c3e35] text-xs font-bold transition cursor-pointer active:scale-95"
