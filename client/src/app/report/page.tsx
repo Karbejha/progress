@@ -1,43 +1,20 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
-import { ExecutiveOverviewResponse } from '../../types';
-import { api } from '../../services/api';
 import { Printer, ArrowRight } from 'lucide-react';
 import { initStatusBar } from '../../lib/statusBar';
-import { getSocket } from '../../lib/socket';
+import { useExecutiveOverview } from '../../hooks/useExecutiveOverview';
 
 function ReportContent() {
   const searchParams = useSearchParams();
   const dateParam = searchParams.get('date') || new Date().toISOString().split('T')[0];
-  const [data, setData] = useState<ExecutiveOverviewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, loading } = useExecutiveOverview(dateParam);
 
   useEffect(() => {
     initStatusBar();
-    loadReport();
-  }, [dateParam]);
-
-  useEffect(() => {
-    const socket = getSocket();
-    const refreshStatus = () => loadReport();
-    socket?.on('user:status-changed', refreshStatus);
-    return () => { socket?.off('user:status-changed', refreshStatus); };
-  }, [dateParam]);
-
-  const loadReport = async () => {
-    try {
-      setLoading(true);
-      const res = await api.getExecutiveOverview(dateParam);
-      setData(res);
-    } catch (err) {
-      console.error('Failed to load report data', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, []);
 
   const formattedDate = new Date(dateParam).toLocaleDateString('ar-SY', {
     weekday: 'long',

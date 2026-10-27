@@ -58,6 +58,7 @@ import { getCleanTodoDescription } from './TodosView';
 import { workingDateKey, executiveDailyProgress, LocalExecutiveTaskState, mergeExecutiveTaskStates, acceptSavedExecutiveTaskState } from '../lib/executiveDailyProgress';
 import { newestTaskEntries, newestTasksFirst } from '../lib/taskOrder';
 import { applyPlanTaskUpdate } from '../lib/planTaskUpdates';
+import { PLAN_AUTOSAVE_DELAY_MS, PlanDraftTask, ensurePlanTaskDraftKeys, acceptSavedPlanTasks, getPlanHash } from '../lib/planAutosave';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -126,30 +127,14 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   // Form states initialized with local draft
   const [generalFocus, setGeneralFocus] = useState(() => initPlanDraft?.generalFocus || '');
-  const [tasks, setTasks] = useState<
-    {
-      id?: string;
-      createdAt?: string;
-      displayOrder?: number;
-      title: string;
-      description: string;
-      priority: Priority;
-      estimatedHours: number;
-      templateId?: string;
-      carriedFromTaskId?: string;
-      carriedFromDate?: string;
-      initialCompletionPercentage?: number;
-      completionPercentage?: number;
-      isMultiDay?: boolean;
-      todayTargetMet?: boolean;
-      status?: TaskStatus;
-      completionNote?: string;
-    }[]
-  >(() =>
+  const [tasks, setTasksState] = useState<PlanDraftTask[]>(() => ensurePlanTaskDraftKeys(
     initPlanDraft?.tasks && initPlanDraft.tasks.length > 0
       ? initPlanDraft.tasks
       : [{ title: '', description: '', priority: 'NORMAL', estimatedHours: 2.0 }]
-  );
+  ));
+  const setTasks = (update: React.SetStateAction<PlanDraftTask[]>) => {
+    setTasksState((previous) => ensurePlanTaskDraftKeys(typeof update === 'function' ? update(previous) : update));
+  };
   const [togglingTemplateIdx, setTogglingTemplateIdx] = useState<number | null>(null);
 
   // Incomplete Tasks (Carried-over) State
@@ -189,29 +174,45 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   });
 
   // Plan auto-save status state
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'IDLE' | 'SAVING' | 'SAVED' | 'ERROR'>('IDLE');
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'IDLE' | 'PENDING' | 'SAVING' | 'SAVED' | 'ERROR'>('IDLE');
   const [autoSaveTime, setAutoSaveTime] = useState<string | null>(null);
+  const [planSaveInFlight, setPlanSaveInFlight] = useState(false);
   const isInitialPlanLoadRef = React.useRef(true);
   const lastSavedPlanHashRef = React.useRef<string>('');
+  const failedPlanHashRef = React.useRef<string | null>(null);
+  const planSaveInFlightRef = React.useRef(false);
+  const todayDataRequestRef = React.useRef(0);
+  const planEditorRef = React.useRef({ plan, generalFocus, tasks });
+  planEditorRef.current = { plan, generalFocus, tasks };
 
-  const getPlanHash = (focus: string, currentTasks: any[]) => {
-    return JSON.stringify({
-      focus: (focus || '').trim(),
-      tasks: (currentTasks || [])
-        .filter((t) => (t?.title || '').trim().length > 0)
-        .map((t) => ({
-          id: t.id,
-          title: (t.title || '').trim(),
-          desc: (t.description || '').trim(),
-          priority: t.priority,
-          hours: t.estimatedHours,
-          carried: t.carriedFromTaskId,
-          completionPercentage: t.completionPercentage ?? 0,
-          status: t.status || 'PENDING',
-          isMultiDay: Boolean(t.isMultiDay),
-          todayTargetMet: Boolean(t.todayTargetMet),
-        })),
-    });
+  const savePlanSnapshot = async (focus: string, submittedTasks: PlanDraftTask[], isSilent: boolean) => {
+    if (planSaveInFlightRef.current) return;
+    planSaveInFlightRef.current = true;
+    setPlanSaveInFlight(true);
+    setAutoSaveStatus('SAVING');
+    ++todayDataRequestRef.current;
+    try {
+      const res = await api.submitPlan({ generalFocus: focus, tasks: submittedTasks, isSilent });
+      ++todayDataRequestRef.current;
+      const savedSnapshot = acceptSavedPlanTasks(submittedTasks, submittedTasks, res.tasks);
+      lastSavedPlanHashRef.current = getPlanHash(focus, savedSnapshot);
+      failedPlanHashRef.current = null;
+      setPlan(res);
+      setTasks((previous) => acceptSavedPlanTasks(previous, submittedTasks, res.tasks));
+      const latest = planEditorRef.current;
+      const latestTasks = acceptSavedPlanTasks(latest.tasks, submittedTasks, res.tasks);
+      setAutoSaveStatus(getPlanHash(latest.generalFocus, latestTasks) === lastSavedPlanHashRef.current ? 'SAVED' : 'PENDING');
+      setAutoSaveTime(new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' }));
+      window.dispatchEvent(new CustomEvent('ports:todos_updated', { detail: { source: 'DirectorPortal' } }));
+      return res;
+    } catch (err) {
+      failedPlanHashRef.current = getPlanHash(focus, submittedTasks);
+      setAutoSaveStatus('ERROR');
+      throw err;
+    } finally {
+      planSaveInFlightRef.current = false;
+      setPlanSaveInFlight(false);
+    }
   };
 
   // Quick Add Task Modal State (for adding directly during the day)
@@ -428,51 +429,29 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   // Server Auto-Save Effect (when plan is already submitted/approved)
   useEffect(() => {
-    if (loading || !plan || isInitialPlanLoadRef.current) return;
+    if (loading || !plan || isInitialPlanLoadRef.current || saving || planSaveInFlight) return;
 
     const validTasks = tasks.filter((t) => (t.title || '').trim().length > 0);
     if (validTasks.length === 0) return;
 
     const currentHash = getPlanHash(generalFocus, validTasks);
     if (currentHash === lastSavedPlanHashRef.current) {
+      setAutoSaveStatus('SAVED');
       return;
     }
+    if (currentHash === failedPlanHashRef.current) return;
 
-    setAutoSaveStatus('SAVING');
+    setAutoSaveStatus('PENDING');
     const timer = setTimeout(async () => {
       try {
-        const res = await api.submitPlan({
-          generalFocus,
-          tasks: validTasks,
-          isSilent: true,
-        });
-
-        lastSavedPlanHashRef.current = getPlanHash(res.generalFocus || '', res.tasks || []);
-        setPlan(res);
-        setAutoSaveStatus('SAVED');
-        const nowStr = new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' });
-        setAutoSaveTime(nowStr);
-
-        setTasks((prev) =>
-          prev.map((t) => {
-            const savedTask = t.id
-              ? res.tasks.find((saved) => saved.id === t.id)
-              : res.tasks[validTasks.indexOf(t)];
-            return savedTask
-              ? { ...t, id: savedTask.id, createdAt: savedTask.createdAt, displayOrder: savedTask.displayOrder }
-              : t;
-          })
-        );
-
-        window.dispatchEvent(new CustomEvent('ports:todos_updated'));
+        await savePlanSnapshot(generalFocus, validTasks, true);
       } catch (err) {
         console.error('Failed to auto-save plan', err);
-        setAutoSaveStatus('ERROR');
       }
-    }, 1200);
+    }, PLAN_AUTOSAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [generalFocus, tasks, plan, loading]);
+  }, [generalFocus, tasks, plan, loading, saving, planSaveInFlight]);
 
   // Auto-save Summary Draft Effect
   useEffect(() => {
@@ -555,6 +534,10 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           if (!prevPlan) return prevPlan;
           const nextTasks = applyPlanTaskUpdate(prevPlan.tasks, payload);
           if (nextTasks === prevPlan.tasks) return prevPlan;
+          lastSavedPlanHashRef.current = getPlanHash(prevPlan.generalFocus || '', nextTasks.map((task) => ({
+            ...task,
+            description: getCleanTodoDescription(task.description),
+          })));
           return {
             ...prevPlan,
             tasks: nextTasks,
@@ -564,7 +547,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         setTasks((prevTasks) => {
           const nextTasks = applyPlanTaskUpdate(prevTasks, payload);
           if (nextTasks === prevTasks) return prevTasks;
-          lastSavedPlanHashRef.current = getPlanHash(generalFocus, nextTasks);
           return nextTasks;
         });
 
@@ -1191,7 +1173,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
   };
 
   const loadTodayData = async (options?: { silent?: boolean }) => {
-    const isSilent = options?.silent ?? (!isInitialPlanLoadRef.current && plan !== null);
+    const isInitialLoad = isInitialPlanLoadRef.current;
+    const isSilent = options?.silent ?? !isInitialLoad;
+    const requestId = ++todayDataRequestRef.current;
+    const editorAtStart = planEditorRef.current;
+    const editorSnapshot = JSON.stringify(editorAtStart);
     const incompleteRequestId = ++incompleteTasksRequestRef.current;
     try {
       if (!isSilent) setLoading(true);
@@ -1200,6 +1186,16 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         api.getAnnouncements().catch(() => []),
         api.getIncompleteTasks().catch(() => []),
       ]);
+      if (requestId !== todayDataRequestRef.current) return;
+      const editor = planEditorRef.current;
+      // Background notifications must not reset a dirty form, even when the
+      // user began typing after this read started or a save is still running.
+      const canRefreshPlanForm = isInitialLoad || (
+        !planSaveInFlightRef.current &&
+        editorSnapshot === JSON.stringify(editor) &&
+        getPlanHash(editor.generalFocus, editor.tasks) === lastSavedPlanHashRef.current &&
+        !editor.tasks.some((task) => !task.title.trim())
+      );
       setPlan(currentPlan);
       setAnnouncements(anns);
       if (incompleteRequestId === incompleteTasksRequestRef.current) {
@@ -1214,8 +1210,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       }
 
       if (currentPlan) {
-        setGeneralFocus(currentPlan.generalFocus || '');
-        if (currentPlan.tasks && currentPlan.tasks.length > 0) {
+        if (canRefreshPlanForm) {
+          setGeneralFocus(currentPlan.generalFocus || '');
           const mappedTasks = currentPlan.tasks.map((t) => ({
             id: t.id,
             createdAt: t.createdAt,
@@ -1235,10 +1231,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           }));
           setTasks(mappedTasks);
           lastSavedPlanHashRef.current = getPlanHash(currentPlan.generalFocus || '', mappedTasks);
-        } else {
-          lastSavedPlanHashRef.current = getPlanHash(currentPlan.generalFocus || '', []);
+          setAutoSaveStatus('SAVED');
         }
-        setAutoSaveStatus('SAVED');
         if (currentPlan.dailySummary) {
           const s = currentPlan.dailySummary;
           setSummaryText(s.summaryText || '');
@@ -1268,7 +1262,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
             } catch (e) { }
           }
         }
-      } else {
+      } else if (isInitialLoad) {
         // No plan on server yet -> check for local plan draft
         const rawPlanDraft = localStorage.getItem(planDraftKey);
         if (rawPlanDraft) {
@@ -1287,8 +1281,10 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       if (incompleteRequestId === incompleteTasksRequestRef.current) {
         setLoadingIncompleteTasks(false);
       }
-      if (!isSilent) setLoading(false);
-      isInitialPlanLoadRef.current = false;
+      if (requestId === todayDataRequestRef.current) {
+        if (!isSilent) setLoading(false);
+        isInitialPlanLoadRef.current = false;
+      }
     }
   };
 
@@ -1493,7 +1489,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   const handleTaskChange = (index: number, field: string, value: any) => {
     const updated = [...tasks];
-    (updated[index] as any)[field] = value;
+    updated[index] = { ...updated[index], [field]: value };
 
     if (field === 'completionPercentage') {
       const pct = typeof value === 'number' ? value : parseInt(value, 10) || 0;
@@ -1768,6 +1764,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
   const handleSubmitPlan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (planSaveInFlightRef.current) return;
     const validTasks = tasks.filter((t) => t.title.trim().length > 0);
     if (validTasks.length === 0) {
       alert('يرجى إضافة مهمة واحدة على الأقل في الخطة اليومية');
@@ -1777,38 +1774,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     try {
       setSaving(true);
       const isInitialSubmission = !plan;
-      const res = await api.submitPlan({
-        generalFocus,
-        tasks: validTasks,
-        isSilent: !isInitialSubmission,
-      });
-      setPlan(res);
-      lastSavedPlanHashRef.current = getPlanHash(res.generalFocus || '', res.tasks || []);
-      setAutoSaveStatus('SAVED');
-      const nowStr = new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' });
-      setAutoSaveTime(nowStr);
-
-      if (res?.tasks && res.tasks.length > 0) {
-        setTasks(
-          res.tasks.map((t) => ({
-            id: t.id,
-            createdAt: t.createdAt,
-            displayOrder: t.displayOrder,
-            title: t.title,
-            description: t.description || '',
-            priority: t.priority,
-            estimatedHours: t.estimatedHours,
-            carriedFromTaskId: t.carriedFromTaskId,
-            carriedFromDate: t.carriedFromTask?.dailyPlan?.planDate,
-            initialCompletionPercentage: t.carriedFromTask?.completionPercentage ?? t.completionPercentage,
-            completionPercentage: t.completionPercentage,
-            status: t.status,
-            completionNote: t.completionNote,
-            isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : !!t.carriedFromTaskId,
-            todayTargetMet: t.todayTargetMet ?? false,
-          }))
-        );
-      }
+      await savePlanSnapshot(generalFocus, validTasks, !isInitialSubmission);
       // Clear plan draft
       localStorage.removeItem(planDraftKey);
       setPlanDraftSavedTime(null);
@@ -1818,7 +1784,6 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
       } else {
         showToast('تم حفظ وتحديث مهام الخطة بنجاح!');
       }
-      window.dispatchEvent(new CustomEvent('ports:todos_updated'));
     } catch (err) {
       console.error('Failed to submit plan', err);
       alert('حدث خطأ أثناء حفظ الخطة');
@@ -2748,7 +2713,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                 )}
                 {plan && (
                   <span
-                    className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-xl border flex items-center gap-1.5 transition-all shadow-2xs ${autoSaveStatus === 'SAVING'
+                    className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-xl border flex items-center gap-1.5 transition-all shadow-2xs ${autoSaveStatus === 'SAVING' || autoSaveStatus === 'PENDING'
                         ? 'bg-amber-50 text-amber-900 border-amber-300'
                         : autoSaveStatus === 'ERROR'
                           ? 'bg-red-50 text-red-900 border-red-300'
@@ -2759,6 +2724,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
                         <span>جاري الحفظ...</span>
+                      </>
+                    ) : autoSaveStatus === 'PENDING' ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>تعديلات بانتظار الحفظ...</span>
                       </>
                     ) : autoSaveStatus === 'ERROR' ? (
                       <>
@@ -3129,6 +3099,11 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4af37]" />
                         <span>جاري الحفظ تلقائياً...</span>
                       </>
+                    ) : autoSaveStatus === 'PENDING' ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>تعديلات بانتظار الحفظ...</span>
+                      </>
                     ) : autoSaveStatus === 'ERROR' ? (
                       <>
                         <AlertCircle className="w-3.5 h-3.5 text-red-600" />
@@ -3144,7 +3119,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
 
                   <button
                     type="submit"
-                    disabled={saving || autoSaveStatus === 'SAVING'}
+                    disabled={saving || planSaveInFlight}
                     className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#0c3e35] hover:bg-[#072923] text-white font-bold text-xs shadow-xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
                     title="حفظ فوري يدوي للتعديلات"
                   >

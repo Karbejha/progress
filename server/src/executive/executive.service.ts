@@ -6,7 +6,7 @@ import { Role, Priority, SummaryStatus, TaskStatus } from '@prisma/client';
 import { EventsGateway } from '../events/events.gateway';
 import { NotificationsService } from '../notifications/notifications.service';
 import { normalizePlanDate, progressDate, executiveTasksForDay, withDailyExecutiveProgress, planDailyRate, executiveDailyRate, averageDailyRate } from '../common/daily-progress';
-import { activeDirectorateWhere, activeExecutiveTaskWhere } from '../common/active-directorates';
+import { activeDirectorateWhere, activeExecutiveTaskWhere, reportingDirectorateWhere } from '../common/active-directorates';
 
 export interface GiveFeedbackDto {
   directorateId: string;
@@ -38,9 +38,9 @@ export class ExecutiveService {
   async getDailyOverview(dateStr?: string) {
     const targetDate = this.normalizeDate(dateStr);
 
-    // Exclude suspended directorates before counting activity or submission rates.
+    // Use the same active reporting population for every dashboard KPI.
     const directorates = await this.prisma.directorate.findMany({
-      where: activeDirectorateWhere,
+      where: reportingDirectorateWhere,
       orderBy: { displayOrder: 'asc' },
       include: {
         users: {
@@ -84,12 +84,7 @@ export class ExecutiveService {
       },
     });
 
-    // Filter out inactive/ghost directorates that have no assigned users and no operational activity for this target date
-    const activeDirectorates = directorates.filter(
-      (dir) => dir.users.length > 0 || dir.dailyPlans.length > 0 || dir.executiveTasks.length > 0
-    );
-
-    let totalDirectorates = activeDirectorates.length;
+    const totalDirectorates = directorates.length;
     let plansSubmittedCount = 0;
     let summariesSubmittedCount = 0;
     let totalTasksCount = 0;
@@ -98,7 +93,7 @@ export class ExecutiveService {
     let sumCompletionRates = 0;
     let activeReportingDirectorates = 0;
 
-    const items = activeDirectorates.map((dir) => {
+    const items = directorates.map((dir) => {
       const plan = dir.dailyPlans[0] || null;
       const summary = plan?.dailySummary || null;
       const planTasks = plan?.tasks || [];

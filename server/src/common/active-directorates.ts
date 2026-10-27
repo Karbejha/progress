@@ -9,6 +9,12 @@ export const activeDirectorateWhere: Prisma.DirectorateWhereInput = {
   ],
 };
 
+// Submission KPIs only cover directorates with an active reporting director.
+// Stored activity or users in other roles must not add to that population.
+export const reportingDirectorateWhere: Prisma.DirectorateWhereInput = {
+  users: { some: { role: Role.DIRECTOR, isActive: true } },
+};
+
 export const activeExecutiveTaskWhere: Prisma.ExecutiveTaskWhereInput = {
   directorate: activeDirectorateWhere,
   OR: [

@@ -263,6 +263,37 @@ test('PostgreSQL and HTTP: suspension excludes stored activity, reports and shar
       for (const value of Object.values(empty.kpis)) assert.equal(value, 0);
       for (const director of directors) await users.setActive(director.id, true);
     });
+
+    await t.test('stored activity and non-director accounts cannot add unstaffed directorates to any dashboard KPI', async () => {
+      const baseline = await overview();
+      const extraDirectorateIds = [];
+      try {
+        for (const role of [null, Role.OBSERVER, Role.ASSISTANT_DIRECTOR]) {
+          const dir = await prisma.directorate.create({ data: { code: randomUUID(), name: 'No active reporting director' } });
+          directorateIds.push(dir.id);
+          extraDirectorateIds.push(dir.id);
+          if (role) await createUser(role, dir.id);
+          const plan = await prisma.dailyPlan.create({ data: {
+            directorateId: dir.id, userId: general.id, planDate: date,
+            tasks: { create: { title: 'Stored task', completionPercentage: 100, status: 'COMPLETED' } },
+          } });
+          await prisma.dailySummary.create({ data: {
+            directorateId: dir.id, userId: general.id, dailyPlanId: plan.id, summaryDate: date,
+            summaryText: 'Stored urgent summary', overallCompletionRate: 100, urgentFlag: true,
+          } });
+          await prisma.executiveTask.create({ data: {
+            title: 'Stored assignment', directorateId: dir.id, assignedById: general.id,
+          } });
+        }
+        const result = await overview();
+        assert.deepEqual(result.kpis, baseline.kpis);
+        assert.deepEqual(result.directorates.map(dir => dir.directorateId), baseline.directorates.map(dir => dir.directorateId));
+        const historical = await executive.getDailyOverview(historicalKey);
+        assert.ok(historical.directorates.every(dir => !extraDirectorateIds.includes(dir.directorateId)));
+      } finally {
+        await prisma.directorate.deleteMany({ where: { id: { in: extraDirectorateIds } } });
+      }
+    });
   } finally {
     if (app) await app.close();
     if (announcement) await prisma.announcement.deleteMany({ where: { id: announcement.id } });

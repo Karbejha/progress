@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { User, ExecutiveOverviewResponse, DirectorateOverviewItem, Announcement, Attachment } from '../types';
+import { User, DirectorateOverviewItem, Announcement, Attachment } from '../types';
 import { api } from '../services/api';
 import { DirectorateCard } from './DirectorateCard';
 import { OrgHierarchyChart } from './OrgHierarchyChart';
@@ -38,6 +38,7 @@ import { AnnouncementDetailsModal, AnnouncementModalData } from './AnnouncementD
 import { ExecutiveTasksModal } from './ExecutiveTasksModal';
 import { CustomDatePicker } from './CustomDatePicker';
 import { getSocket } from '../lib/socket';
+import { useExecutiveOverview } from '../hooks/useExecutiveOverview';
 import { getReadAnnouncementIds, markAnnouncementAsRead, syncReadNotificationsFromServer } from '../lib/announcements';
 
 interface ExecutiveDashboardProps {
@@ -46,11 +47,10 @@ interface ExecutiveDashboardProps {
 
 export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentUser }) => {
   const isObserver = currentUser.role === 'OBSERVER';
-  const [data, setData] = useState<ExecutiveOverviewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
+  const { data, loading, loadOverview } = useExecutiveOverview(selectedDate);
   const [viewMode, setViewMode] = useState<'GRID' | 'CHART' | 'URGENT'>('GRID');
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | DirectorateSemanticStatus>('ALL');
@@ -87,9 +87,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       if (found) {
         setSelectedDirectorate(found);
       } else {
-        api.getExecutiveOverview(selectedDate).then((res) => {
-          setData(res);
-          const target = res.directorates?.find((d) => d.directorateId === dirId);
+        loadOverview().then((res) => {
+          const target = res?.directorates?.find((d) => d.directorateId === dirId);
           if (target) setSelectedDirectorate(target);
         }).catch(() => {});
       }
@@ -102,7 +101,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       window.removeEventListener('ports:open_tasks_modal', handleOpenTasksModal);
       window.removeEventListener('ports:open_directorate_detail', handleOpenDirectorateDetail);
     };
-  }, [data, selectedDate]);
+  }, [data, loadOverview]);
 
   useEffect(() => {
     setReadAnnouncementIds(getReadAnnouncementIds(currentUser.id));
@@ -118,7 +117,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   }, [currentUser.id]);
 
   useEffect(() => {
-    loadOverview();
     loadAnnouncements();
     loadTasksCount();
   }, [selectedDate]);
@@ -136,15 +134,16 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
   useEffect(() => {
     const socket = getSocket();
     const refreshStatus = () => {
-      loadOverview();
       loadTasksCount();
       loadAnnouncements();
     };
     window.addEventListener('ports:user_status_changed', refreshStatus);
     socket?.on('user:status-changed', refreshStatus);
+    socket?.on('connect', refreshStatus);
     return () => {
       window.removeEventListener('ports:user_status_changed', refreshStatus);
       socket?.off('user:status-changed', refreshStatus);
+      socket?.off('connect', refreshStatus);
     };
   }, [selectedDate]);
 
@@ -227,19 +226,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({ currentU
       socket.off('executive-task:updated', handleExecutiveTaskUpdated);
       socket.off('executive-task:deleted', handleExecutiveTaskDeleted);
     };
-  }, []);
-
-  const loadOverview = async () => {
-    try {
-      setLoading(true);
-      const res = await api.getExecutiveOverview(selectedDate);
-      setData(res);
-    } catch (err) {
-      console.error('Failed to load executive overview', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [loadOverview]);
 
   const loadAnnouncements = async () => {
     try {
