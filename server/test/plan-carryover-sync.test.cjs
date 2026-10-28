@@ -45,6 +45,11 @@ function fixture({ sameDaySibling = false } = {}) {
         return [...tasks.values()].filter(t => t.dailyPlanId === where.dailyPlanId);
       },
       update: async ({ where, data }) => {
+        const current = tasks.get(where.id);
+        if ((where.status !== undefined && where.status !== current.status) ||
+            (where.completionPercentage !== undefined && where.completionPercentage !== current.completionPercentage)) {
+          throw Object.assign(new Error('Progress changed concurrently'), { code: 'P2025' });
+        }
         planWrites.push({ id: where.id, data: { ...data } });
         const updated = { ...tasks.get(where.id), ...data };
         tasks.set(where.id, updated);
@@ -98,7 +103,8 @@ test('plan form saving cannot undo an edited copy with an unchanged completed si
   await state.service.createOrUpdatePlan(state.user, {
     planDate: '2026-09-20', isSilent: true,
     tasks: [
-      { ...state.tasks.get('child'), status: 'IN_PROGRESS', completionPercentage: 50 },
+      { ...state.tasks.get('child'), status: 'IN_PROGRESS', completionPercentage: 50,
+        expectedProgress: { status: 'COMPLETED', completionPercentage: 100 } },
       { ...state.tasks.get('sibling') },
     ],
   });
@@ -118,4 +124,96 @@ test('editing notes or re-saving unchanged progress does not change linked plan 
     assert.deepEqual(state.planWrites.map(write => write.id), ['child']);
     assert.equal(state.tasks.get('original').completionNote, 'Note for original');
   }
+});
+
+test('a stale full-plan save cannot reopen a completed carryover family', async () => {
+  for (const isSilent of [true, false]) {
+    const state = fixture();
+    // Avoid unrelated notification delivery in the explicit-submit case.
+    state.service.eventsGateway.emitPlanSubmitted = () => {};
+    await state.service.createOrUpdatePlan(state.user, {
+      planDate: '2026-09-20', isSilent,
+      tasks: [{ ...state.tasks.get('child'), title: 'Edited details from an old tab',
+        status: 'IN_PROGRESS', completionPercentage: 30,
+        expectedProgress: { status: 'IN_PROGRESS', completionPercentage: 30 } }],
+    });
+    for (const id of ['original', 'child', 'sibling']) {
+      assert.equal(state.tasks.get(id).status, 'COMPLETED');
+      assert.equal(state.tasks.get(id).completionPercentage, 100);
+    }
+    assert.equal(state.tasks.get('child').title, 'Edited details from an old tab');
+    const pending = await state.service.getIncompleteTasks(state.user, '2026-10-14');
+    assert.ok(!pending.some(task => task.id === 'child'));
+  }
+});
+
+test('a conflicting deliberate form edit preserves newer saved progress', async () => {
+  const state = fixture();
+  await state.service.createOrUpdatePlan(state.user, {
+    planDate: '2026-09-20', isSilent: true,
+    tasks: [{ ...state.tasks.get('child'), status: 'IN_PROGRESS', completionPercentage: 60,
+      expectedProgress: { status: 'IN_PROGRESS', completionPercentage: 30 } }],
+  });
+  assert.equal(state.tasks.get('child').completionPercentage, 100);
+  assert.deepEqual(state.familyReads, []);
+});
+
+test('older clients without a baseline cannot lower progress through full-plan saves', async () => {
+  const state = fixture();
+  await state.service.createOrUpdatePlan(state.user, {
+    planDate: '2026-09-20', isSilent: true,
+    tasks: [{ ...state.tasks.get('child'), status: 'IN_PROGRESS', completionPercentage: 30 }],
+  });
+  assert.equal(state.tasks.get('child').completionPercentage, 100);
+  assert.deepEqual(state.familyReads, []);
+});
+
+test('deliberately resetting a task to zero through the plan form reopens its family', async () => {
+  const state = fixture();
+  await state.service.createOrUpdatePlan(state.user, {
+    planDate: '2026-09-20', isSilent: true,
+    tasks: [{ ...state.tasks.get('child'), status: 'PENDING', completionPercentage: 0,
+      expectedProgress: { status: 'COMPLETED', completionPercentage: 100 } }],
+  });
+  for (const id of ['original', 'child', 'sibling']) {
+    assert.equal(state.tasks.get(id).status, 'PENDING');
+    assert.equal(state.tasks.get(id).completionPercentage, 0);
+  }
+});
+
+test('saving only 100 percent or only COMPLETED stores a consistent terminal state', async () => {
+  for (const change of [{ completionPercentage: 100 }, { status: 'COMPLETED' }]) {
+    const state = fixture();
+    for (const id of ['original', 'child', 'sibling']) {
+      Object.assign(state.tasks.get(id), { status: 'IN_PROGRESS', completionPercentage: 30 });
+    }
+    await state.service.updateTaskStatus(state.user, 'child', change);
+    for (const id of ['original', 'child', 'sibling']) {
+      assert.equal(state.tasks.get(id).status, 'COMPLETED');
+      assert.equal(state.tasks.get(id).completionPercentage, 100);
+    }
+  }
+});
+
+test('completion committed between reading and writing a plan cannot be undone by that save', async () => {
+  const state = fixture();
+  Object.assign(state.tasks.get('child'), { status: 'IN_PROGRESS', completionPercentage: 30 });
+  const update = state.service.prisma.planTask.update;
+  let raced = false;
+  state.service.prisma.planTask.update = async (args) => {
+    if (!raced) {
+      raced = true;
+      Object.assign(state.tasks.get('child'), { status: 'COMPLETED', completionPercentage: 100 });
+    }
+    return update(args);
+  };
+  await state.service.createOrUpdatePlan(state.user, {
+    planDate: '2026-09-20', isSilent: true,
+    tasks: [{ ...state.tasks.get('child'), title: 'Text survives the conflict',
+      status: 'IN_PROGRESS', completionPercentage: 60,
+      expectedProgress: { status: 'IN_PROGRESS', completionPercentage: 30 } }],
+  });
+  assert.equal(state.tasks.get('child').completionPercentage, 100);
+  assert.equal(state.tasks.get('child').title, 'Text survives the conflict');
+  assert.deepEqual(state.familyReads, []);
 });

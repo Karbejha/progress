@@ -474,6 +474,7 @@ class ApiService {
       completionPercentage?: number;
       status?: string;
       completionNote?: string;
+      expectedProgress?: { status: string; completionPercentage: number };
     }[];
   }): Promise<DailyPlan> {
     return this.request<DailyPlan>('/daily-plans/submit', {

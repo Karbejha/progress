@@ -24,6 +24,7 @@ export interface CreatePlanDto {
     completionPercentage?: number;
     status?: TaskStatus;
     completionNote?: string;
+    expectedProgress?: { status: TaskStatus; completionPercentage: number };
   }[];
 }
 
@@ -49,6 +50,51 @@ export class DailyPlansService {
 
   private normalizeDate(dateStr?: string): Date {
     return normalizePlanDate(dateStr);
+  }
+
+  private taskProgress(
+    changes: { status?: TaskStatus; completionPercentage?: number },
+    previous = { status: TaskStatus.PENDING as TaskStatus, completionPercentage: 0 },
+  ) {
+    if (changes.completionPercentage !== undefined && !Number.isFinite(changes.completionPercentage)) {
+      throw new BadRequestException('نسبة الإنجاز غير صالحة');
+    }
+    let completionPercentage = Math.min(100, Math.max(0, Math.round(changes.completionPercentage ?? previous.completionPercentage)));
+    let status = changes.status ?? (changes.completionPercentage === undefined
+      ? previous.status
+      : completionPercentage > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
+    if (status === TaskStatus.COMPLETED) completionPercentage = 100;
+    if (completionPercentage === 100 && status !== TaskStatus.CANCELLED) status = TaskStatus.COMPLETED;
+    return { status, completionPercentage };
+  }
+
+  private async newTaskData(task: CreatePlanDto['tasks'][number], index: number, directorateId: string) {
+    let progress = this.taskProgress(task);
+    if (task.carriedFromTaskId) {
+      const source = await this.prisma.planTask.findUnique({
+        where: { id: task.carriedFromTaskId },
+        include: { dailyPlan: true },
+      });
+      if (!source) throw new BadRequestException('المهمة الأصلية للترحيل غير موجودة');
+      if (source.dailyPlan.directorateId !== directorateId) {
+        throw new ForbiddenException('لا يمكن ترحيل مهمة من مديرية أخرى');
+      }
+      // A picker or imported plan may have been open before the source finished.
+      // New copies always inherit the saved total, never the stale form value.
+      progress = this.taskProgress({}, source);
+    }
+    return {
+      title: task.title.trim(),
+      description: task.description || '',
+      priority: task.priority || Priority.NORMAL,
+      estimatedHours: task.estimatedHours || 1.0,
+      displayOrder: index + 1,
+      ...progress,
+      completionNote: task.completionNote || null,
+      isMultiDay: task.isMultiDay !== undefined ? task.isMultiDay : !!task.carriedFromTaskId,
+      todayTargetMet: task.carriedFromTaskId ? false : (task.todayTargetMet || false),
+      carriedFromTaskId: task.carriedFromTaskId || null,
+    };
   }
 
   public calculateDailyFulfillmentRate(task: {
@@ -140,6 +186,7 @@ export class DailyPlansService {
 
       const matchedExistingIds = new Set<string>();
       const progressUpdates: LinkedPlanTask[] = [];
+      const progressFamilies = new Map<string, string[]>();
 
       for (let idx = 0; idx < dto.tasks.length; idx++) {
         const t = dto.tasks[idx];
@@ -158,67 +205,64 @@ export class DailyPlansService {
         if (existingTask) {
           matchedExistingIds.add(existingTask.id);
 
-          // Preserve completion info from existingTask unless explicitly provided with a positive value
-          const existingPct = existingTask.completionPercentage ?? 0;
-          const pct =
-            typeof t.completionPercentage === 'number' && t.completionPercentage > 0
-              ? Math.min(100, Math.max(0, t.completionPercentage))
-              : existingPct;
-
-          const status =
-            t.status && t.status !== TaskStatus.PENDING
-              ? t.status
-              : existingTask.status !== TaskStatus.PENDING
-              ? existingTask.status
-              : pct > 0
-              ? TaskStatus.IN_PROGRESS
-              : TaskStatus.PENDING;
+          const requested = this.taskProgress(t, existingTask);
+          const expected = t.expectedProgress;
+          const progressEdited = expected
+            ? requested.status !== expected.status || requested.completionPercentage !== expected.completionPercentage
+            : t.status !== undefined || t.completionPercentage !== undefined;
+          const baselineMatches = expected
+            ? expected.status === existingTask.status && expected.completionPercentage === existingTask.completionPercentage
+            // Older clients send the entire form without distinguishing edits.
+            // They may advance progress; reopening uses the task endpoint or a baseline.
+            : requested.completionPercentage >= existingTask.completionPercentage &&
+              (existingTask.status !== TaskStatus.CANCELLED || requested.status === TaskStatus.CANCELLED) &&
+              (existingTask.status !== TaskStatus.COMPLETED || requested.status === TaskStatus.COMPLETED);
+          const changeProgress = progressEdited && baselineMatches && (
+            requested.status !== existingTask.status || requested.completionPercentage !== existingTask.completionPercentage
+          );
 
           const completionNote =
             t.completionNote !== undefined && t.completionNote !== null && t.completionNote.trim().length > 0
               ? t.completionNote
               : existingTask.completionNote;
 
-          const updatedTask = await this.prisma.planTask.update({
-            where: { id: existingTask.id },
-            data: {
-              title: t.title.trim(),
-              description: t.description !== undefined ? t.description : existingTask.description,
-              priority: t.priority || existingTask.priority,
-              estimatedHours: t.estimatedHours !== undefined ? t.estimatedHours : existingTask.estimatedHours,
-              displayOrder: idx + 1,
-              status,
-              completionPercentage: pct,
-              completionNote,
-              isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : (existingTask.isMultiDay || !!t.carriedFromTaskId),
-              todayTargetMet: t.todayTargetMet !== undefined ? t.todayTargetMet : existingTask.todayTargetMet,
-              carriedFromTaskId: t.carriedFromTaskId || existingTask.carriedFromTaskId,
-            },
-          });
+          const details = {
+            title: t.title.trim(),
+            description: t.description !== undefined ? t.description : existingTask.description,
+            priority: t.priority || existingTask.priority,
+            estimatedHours: t.estimatedHours !== undefined ? t.estimatedHours : existingTask.estimatedHours,
+            displayOrder: idx + 1,
+            completionNote,
+            isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : (existingTask.isMultiDay || !!t.carriedFromTaskId),
+            todayTargetMet: t.todayTargetMet !== undefined ? t.todayTargetMet : existingTask.todayTargetMet,
+            carriedFromTaskId: t.carriedFromTaskId || existingTask.carriedFromTaskId,
+          };
+          let updatedTask;
+          let progressSaved = changeProgress;
+          try {
+            updatedTask = await this.prisma.planTask.update({
+              where: { id: existingTask.id, ...(changeProgress ? {
+                status: existingTask.status, completionPercentage: existingTask.completionPercentage,
+              } : {}) },
+              data: { ...details, ...(changeProgress ? requested : {}) },
+            });
+          } catch (error) {
+            if (!changeProgress || error.code !== 'P2025') throw error;
+            // Progress changed between the plan read and this atomic write.
+            // Save the text without restoring an obsolete percentage.
+            progressSaved = false;
+            updatedTask = await this.prisma.planTask.update({ where: { id: existingTask.id }, data: details });
+          }
 
-          if (status !== existingTask.status || pct !== existingTask.completionPercentage) {
+          if (progressSaved) {
             progressUpdates.push({ ...updatedTask, dailyPlan: existing });
           }
         } else {
           // New task added by director
-          const pct =
-            typeof t.completionPercentage === 'number' ? Math.min(100, Math.max(0, t.completionPercentage)) : 0;
-          const status = t.status || (pct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
-
           await this.prisma.planTask.create({
             data: {
               dailyPlanId: existing.id,
-              title: t.title.trim(),
-              description: t.description || '',
-              priority: t.priority || Priority.NORMAL,
-              estimatedHours: t.estimatedHours || 1.0,
-              displayOrder: idx + 1,
-              status,
-              completionPercentage: pct,
-              completionNote: t.completionNote || null,
-              isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : !!t.carriedFromTaskId,
-              todayTargetMet: t.todayTargetMet || false,
-              carriedFromTaskId: t.carriedFromTaskId || null,
+              ...await this.newTaskData(t, idx, directorateId),
             },
           });
         }
@@ -227,7 +271,7 @@ export class DailyPlansService {
       // Apply deliberate progress edits after the form's other rows have saved,
       // so an unchanged sibling row cannot restore stale completion afterward.
       for (const task of progressUpdates) {
-        await this.syncLinkedPlanTaskProgress(task);
+        progressFamilies.set(task.id, await this.syncLinkedPlanTaskProgress(task));
       }
 
       // Delete tasks that were explicitly removed by the director in the form
@@ -278,6 +322,7 @@ export class DailyPlansService {
           user.id, task.id, task.title,
           task.status === TaskStatus.COMPLETED || task.completionPercentage === 100,
           task.priority, task.description, task.completionPercentage,
+          progressFamilies.get(task.id),
         );
       }
 
@@ -335,23 +380,7 @@ export class DailyPlansService {
         generalFocus: dto.generalFocus,
         submittedAt: new Date(),
         tasks: {
-          create: dto.tasks.map((t, idx) => {
-            const pct = typeof t.completionPercentage === 'number' ? Math.min(100, Math.max(0, t.completionPercentage)) : 0;
-            const status = t.status || (pct > 0 ? TaskStatus.IN_PROGRESS : TaskStatus.PENDING);
-            return {
-              title: t.title,
-              description: t.description || '',
-              priority: t.priority || Priority.NORMAL,
-              estimatedHours: t.estimatedHours || 1.0,
-              displayOrder: idx + 1,
-              status,
-              completionPercentage: pct,
-              completionNote: t.completionNote || null,
-              isMultiDay: t.isMultiDay !== undefined ? t.isMultiDay : !!t.carriedFromTaskId,
-              todayTargetMet: t.todayTargetMet || false,
-              carriedFromTaskId: t.carriedFromTaskId || null,
-            };
-          }),
+          create: await Promise.all(dto.tasks.map((task, index) => this.newTaskData(task, index, directorateId))),
         },
       },
       include: {
@@ -431,20 +460,18 @@ export class DailyPlansService {
         description: dto.description !== undefined ? dto.description : task.description,
         priority: dto.priority !== undefined ? dto.priority : task.priority,
         estimatedHours: dto.estimatedHours !== undefined ? dto.estimatedHours : task.estimatedHours,
-        status: dto.status !== undefined ? dto.status : task.status,
-        completionPercentage:
-          dto.completionPercentage !== undefined ? dto.completionPercentage : task.completionPercentage,
+        ...this.taskProgress(dto, task),
         completionNote: dto.completionNote !== undefined ? dto.completionNote : task.completionNote,
         isMultiDay: dto.isMultiDay !== undefined ? dto.isMultiDay : task.isMultiDay,
         todayTargetMet: dto.todayTargetMet !== undefined ? dto.todayTargetMet : task.todayTargetMet,
       },
     });
 
-    const hasStatusChanged = dto.status !== undefined && dto.status !== task.status;
-    const hasPercentageChanged =
-      dto.completionPercentage !== undefined && dto.completionPercentage !== task.completionPercentage;
+    const hasStatusChanged = updatedTask.status !== task.status;
+    const hasPercentageChanged = updatedTask.completionPercentage !== task.completionPercentage;
+    let linkedTaskIds: string[] | undefined;
     if (hasStatusChanged || hasPercentageChanged) {
-      await this.syncLinkedPlanTaskProgress({ ...updatedTask, dailyPlan: task.dailyPlan });
+      linkedTaskIds = await this.syncLinkedPlanTaskProgress({ ...updatedTask, dailyPlan: task.dailyPlan });
     }
 
     // Recalculate summary completion rate if summary exists
@@ -522,6 +549,7 @@ export class DailyPlansService {
       updatedTask.priority,
       updatedTask.description,
       updatedTask.completionPercentage,
+      linkedTaskIds,
     );
     if (user.id && user.id !== targetUserId) {
       await this.syncPlanTaskToUserTodo(
@@ -532,6 +560,7 @@ export class DailyPlansService {
         updatedTask.priority,
         updatedTask.description,
         updatedTask.completionPercentage,
+        linkedTaskIds,
       );
     }
 
@@ -577,6 +606,7 @@ export class DailyPlansService {
         completionNote: related.completionNote || undefined,
       });
     }
+    return [...family.keys()];
   }
 
   async addQuickTask(
@@ -650,6 +680,7 @@ export class DailyPlansService {
     priority: Priority,
     description?: string | null,
     completionPercentage?: number,
+    linkedTaskIds: string[] = [taskId],
   ) {
     try {
       const cleanTitle = title.trim();
@@ -663,7 +694,7 @@ export class DailyPlansService {
       const linkedTodoId = todoIdMatch ? todoIdMatch[1].trim() : null;
 
       const orConditions: any[] = [
-        { description: { contains: taskId } },
+        ...linkedTaskIds.map((id) => ({ description: { contains: id } })),
         {
           userId,
           title: { equals: cleanTitle, mode: 'insensitive' },
@@ -674,10 +705,18 @@ export class DailyPlansService {
       }
 
       // Find existing todo by taskId in description, linked todo ID, or title
-      const existingTodos = await this.prisma.userTodo.findMany({
+      const candidates = await this.prisma.userTodo.findMany({
         where: {
           OR: orConditions,
         },
+      });
+      const familyIds = new Set([taskId, ...linkedTaskIds]);
+      const existingTodos = candidates.filter((todo) => {
+        const explicitIds = [...(todo.description?.matchAll(/\[معرف المهمة:\s*([^\]]+)\]/g) || [])]
+          .map((match) => match[1].trim());
+        return todo.id === linkedTodoId || explicitIds.some((id) => familyIds.has(id)) || (
+          explicitIds.length === 0 && todo.userId === userId && todo.title.trim().toLowerCase() === cleanTitle.toLowerCase()
+        );
       });
 
       if (existingTodos.length > 0) {
@@ -900,10 +939,12 @@ export class DailyPlansService {
       throw new NotFoundException('لا توجد خطة سابقة لهذه المديرية لاستنساخها');
     }
 
+    const incompleteIds = new Set((await this.getIncompleteTasks(user, currentDateStr)).map(task => task.id));
+
     return {
       previousDate: previousPlan.planDate,
       generalFocus: previousPlan.generalFocus,
-      tasks: previousPlan.tasks.map((t) => ({
+      tasks: previousPlan.tasks.filter(task => incompleteIds.has(task.id)).map((t) => ({
         id: t.id,
         title: t.title,
         description: t.description || '',

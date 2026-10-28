@@ -51,3 +51,15 @@ test('an event without a saved task ID cannot update a draft', () => {
     taskTitle: 'Shared title', status: 'COMPLETED', completionPercentage: 100,
   }), tasks);
 });
+
+test('a live update preserves an unsaved 100 percent completion and note', () => {
+  const saved = makeTasks();
+  const draft = [{ ...saved[0], status: 'COMPLETED', completionPercentage: 100, completionNote: 'Unsaved completion' }, ...saved.slice(1)];
+  const result = applyPlanTaskUpdate(draft, {
+    taskId: 'current-copy', status: 'IN_PROGRESS', completionPercentage: 30, completionNote: 'Other session note',
+  }, saved);
+  assert.equal(result[0].status, 'COMPLETED');
+  assert.equal(result[0].completionPercentage, 100);
+  assert.equal(result[0].completionNote, 'Unsaved completion');
+  assert.strictEqual(result[1], saved[1]);
+});

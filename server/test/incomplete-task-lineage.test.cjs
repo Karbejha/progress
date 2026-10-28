@@ -29,6 +29,27 @@ async function pending(plans) {
   return service.getIncompleteTasks({ directorateId }, targetDate);
 }
 
+test('cloning the previous plan excludes completed, cancelled and stale closed carryovers', async () => {
+  const plans = [
+    plan('2026-09-17', [task('closed-original', { status: 'COMPLETED', completionPercentage: 100 })]),
+    plan('2026-09-20', [
+      task('finished', { title: 'Finished', status: 'COMPLETED', completionPercentage: 100 }),
+      task('percent-only', { title: 'Percent only', completionPercentage: 100 }),
+      task('cancelled', { title: 'Cancelled', status: 'CANCELLED' }),
+      task('stale', { title: 'Renamed stale copy', carriedFromTaskId: 'closed-original' }),
+      task('pending', { title: 'Still working', completionPercentage: 60 }),
+    ]),
+  ];
+  const service = new DailyPlansService({ dailyPlan: {
+    findFirst: async () => plans[1],
+    findMany: async ({ where }) => plans.filter(p =>
+      where.planDate.gte ? p.planDate >= where.planDate.gte : p.planDate < where.planDate.lt
+    ).sort((a, b) => b.planDate - a.planDate),
+  } }, {}, {});
+  const cloned = await service.clonePreviousPlan({ directorateId }, targetDate);
+  assert.deepEqual(cloned.tasks.map(t => [t.id, t.completionPercentage]), [['pending', 60]]);
+});
+
 test('a stale 30% carryover of a completed original is excluded without database writes', async () => {
   assert.deepEqual(await pending([
     plan('2026-09-17', [task('original', { status: 'COMPLETED', completionPercentage: 100 })]),

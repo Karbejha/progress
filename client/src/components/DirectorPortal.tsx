@@ -58,7 +58,7 @@ import { getCleanTodoDescription } from './TodosView';
 import { workingDateKey, executiveDailyProgress, LocalExecutiveTaskState, mergeExecutiveTaskStates, acceptSavedExecutiveTaskState } from '../lib/executiveDailyProgress';
 import { newestTaskEntries, newestTasksFirst } from '../lib/taskOrder';
 import { applyPlanTaskUpdate } from '../lib/planTaskUpdates';
-import { PLAN_AUTOSAVE_DELAY_MS, PlanDraftTask, ensurePlanTaskDraftKeys, acceptSavedPlanTasks, getPlanHash } from '../lib/planAutosave';
+import { PLAN_AUTOSAVE_DELAY_MS, PlanDraftTask, ensurePlanTaskDraftKeys, preparePlanTasksForSave, acceptSavedPlanTasks, getPlanHash } from '../lib/planAutosave';
 
 interface DirectorPortalProps {
   currentUser: User;
@@ -192,7 +192,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     setAutoSaveStatus('SAVING');
     ++todayDataRequestRef.current;
     try {
-      const res = await api.submitPlan({ generalFocus: focus, tasks: submittedTasks, isSilent });
+      const payloadTasks = preparePlanTasksForSave(submittedTasks, planEditorRef.current.plan?.tasks || []);
+      const res = await api.submitPlan({ generalFocus: focus, tasks: payloadTasks, isSilent });
       ++todayDataRequestRef.current;
       const savedSnapshot = acceptSavedPlanTasks(submittedTasks, submittedTasks, res.tasks);
       lastSavedPlanHashRef.current = getPlanHash(focus, savedSnapshot);
@@ -530,6 +531,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
     // Real-time synchronization of daily plan tasks (including when updated from personal agenda)
     const handlePlanTaskUpdated = (payload: any) => {
       if (payload.directorateId === currentUser.directorateId) {
+        const savedTasks = planEditorRef.current.plan?.tasks;
         setPlan((prevPlan) => {
           if (!prevPlan) return prevPlan;
           const nextTasks = applyPlanTaskUpdate(prevPlan.tasks, payload);
@@ -545,7 +547,7 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
         });
 
         setTasks((prevTasks) => {
-          const nextTasks = applyPlanTaskUpdate(prevTasks, payload);
+          const nextTasks = applyPlanTaskUpdate(prevTasks, payload, savedTasks);
           if (nextTasks === prevTasks) return prevTasks;
           return nextTasks;
         });
@@ -1540,6 +1542,8 @@ export const DirectorPortal: React.FC<DirectorPortalProps> = ({ currentUser }) =
           }))
         );
         showToast('تم استيراد مهام آخر خطة سابقة بنجاح!');
+      } else {
+        showToast('لا توجد مهام غير مكتملة في الخطة السابقة لترحيلها');
       }
     } catch (err: any) {
       alert(err.message || 'لا توجد خطة سابقة لهذه المديرية لاستيرادها');

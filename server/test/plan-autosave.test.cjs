@@ -7,6 +7,7 @@ const {
   PLAN_AUTOSAVE_DELAY_MS,
   ensurePlanTaskDraftKeys,
   acceptSavedPlanTasks,
+  preparePlanTasksForSave,
 } = require('../../client/src/lib/planAutosave');
 
 const makeTask = (extra = {}) => ({
@@ -30,6 +31,42 @@ test('a late save assigns IDs to the right drafts without replacing edits or del
   assert.equal(result[1].id, undefined);
   assert.equal(result[1].title, 'Added while saving');
   assert.equal(submitted[1].title, 'Original title');
+});
+
+test('full-plan submissions include the last observed saved progress for existing rows', () => {
+  const tasks = [makeTask({ id: 'saved', status: 'COMPLETED', completionPercentage: 100 }), makeTask()];
+  const payload = preparePlanTasksForSave(tasks, [makeTask({ id: 'saved', status: 'IN_PROGRESS', completionPercentage: 30 })]);
+  assert.deepEqual(payload[0].expectedProgress, { status: 'IN_PROGRESS', completionPercentage: 30 });
+  assert.equal(payload[0].completionPercentage, 100);
+  assert.equal(payload[1].expectedProgress, undefined);
+  assert.equal(tasks[0].expectedProgress, undefined, 'The draft is not mutated');
+});
+
+test('a save response reconciles authoritative progress without replacing later text or progress edits', () => {
+  const submitted = ensurePlanTaskDraftKeys([makeTask({ id: 'saved', status: 'IN_PROGRESS', completionPercentage: 30 })]);
+  const saved = [{ ...submitted[0], status: 'COMPLETED', completionPercentage: 100 }];
+  const current = [{ ...submitted[0], title: 'Typed while saving' }];
+  const accepted = acceptSavedPlanTasks(current, submitted, saved);
+  assert.equal(accepted[0].title, 'Typed while saving');
+  assert.equal(accepted[0].status, 'COMPLETED');
+  assert.equal(accepted[0].completionPercentage, 100);
+  const laterEdit = [{ ...current[0], completionPercentage: 60 }];
+  assert.equal(acceptSavedPlanTasks(laterEdit, submitted, saved)[0].completionPercentage, 60);
+  const laterEvent = [{ ...current[0], status: 'COMPLETED', completionPercentage: 100 }];
+  assert.equal(acceptSavedPlanTasks(laterEvent, submitted, submitted)[0].completionPercentage, 100);
+});
+
+test('a rejected stale save cannot rebase a later draft into reopening the completed task on retry', () => {
+  const submitted = ensurePlanTaskDraftKeys([makeTask({ id: 'saved', status: 'IN_PROGRESS', completionPercentage: 30 })]);
+  const current = [{ ...submitted[0], completionPercentage: 60 }];
+  const saved = [{ ...submitted[0], status: 'COMPLETED', completionPercentage: 100 }];
+  const accepted = acceptSavedPlanTasks(current, submitted, saved);
+  assert.equal(accepted[0].completionPercentage, 60, 'A later edit remains visible');
+  assert.deepEqual(preparePlanTasksForSave(accepted, saved)[0].expectedProgress, {
+    status: 'IN_PROGRESS', completionPercentage: 30,
+  }, 'The next autosave still identifies its stale baseline');
+  const retried = acceptSavedPlanTasks(accepted, accepted, saved);
+  assert.equal(retried[0].completionPercentage, 100);
 });
 
 // Exercise the component's real effects and event handlers with a tiny hook
@@ -172,11 +209,12 @@ function createPortal(initialPlan = {
       now = target;
       await settle();
     },
-    async resolveSave(index) {
+    async resolveSave(index, authoritativeTasks) {
       const save = saves[index];
       serverPlan = { ...serverPlan, generalFocus: save.payload.generalFocus,
         tasks: save.payload.tasks.map((task, taskIndex) => ({ ...task, id: task.id || `new-${index}-${taskIndex}`, displayOrder: taskIndex + 1 })),
       };
+      if (authoritativeTasks) serverPlan.tasks = authoritativeTasks;
       save.resolve(structuredClone(serverPlan));
       await settle();
     },
@@ -187,6 +225,12 @@ function createPortal(initialPlan = {
     async refresh() { socketHandlers.get('todo:updated')({ userId: currentUser.id }); await settle(); },
     holdRead() { pendingRead = deferred(); return pendingRead; },
     async taskEvent(update) { socketHandlers.get('task:updated')({ directorateId: currentUser.directorateId, ...update }); await settle(); },
+    async progress(percentage) {
+      const input = findAll((node) => node.type === 'input' && node.props.type === 'range')[0];
+      assert.ok(input, 'The plan completion slider exists');
+      input.props.onChange({ target: { value: String(percentage) } });
+      await settle();
+    },
     async addTask() {
       const textOf = (node) => JSON.stringify(node.props.children);
       findAll((node) => node.type === 'button' && textOf(node).includes('إضافة مهمة أخرى'))[0].props.onClick();
@@ -273,4 +317,39 @@ test('a live progress event does not acknowledge unrelated unsaved text', async 
   assert.equal(app.saves.length, 1);
   assert.equal(app.saves[0].payload.tasks[0].title, 'Unsaved title');
   assert.equal(app.saves[0].payload.tasks[0].completionPercentage, 30);
+});
+
+test('a live event cannot discard a local 100 percent edit before autosave', async () => {
+  const app = createPortal();
+  await app.settle();
+  await app.progress(100);
+  await app.taskEvent({ taskId: 'saved-task', status: 'IN_PROGRESS', completionPercentage: 30 });
+  await app.tick(PLAN_AUTOSAVE_DELAY_MS);
+  assert.equal(app.saves[0].payload.tasks[0].completionPercentage, 100);
+  assert.deepEqual(app.saves[0].payload.tasks[0].expectedProgress, { status: 'IN_PROGRESS', completionPercentage: 30 });
+});
+
+test('a preserved server completion is accepted without another autosave of stale progress', async () => {
+  const app = createPortal();
+  await app.settle();
+  await app.change('Original title', 'Updated title');
+  await app.tick(PLAN_AUTOSAVE_DELAY_MS);
+  await app.resolveSave(0, [makeTask({ id: 'saved-task', title: 'Updated title', status: 'COMPLETED', completionPercentage: 100 })]);
+  await app.tick(PLAN_AUTOSAVE_DELAY_MS * 2);
+  assert.equal(app.saves.length, 1);
+  assert.deepEqual(app.titles(), ['Updated title']);
+});
+
+test('refreshing a dirty form retains the progress baseline observed by that form', async () => {
+  const app = createPortal();
+  await app.settle();
+  await app.change('Original title', 'Unsaved text');
+  const read = app.holdRead();
+  await app.refresh();
+  read.resolve({ id: 'plan', generalFocus: 'Original focus',
+    tasks: [makeTask({ id: 'saved-task', status: 'COMPLETED', completionPercentage: 100 })] });
+  await app.settle();
+  await app.tick(PLAN_AUTOSAVE_DELAY_MS);
+  assert.equal(app.saves[0].payload.tasks[0].completionPercentage, 0);
+  assert.deepEqual(app.saves[0].payload.tasks[0].expectedProgress, { status: 'PENDING', completionPercentage: 0 });
 });
