@@ -32,7 +32,7 @@ async function main() {
     {
       code: 'IMSAS',
       name: 'مكتب التدقيق الإلزامي للدول الأعضاء في المنظمة البحرية الدولية (IMSAS)',
-      category: 'EXECUTIVE',
+      category: 'OPERATIONAL',
       description: 'متابعة الامتثال للاتفاقيات الدولية والمعايير الصادرة عن المنظمة البحرية الدولية IMO.',
       icon: 'Globe',
       displayOrder: 2,
@@ -127,7 +127,7 @@ async function main() {
     },
     {
       code: 'FISHERIES_LICENSES',
-      name: 'مديرية المصائد والرخص',
+      name: 'مديرية المصايد والرخص',
       category: 'OPERATIONAL',
       description: 'تنظيم شؤون الصيد البحري وإصدار رخص المراكب والصيادين وحماية البيئة البحرية.',
       icon: 'Fish',
@@ -135,7 +135,7 @@ async function main() {
     },
     {
       code: 'INFORMATICS',
-      name: 'مديرية المعلوماتية',
+      name: 'مديرية المعلوماتية و التحول الرقمي',
       category: 'TECHNICAL',
       description: 'تطوير البرمجيات وإدارة قواعد البيانات والتحول الرقمي للأنظمة البحرية.',
       icon: 'Cpu',
@@ -167,7 +167,7 @@ async function main() {
     },
     {
       code: 'PORT_AFFAIRS',
-      name: 'مديرية شؤون الموانئ والمراسي',
+      name: 'مديرية شؤون الموانئ',
       category: 'OPERATIONAL',
       description: 'الإشراف على حركة الموانئ التجارية وموانئ الصيد والنزهة وإدارة المراسي والمخافر.',
       icon: 'Anchor',
@@ -246,8 +246,8 @@ async function main() {
     { code: 'FINANCE', username: 'dir_finance', title: 'مدير المالية', email: 'finance@ports.gov.sy' },
     { code: 'INSPECTION', username: 'dir_inspection', title: 'مدير التفتيش البحري', email: 'inspection@ports.gov.sy' },
     { code: 'MAINTENANCE', username: 'dir_maintenance', title: 'مدير المنشآت والصيانة', email: 'maintenance@ports.gov.sy' },
-    { code: 'FISHERIES_LICENSES', username: 'dir_fisheries', title: 'مدير المصائد والرخص', email: 'fisheries@ports.gov.sy' },
-    { code: 'INFORMATICS', username: 'dir_informatics', title: 'مديرة المعلوماتية', email: 'informatics@ports.gov.sy' },
+    { code: 'FISHERIES_LICENSES', username: 'dir_fisheries', title: 'مدير المصايد والرخص', email: 'fisheries@ports.gov.sy' },
+    { code: 'INFORMATICS', username: 'dir_informatics', title: 'مديرة المعلوماتية و التحول الرقمي', email: 'informatics@ports.gov.sy' },
     { code: 'VEHICLES', username: 'dir_vehicles', title: 'مدير الآليات', email: 'vehicles@ports.gov.sy' },
     { code: 'ADMIN_DEV', username: 'dir_admin_dev', title: 'مديرة التنمية الإدارية', email: 'admin.dev@ports.gov.sy' },
     { code: 'LEGAL', username: 'dir_legal', title: 'مديرة الشؤون القانونية', email: 'legal@ports.gov.sy' },

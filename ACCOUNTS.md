@@ -40,8 +40,8 @@
 | 11 | **مديرية المالية** | `dir_finance` | `finance@ports.gov.sy` | `password123` |
 | 12 | **مديرية التفتيش البحري** | `dir_inspection` | `inspection@ports.gov.sy` | `password123` |
 | 13 | **مديرية المنشآت والصيانة** | `dir_maintenance` | `maintenance@ports.gov.sy` | `password123` |
-| 14 | **مديرية المصائد والرخص** | `dir_fisheries` | `fisheries@ports.gov.sy` | `password123` |
-| 15 | **مديرية المعلوماتية** | `dir_informatics` | `informatics@ports.gov.sy` | `password123` |
+| 14 | **مديرية المصايد والرخص** | `dir_fisheries` | `fisheries@ports.gov.sy` | `password123` |
+| 15 | **مديرية المعلوماتية و التحول الرقمي** | `dir_informatics` | `informatics@ports.gov.sy` | `password123` |
 | 16 | **مديرية الآليات** | `dir_vehicles` | `vehicles@ports.gov.sy` | `password123` |
 | 17 | **مديرية التنمية الإدارية** | `dir_admin_dev` | `admin.dev@ports.gov.sy` | `password123` |
 | 18 | **مديرية الشؤون القانونية** | `dir_legal` | `legal@ports.gov.sy` | `password123` |

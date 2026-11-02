@@ -25,6 +25,9 @@ else
     echo "⏭️ Database seed skipped."
 fi
 
+echo "🔄 Updating directorate names and IMSAS category..."
+npx prisma db execute --file ./prisma/update-directorate-labels.sql --schema ./prisma/schema.prisma
+
 echo "🚀 Launching Nest.js Application..."
 
 if [ -f "./dist/src/main.js" ]; then
