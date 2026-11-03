@@ -4,6 +4,7 @@ import React from 'react';
 import { DirectorateOverviewItem } from '../types';
 import { getDirectorateStatus } from '../lib/directorateStatus';
 import { DynamicIcon } from './Icons';
+import { TextTooltip } from './TextTooltip';
 import { CheckCircle2, Clock, AlertTriangle, MessageSquare, Eye, FileText } from 'lucide-react';
 
 interface DirectorateCardProps {
@@ -167,10 +168,10 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
             <DynamicIcon name={item.icon} className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold text-[#0c3e35] group-hover:text-[#072923] transition line-clamp-2 leading-snug">
+            <TextTooltip as="h3" content={item.directorateName} className="text-sm font-bold text-[#0c3e35] group-hover:text-[#072923] transition line-clamp-2 leading-snug">
               {item.directorateName}
-            </h3>
-            <p className="text-xs text-[#5e736e] mt-1 font-medium truncate">
+            </TextTooltip>
+            <TextTooltip as="p" content={`المدير المسؤول: ${item.director?.fullName?.trim() || item.director?.title?.trim() || 'غير محدد'}`} className="text-xs text-[#5e736e] mt-1 font-medium truncate">
               المدير المسؤول: {item.director?.fullName?.trim() ? (
                 <strong className="text-[#0c3e35] font-bold">{item.director.fullName}</strong>
               ) : item.director?.title?.trim() ? (
@@ -178,7 +179,7 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
               ) : (
                 <span className="text-[#8daaa2] font-normal">غير محدد</span>
               )}
-            </p>
+            </TextTooltip>
           </div>
         </div>
 
@@ -192,12 +193,16 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
 
         {/* Daily Focus / Tasks / Executive Tasks Preview */}
         {item.generalFocus ? (
-          <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
+          <TextTooltip as="div" content={`التركيز: ${item.generalFocus}`} className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
             <span className="text-[#0c3e35] font-bold ml-1">التركيز:</span>
             {item.generalFocus}
-          </div>
+          </TextTooltip>
         ) : (item.tasks && item.tasks.length > 0) || (item.executiveTasks && item.executiveTasks.length > 0) ? (
-          <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
+          <TextTooltip
+            as="div"
+            content={`${item.executiveTasks?.length ? 'التكليفات' : 'المهام'}: ${[...(item.executiveTasks || []), ...(item.tasks || [])].map((task) => task.title).join(' • ')}`}
+            className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2"
+          >
             {item.executiveTasks && item.executiveTasks.length > 0 ? (
               <>
                 <span className="text-[#0c3e35] font-bold ml-1">التكليفات:</span>
@@ -210,17 +215,17 @@ export const DirectorateCard: React.FC<DirectorateCardProps> = ({ item, onSelect
                 {item.tasks!.map((t) => t.title).join(' • ')}
               </>
             )}
-          </div>
+          </TextTooltip>
         ) : item.hasPlan ? (
           <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             <span>تم تسجيل واعتماد الخطة الصباحية</span>
           </div>
         ) : item.hasSummary ? (
-          <div className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
+          <TextTooltip as="div" content={`ملخص الإنجاز: ${item.summaryText || 'تم توثيق الإنجاز اليومي'}`} className="p-2.5 rounded-xl bg-[#edece4]/70 border border-[#e5e4dc] mb-4 text-xs text-[#0c3e35] line-clamp-2">
             <span className="text-[#0c3e35] font-bold ml-1">ملخص الإنجاز:</span>
             {item.summaryText || 'تم توثيق الإنجاز اليومي'}
-          </div>
+          </TextTooltip>
         ) : null}
       </div>
 
