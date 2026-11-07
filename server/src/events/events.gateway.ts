@@ -12,6 +12,7 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Notification, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthSessionPayload, isCurrentAuthSession } from '../auth/auth-session';
 
 type SocketUser = { id: string; role: Role; directorateId: string | null; isActive: boolean };
 
@@ -38,8 +39,8 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
             ? authorization.slice(7)
             : null);
         if (typeof token !== 'string' || !token) throw new Error('Missing token');
-        const payload = await this.jwtService.verifyAsync<{ sub: string; exp?: number }>(token);
-        if (typeof payload.sub !== 'string' || !payload.sub) throw new Error('Missing user');
+        const payload = await this.jwtService.verifyAsync<AuthSessionPayload>(token);
+        if (!isCurrentAuthSession(payload)) throw new Error('Invalid session');
         const user = await this.findSocketUser(payload.sub);
         if (!user?.isActive) throw new Error('Inactive user');
         client.data.authenticatedUser = user;

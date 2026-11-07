@@ -45,6 +45,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'منظومة متابعة الخطط والإنجاز اليومي | المديرية العامة للموانئ',
   description: 'المنظومة التنفيذية لمتابعة وإدارة الخطط الصباحية وملخصات الإنجاز لمديريات ومكاتب المديرية العامة للموانئ',
+  robots: {
+    index: false,
+    follow: false,
+    nosnippet: true,
+    noimageindex: true,
+  },
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

@@ -6,6 +6,7 @@ const { NestFactory } = require('@nestjs/core');
 const { JwtService } = require('@nestjs/jwt');
 const { PrismaClient } = require('@prisma/client');
 const { EventsGateway } = require('../src/events/events.gateway');
+const { AUTH_SESSION_VERSION } = require('../src/auth/auth-session');
 const { PrismaService } = require('../src/prisma/prisma.service');
 const { NotificationsService } = require('../src/notifications/notifications.service');
 
@@ -70,7 +71,7 @@ test('Nest/Socket.IO: authenticated persisted notifications stay isolated and ob
     const makeSocket = (user) => {
       const socket = io(baseUrl, {
         transports: ['websocket'], autoConnect: false, reconnection: false,
-        auth: user ? { token: jwt.sign({ sub: user.id }, { expiresIn: '1h' }) } : {},
+        auth: user ? { token: jwt.sign({ sub: user.id, sessionVersion: AUTH_SESSION_VERSION }, { expiresIn: '1h' }) } : {},
       });
       sockets.push(socket);
       return socket;

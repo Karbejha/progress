@@ -175,7 +175,7 @@ class ApiService {
   }
 
   // Auth endpoints
-  async login(payload: { usernameOrEmail: string; password?: string; directUserId?: string }) {
+  async login(payload: { usernameOrEmail: string; password: string }) {
     const res = await this.request<{ access_token: string; user: User }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),

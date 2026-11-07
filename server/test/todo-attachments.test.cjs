@@ -14,6 +14,7 @@ const { ExecutiveTasksService } = require('../src/executive-tasks/executive-task
 const { ExecutiveService } = require('../src/executive/executive.service');
 const { JwtAuthGuard } = require('../src/auth/jwt-auth.guard');
 const { JwtStrategy } = require('../src/auth/jwt.strategy');
+const { AUTH_SESSION_VERSION } = require('../src/auth/auth-session');
 const { JwtService } = require('@nestjs/jwt');
 const { attachmentMimeType, MAX_ATTACHMENT_SIZE } = require('../src/attachments/attachment-files');
 const { saveTodoAttachments, todoFileError } = require('../../client/src/lib/todoAttachments');
@@ -100,7 +101,7 @@ test('PostgreSQL and HTTP: private attachments survive refresh and progress edit
     await app.listen(0, '127.0.0.1');
     baseUrl = await app.getUrl();
     const request = (endpoint, options = {}, user = users[0]) => fetch(baseUrl + endpoint, {
-      ...options, headers: { Authorization: `Bearer ${jwt.sign({ sub: user.id, email: user.email, role: user.role })}`, ...options.headers },
+      ...options, headers: { Authorization: `Bearer ${jwt.sign({ sub: user.id, email: user.email, role: user.role, sessionVersion: AUTH_SESSION_VERSION })}`, ...options.headers },
     });
     const jsonRequest = (endpoint, method, data, user) => request(endpoint, {
       method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
@@ -134,7 +135,7 @@ test('PostgreSQL and HTTP: private attachments survive refresh and progress edit
     });
     await t.test('preview and download use the correct MIME type and filename', async () => {
       assert.equal((await fetch(`${baseUrl}/attachments/${pdf.id}/download`)).status, 401);
-      const token = jwt.sign({ sub: users[0].id });
+      const token = jwt.sign({ sub: users[0].id, sessionVersion: AUTH_SESSION_VERSION });
       assert.equal((await fetch(`${baseUrl}/attachments/${pdf.id}/download?token=${token}`)).status, 200);
       const preview = await request(`/attachments/${image.id}/download`);
       assert.equal(preview.status, 200);

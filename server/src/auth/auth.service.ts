@@ -2,6 +2,8 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
+import { LoginDto } from './dto/login.dto';
+import { AUTH_SESSION_VERSION } from './auth-session';
 
 @Injectable()
 export class AuthService {
@@ -11,11 +13,17 @@ export class AuthService {
   ) {}
 
   async validateUser(emailOrUsername: string, pass: string): Promise<any> {
+    if (typeof emailOrUsername !== 'string' || !emailOrUsername.trim() ||
+        typeof pass !== 'string' || !pass) {
+      return null;
+    }
+
+    const identifier = emailOrUsername.trim().toLowerCase();
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [
-          { email: emailOrUsername.toLowerCase() },
-          { username: emailOrUsername.toLowerCase() },
+          { email: identifier },
+          { username: identifier },
         ],
       },
       include: {
@@ -33,17 +41,8 @@ export class AuthService {
     return null;
   }
 
-  async login(loginDto: { usernameOrEmail: string; password?: string; directUserId?: string }) {
-    let user: any;
-
-    if (loginDto.directUserId) {
-      user = await this.prisma.user.findUnique({
-        where: { id: loginDto.directUserId },
-        include: { directorate: true },
-      });
-    } else {
-      user = await this.validateUser(loginDto.usernameOrEmail, loginDto.password || '');
-    }
+  async login(loginDto: LoginDto) {
+    const user = await this.validateUser(loginDto?.usernameOrEmail, loginDto?.password);
 
     if (!user) {
       throw new UnauthorizedException('اسم المستخدم أو كلمة المرور غير صحيحة');
@@ -57,6 +56,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       directorateId: user.directorateId,
+      sessionVersion: AUTH_SESSION_VERSION,
     };
 
     const token = this.jwtService.sign(payload);

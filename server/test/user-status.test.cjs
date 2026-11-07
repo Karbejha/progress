@@ -11,6 +11,7 @@ const { UsersController } = require('../src/users/users.controller');
 const { AuthService } = require('../src/auth/auth.service');
 const { AuthController } = require('../src/auth/auth.controller');
 const { JwtStrategy } = require('../src/auth/jwt.strategy');
+const { AUTH_SESSION_VERSION } = require('../src/auth/auth-session');
 const { JwtAuthGuard } = require('../src/auth/jwt-auth.guard');
 const { RolesGuard } = require('../src/auth/roles.guard');
 const { ExecutiveService } = require('../src/executive/executive.service');
@@ -44,7 +45,7 @@ test('both login paths and existing JWT sessions reject a disabled account', asy
   const auth = new AuthService(prisma, { sign: () => { signed = true; } });
   await assert.rejects(auth.login({ usernameOrEmail: user.username, password: 'test-password' }), { status: 401 });
   await assert.rejects(auth.login({ directUserId: user.id }), { status: 401 });
-  await assert.rejects(new JwtStrategy(prisma).validate({ sub: user.id }), { status: 401 });
+  await assert.rejects(new JwtStrategy(prisma).validate({ sub: user.id, sessionVersion: AUTH_SESSION_VERSION }), { status: 401 });
   assert.equal(signed, false);
   assert.equal(await auth.validateUser(user.username, 'incorrect-password'), null);
 });
@@ -130,10 +131,10 @@ test('PostgreSQL and HTTP: suspension excludes stored activity, reports and shar
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.listen(0, '127.0.0.1');
     const baseUrl = await app.getUrl();
-    const targetToken = jwt.sign({ sub: target.id });
+    const targetToken = jwt.sign({ sub: target.id, sessionVersion: AUTH_SESSION_VERSION });
     const request = (path, actor, data, token) => fetch(baseUrl + path, {
       method: data === undefined ? 'GET' : 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(actor || token ? { Authorization: `Bearer ${token || jwt.sign({ sub: actor.id })}` } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(actor || token ? { Authorization: `Bearer ${token || jwt.sign({ sub: actor.id, sessionVersion: AUTH_SESSION_VERSION })}` } : {}) },
       ...(data === undefined ? {} : { body: JSON.stringify(data) }),
     });
     const statusPath = `/users/${target.id}/status`;
@@ -184,9 +185,9 @@ test('PostgreSQL and HTTP: suspension excludes stored activity, reports and shar
 
     await t.test('saved tokens, password login and direct account switching cannot bypass suspension', async () => {
       assert.equal((await request('/auth/me', null, undefined, targetToken)).status, 401);
-      for (const payload of [{ usernameOrEmail: target.username, password: 'test-password' }, { directUserId: target.id }]) {
+      for (const [payload, status] of [[{ usernameOrEmail: target.username, password: 'test-password' }, 401], [{ directUserId: target.id }, 400]]) {
         const response = await fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        assert.equal(response.status, 401);
+        assert.equal(response.status, status);
       }
       assert.equal((await auth.getAllUsersForSwitch()).some((user) => user.id === target.id), false);
       const managed = (await users.findAll()).find((user) => user.id === target.id);

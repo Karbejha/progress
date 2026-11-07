@@ -13,6 +13,19 @@ const nextConfig = {
   ...(isExport
     ? {}
     : {
+        async headers() {
+          return [
+            {
+              source: '/:path*',
+              headers: [
+                {
+                  key: 'X-Robots-Tag',
+                  value: 'noindex, nofollow, nosnippet, noimageindex',
+                },
+              ],
+            },
+          ];
+        },
         async rewrites() {
           return [
             {

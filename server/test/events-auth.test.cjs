@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { JwtService } = require('@nestjs/jwt');
 const { EventsGateway } = require('../src/events/events.gateway');
+const { AUTH_SESSION_VERSION } = require('../src/auth/auth-session');
 
 function fixture() {
   const users = new Map([
@@ -27,7 +28,7 @@ function fixture() {
   gateway.logger = { log() {} };
   gateway.server = server;
   gateway.afterInit(server);
-  const token = (id, options = {}) => jwt.sign({ sub: id }, { expiresIn: '1h', ...options });
+  const token = (id, options = {}) => jwt.sign({ sub: id, sessionVersion: AUTH_SESSION_VERSION }, { expiresIn: '1h', ...options });
   const socket = (auth = {}, headers = {}) => ({
     id: 'socket', handshake: { auth, headers }, data: {}, rooms: new Set(), disconnected: false,
     join(rooms) { for (const room of Array.isArray(rooms) ? rooms : [rooms]) this.rooms.add(room); },
