@@ -154,7 +154,7 @@ test('HTTP and WebSocket authentication require verified passwords and reject al
     });
 
     await t.test('real Socket.IO connections also reject legacy tokens and accept a new password-authenticated session', async () => {
-      const { io } = require('../../client/node_modules/socket.io-client');
+      const { io } = require('socket.io-client');
       const connect = (token) => new Promise((resolve, reject) => {
         const socket = io(base, { auth: { token }, transports: ['websocket'], autoConnect: false, reconnection: false });
         sockets.push(socket);

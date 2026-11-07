@@ -29,7 +29,7 @@ test('Nest/Socket.IO: authenticated persisted notifications stay isolated and ob
   assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname), 'Only the isolated loopback test database is allowed');
   assert.equal(url.port, '55432');
   assert.equal(url.pathname, '/notification_audit');
-  const { io } = require('../../client/node_modules/socket.io-client');
+  const { io } = require('socket.io-client');
   const prisma = new PrismaClient({ datasources: { db: { url: url.toString() } } });
   const jwt = new JwtService({ secret: 'isolated-gateway-integration-secret' });
   const runId = randomUUID();
