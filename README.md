@@ -173,3 +173,4 @@ cat backup.sql | docker exec -i ports-postgres psql -U postgres -d ports_daily_s
 - **Credentials & Roles**: [ACCOUNTS.md](file:///c:/workspace/progress/ACCOUNTS.md)
 - **Deployment & CI/CD**: [DEPLOYMENT.md](file:///c:/workspace/progress/DEPLOYMENT.md)
 - **Android APK Build**: [MOBILE_APP_GUIDE.md](file:///c:/workspace/progress/MOBILE_APP_GUIDE.md)
+- **Modern Web Guidance & Browser Checks**: [MODERN_WEB_GUIDANCE.md](MODERN_WEB_GUIDANCE.md)

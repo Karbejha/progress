@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useId } from 'react';
 import { Trash2, Loader2, X, FileText } from 'lucide-react';
+import { NativeModal } from './NativeModal';
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
@@ -29,49 +29,19 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   cancelText = 'إلغاء',
   isLoading = false,
 }) => {
-  const [mounted, setMounted] = useState(false);
+  const titleId = useId();
+  const descriptionId = useId();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Lock body scroll and listen for Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isLoading) {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, isLoading, onClose]);
-
-  if (!mounted || !isOpen) return null;
-
-  return createPortal(
-    <div
-      dir="rtl"
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 bg-black/65 backdrop-blur-xs animate-fadeIn font-sans"
-      onClick={() => {
-        if (!isLoading) onClose();
-      }}
+  return (
+    <NativeModal
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId={titleId}
+      descriptionId={descriptionId}
+      dismissible={!isLoading}
+      className="max-w-[380px] sm:max-w-md bg-white border border-[#d2d1c9] rounded-[24px] sm:rounded-[28px] shadow-2xl overflow-y-auto text-right"
     >
-      <div
-        className="w-full max-w-[380px] sm:max-w-md bg-white border border-[#d2d1c9] rounded-[24px] sm:rounded-[28px] shadow-2xl overflow-hidden text-right font-sans p-5 sm:p-6 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="p-5 sm:p-6 space-y-4">
         {/* Header: Red Icon + Close Button */}
         <div className="flex items-center justify-between gap-3">
           <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 shadow-xs shrink-0">
@@ -92,11 +62,11 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
 
         {/* Text Content */}
         <div className="space-y-1.5 text-right">
-          <h3 className="text-base sm:text-lg font-black text-[#05261e] leading-snug">
+          <h2 id={titleId} className="text-base sm:text-lg font-black text-[#05261e] leading-snug">
             {title}
-          </h3>
+          </h2>
 
-          <p className="text-xs sm:text-[13px] text-[#5e736e] leading-relaxed font-medium">
+          <p id={descriptionId} className="text-xs sm:text-[13px] text-[#5e736e] leading-relaxed font-medium">
             {description}
           </p>
 
@@ -124,6 +94,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
         <div className="pt-3 border-t border-[#f0efe9] grid grid-cols-2 gap-2.5 sm:gap-3">
           <button
             type="button"
+            data-modal-autofocus
             onClick={onClose}
             disabled={isLoading}
             className="w-full min-h-[44px] px-3 py-2.5 text-xs sm:text-sm font-bold rounded-xl border border-[#d2d1c9] text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 transition cursor-pointer flex items-center justify-center shadow-xs disabled:opacity-50"
@@ -142,11 +113,10 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             ) : (
               <Trash2 className="w-4 h-4 shrink-0" />
             )}
-            <span>{confirmText}</span>
+            <span>{isLoading ? 'جاري الحذف...' : confirmText}</span>
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </NativeModal>
   );
 };

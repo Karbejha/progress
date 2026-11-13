@@ -2,8 +2,8 @@
 
 import { ReplyTimestamp } from './ReplyTimestamp';
 
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useId } from 'react';
+import { NativeModal } from './NativeModal';
 import Image from 'next/image';
 import {
   X,
@@ -76,32 +76,9 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
   onOpenTasksModal,
   onOpenDirectorateDetail,
 }) => {
-  const [mounted, setMounted] = useState(false);
+  const titleId = useId();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen || !data) return;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, data, onClose]);
-
-  if (!mounted || !isOpen || !data) return null;
+  if (!isOpen || !data) return null;
 
   // Extract parsed fields with high-reliability fallbacks
   const payload = data.fullPayload || {};
@@ -254,15 +231,13 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
     }
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
-      onClick={onClose}
+  return (
+    <NativeModal
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId={titleId}
+      className="relative max-w-2xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
     >
-      <div
-        className="relative w-full max-w-2xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* Official Header */}
         <div className="p-5 sm:p-6 bg-[#05261e] text-white flex items-center justify-between border-b border-[#0c3e35] shrink-0">
           <div className="flex items-center gap-3">
@@ -281,7 +256,7 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
                   المديرية العامة للموانئ • نظام المتابعة اللحظية
                 </span>
               </div>
-              <h2 className="text-sm sm:text-base md:text-lg font-extrabold text-white tracking-tight mt-1">
+              <h2 id={titleId} className="text-sm sm:text-base md:text-lg font-extrabold text-white tracking-tight mt-1">
                 {isTaskType && 'تفاصيل إنجاز ومتابعة التكليف الإداري'}
                 {isPlanType && 'تفاصيل الخطة الصباحية المعتمدة'}
                 {isSummaryType && 'تفاصيل ملخص الإنجاز ونهاية الدوام'}
@@ -290,6 +265,9 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
             </div>
           </div>
           <button
+            type="button"
+            data-modal-autofocus
+            aria-label="إغلاق"
             onClick={onClose}
             className="p-2 rounded-xl text-[#8daaa2] hover:text-white hover:bg-[#0c3e35] transition cursor-pointer"
             title="إغلاق النافذة"
@@ -541,8 +519,6 @@ export const NotificationDetailsModal: React.FC<NotificationDetailsModalProps> =
             إغلاق
           </button>
         </div>
-      </div>
-    </div>,
-    document.body
+    </NativeModal>
   );
 };

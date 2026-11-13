@@ -136,7 +136,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
 
           {/* Directorate Title */}
           <div className="space-y-1">
-            <h1 className="text-2xl font-black text-white tracking-tight leading-tight">
+            <h1 id="login-title" className="text-2xl font-black text-white tracking-tight leading-tight">
               المديرية العامة للموانئ
             </h1>
             <p className="text-xs font-semibold text-[#d4af37] flex items-center justify-center gap-1.5">
@@ -149,25 +149,31 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
 
         {/* Error Message */}
         {error && (
-          <div className="p-3 rounded-2xl bg-red-950/70 border border-red-500/50 text-red-200 text-xs flex items-start gap-2.5 animate-fadeIn shadow-md font-medium">
+          <div role="alert" className="p-3 rounded-2xl bg-red-950/70 border border-red-500/50 text-red-200 text-xs flex items-start gap-2.5 animate-fadeIn shadow-md font-medium">
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <span className="leading-relaxed">{error}</span>
           </div>
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
+        <form method="post" aria-labelledby="login-title" onSubmit={handleSubmit} className="space-y-4 relative z-10">
 
           {/* Username Field */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-white/90">
+            <label htmlFor="login-username" className="block text-xs font-bold text-white/90">
               اسم المستخدم <span className="text-[#d4af37]">*</span>
             </label>
             <div className="relative group">
               <input
+                id="login-username"
+                name="username"
                 type="text"
                 required
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="next"
                 placeholder="اسم المستخدم أو البريد الإلكتروني"
                 value={usernameOrEmail}
                 onChange={(e) => setUsernameOrEmail(e.target.value)}
@@ -182,14 +188,17 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
 
           {/* Password Field */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-white/90">
+            <label htmlFor="login-password" className="block text-xs font-bold text-white/90">
               كلمة المرور <span className="text-[#d4af37]">*</span>
             </label>
             <div className="relative group">
               <input
+                id="login-password"
+                name="password"
                 type={showPassword ? 'text' : 'password'}
                 required
                 autoComplete="current-password"
+                enterKeyHint="go"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -203,9 +212,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute left-3.5 top-3.5 text-[#8daaa2] hover:text-[#d4af37] p-0.5 rounded-lg hover:bg-white/10 transition cursor-pointer"
-                tabIndex={-1}
                 title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
-                aria-label="إظهار وإخفاء كلمة المرور"
+                aria-label="إظهار كلمة المرور"
+                aria-pressed={showPassword}
+                aria-controls="login-password"
+                disabled={loading}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -276,7 +287,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowServerModal(false)}
+                aria-label="إغلاق إعدادات السيرفر"
                 className="text-white/50 hover:text-white p-1 rounded-lg text-lg cursor-pointer"
               >
                 ✕
@@ -284,22 +297,30 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-white/90">رابط الخادم المباشر (API URL)</label>
+              <label htmlFor="server-url" className="block text-xs font-semibold text-white/90">رابط الخادم المباشر (API URL)</label>
               <input
+                id="server-url"
+                name="serverUrl"
                 type="text"
+                inputMode="url"
+                autoComplete="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-describedby="server-url-help"
                 value={customServerUrl}
                 onChange={(e) => setCustomServerUrl(e.target.value)}
                 placeholder="مثال: http://192.168.1.50:4000 أو https://api.ports.gov.sy"
                 className="w-full px-3.5 py-2.5 text-xs font-mono rounded-xl bg-black/40 border border-white/15 focus:border-[#d4af37] focus:ring-2 focus:ring-[#d4af37]/20 outline-none text-left text-white"
                 dir="ltr"
               />
-              <p className="text-[10.5px] text-[#8daaa2] leading-relaxed">
+              <p id="server-url-help" className="text-[10.5px] text-[#8daaa2] leading-relaxed">
                 * عند استخدام التطبيق على الهاتف المحمول، أدخل عنوان IP السيرفر المحلي أو الدومين الخارجي (وليس localhost).
               </p>
             </div>
 
             {serverSavedSuccess && (
-              <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-semibold flex items-center justify-center gap-2">
+              <div role="status" className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-semibold flex items-center justify-center gap-2">
                 <Check className="w-4 h-4 text-emerald-400" />
                 تم حفظ عنوان السيرفر بنجاح!
               </div>

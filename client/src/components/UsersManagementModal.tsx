@@ -289,7 +289,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
         
         {/* Toast */}
         {toastMsg && (
-          <div className="absolute top-4 left-4 z-50 flex items-center gap-2 bg-[#0c3e35] text-white px-4 py-2.5 rounded-xl shadow-lg border border-[#d4af37] text-xs font-bold animate-bounce">
+          <div role="status" className="absolute top-4 left-4 z-50 flex items-center gap-2 bg-[#0c3e35] text-white px-4 py-2.5 rounded-xl shadow-lg border border-[#d4af37] text-xs font-bold animate-bounce">
             <CheckCircle2 className="w-4 h-4 text-[#d4af37]" />
             <span>{toastMsg}</span>
           </div>
@@ -309,7 +309,9 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="إغلاق إدارة المستخدمين"
             className="p-2 rounded-xl text-[#8daaa2] hover:text-white hover:bg-[#0c3e35] transition cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -319,8 +321,14 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
         {/* Controls */}
         <div className="p-4 border-b border-[#d2d1c9] bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-80">
+            <label htmlFor="users-search" className="sr-only">البحث في المستخدمين</label>
             <input
-              type="text"
+              id="users-search"
+              name="usersSearch"
+              type="search"
+              autoComplete="off"
+              autoCorrect="off"
+              enterKeyHint="search"
               placeholder="ابحث بالاسم، المديرية، أو اسم المستخدم..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -467,6 +475,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                             )}
                             <button
                               onClick={() => handleOpenEdit(u)}
+                              aria-label={`تعديل بيانات ${u.username}`}
                               className="p-1.5 rounded-lg bg-[#edece4] text-[#0c3e35] hover:bg-[#0c3e35] hover:text-white transition cursor-pointer"
                               title="تعديل البيانات"
                             >
@@ -475,6 +484,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
                             <button
                               onClick={() => handleOpenReset(u)}
+                              aria-label={`تغيير كلمة مرور ${u.username}`}
                               className="p-1.5 rounded-lg bg-[#edece4] text-[#0c3e35] hover:bg-[#d4af37] hover:text-[#031814] transition cursor-pointer"
                               title="تغيير كلمة المرور"
                             >
@@ -484,6 +494,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                             {!isExec && (
                               <button
                                 onClick={() => handleDeleteUser(u)}
+                                aria-label={`حذف حساب ${u.username}`}
                                 className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition cursor-pointer"
                                 title="حذف الحساب"
                               >
@@ -525,27 +536,30 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 bg-[#05261e] text-white flex items-center justify-between border-b border-[#d2d1c9]">
-              <h3 className="text-sm font-bold flex items-center gap-2">
+              <h3 id="create-user-title" className="text-sm font-bold flex items-center gap-2">
                 <Plus className="w-4 h-4 text-[#d4af37]" />
                 إضافة مدير أو مستخدم جديد
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-[#8daaa2] hover:text-white cursor-pointer">
+              <button type="button" onClick={() => setShowAddModal(false)} aria-label="إغلاق إضافة مستخدم" className="text-[#8daaa2] hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="p-6 space-y-3.5 text-xs">
+            <form method="post" aria-labelledby="create-user-title" onSubmit={handleCreateUser} className="p-6 space-y-3.5 text-xs">
               {formError && (
-                <div className="p-2.5 rounded-xl bg-red-50 text-red-800 border border-red-200 font-medium">
+                <div role="alert" className="p-2.5 rounded-xl bg-red-50 text-red-800 border border-red-200 font-medium">
                   {formError}
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">الاسم الكامل للمدير (اختياري):</label>
+                  <label htmlFor="create-user-full-name" className="block text-[#0c3e35] font-bold mb-1">الاسم الكامل للمدير (اختياري):</label>
                   <input
+                    id="create-user-full-name"
+                    name="fullName"
                     type="text"
+                    autoComplete="off"
                     placeholder="أدخل الاسم أو اتركه للتحديد لاحقاً"
                     value={form.fullName}
                     onChange={(e) => setForm({ ...form, fullName: e.target.value })}
@@ -553,9 +567,12 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                   />
                 </div>
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">المسمى الوظيفي:</label>
+                  <label htmlFor="create-user-title-input" className="block text-[#0c3e35] font-bold mb-1">المسمى الوظيفي:</label>
                   <input
+                    id="create-user-title-input"
+                    name="title"
                     type="text"
+                    autoComplete="off"
                     required
                     placeholder="مثال: مدير التفتيش البحري"
                     value={form.title}
@@ -567,9 +584,15 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">اسم المستخدم للدخول:</label>
+                  <label htmlFor="create-user-username" className="block text-[#0c3e35] font-bold mb-1">اسم المستخدم للدخول:</label>
                   <input
+                    id="create-user-username"
+                    name="username"
                     type="text"
+                    autoComplete="section-create-user username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     required
                     placeholder="dir_inspection"
                     value={form.username}
@@ -578,9 +601,13 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                   />
                 </div>
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">البريد الإلكتروني:</label>
+                  <label htmlFor="create-user-email" className="block text-[#0c3e35] font-bold mb-1">البريد الإلكتروني:</label>
                   <input
+                    id="create-user-email"
+                    name="email"
                     type="email"
+                    autoComplete="off"
+                    spellCheck={false}
                     required
                     placeholder="inspection@ports.gov.sy"
                     value={form.email}
@@ -592,9 +619,12 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">كلمة المرور الابتدائية:</label>
+                  <label htmlFor="create-user-password" className="block text-[#0c3e35] font-bold mb-1">كلمة المرور الابتدائية:</label>
                   <input
+                    id="create-user-password"
+                    name="password"
                     type="password"
+                    autoComplete="section-create-user new-password"
                     required
                     placeholder="••••••••"
                     value={form.password}
@@ -603,9 +633,12 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                   />
                 </div>
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">رقم الهاتف (اختياري):</label>
+                  <label htmlFor="create-user-phone" className="block text-[#0c3e35] font-bold mb-1">رقم الهاتف (اختياري):</label>
                   <input
-                    type="text"
+                    id="create-user-phone"
+                    name="phone"
+                    type="tel"
+                    autoComplete="off"
                     placeholder="0944000123"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -616,8 +649,10 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">نوع الصلاحية:</label>
+                  <label htmlFor="create-user-role" className="block text-[#0c3e35] font-bold mb-1">نوع الصلاحية:</label>
                   <select
+                    id="create-user-role"
+                    name="role"
                     value={form.role}
                     onChange={(e) => setForm({ ...form, role: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] font-bold focus:outline-none focus:border-[#0c3e35]"
@@ -630,8 +665,10 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                 </div>
                 {form.role === 'DIRECTOR' && (
                   <div>
-                    <label className="block text-[#0c3e35] font-bold mb-1">المديرية المسندة:</label>
+                    <label htmlFor="create-user-directorate" className="block text-[#0c3e35] font-bold mb-1">المديرية المسندة:</label>
                     <select
+                      id="create-user-directorate"
+                      name="directorateId"
                       value={form.directorateId}
                       onChange={(e) => setForm({ ...form, directorateId: e.target.value })}
                       className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] font-bold focus:outline-none focus:border-[#0c3e35]"
@@ -678,27 +715,30 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 bg-[#05261e] text-white flex items-center justify-between border-b border-[#d2d1c9]">
-              <h3 className="text-sm font-bold flex items-center gap-2">
+              <h3 id="edit-user-title" className="text-sm font-bold flex items-center gap-2">
                 <Edit2 className="w-4 h-4 text-[#d4af37]" />
                 تعديل بيانات: {selectedUser.fullName || selectedUser.title}
               </h3>
-              <button onClick={() => setShowEditModal(false)} className="text-[#8daaa2] hover:text-white cursor-pointer">
+              <button type="button" onClick={() => setShowEditModal(false)} aria-label="إغلاق تعديل المستخدم" className="text-[#8daaa2] hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateUser} className="p-6 space-y-3.5 text-xs">
+            <form method="post" aria-labelledby="edit-user-title" onSubmit={handleUpdateUser} className="p-6 space-y-3.5 text-xs">
               {formError && (
-                <div className="p-2.5 rounded-xl bg-red-50 text-red-800 border border-red-200 font-medium">
+                <div role="alert" className="p-2.5 rounded-xl bg-red-50 text-red-800 border border-red-200 font-medium">
                   {formError}
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">الاسم الكامل للمدير (اختياري):</label>
+                  <label htmlFor="edit-user-full-name" className="block text-[#0c3e35] font-bold mb-1">الاسم الكامل للمدير (اختياري):</label>
                   <input
+                    id="edit-user-full-name"
+                    name="fullName"
                     type="text"
+                    autoComplete="off"
                     placeholder="أدخل الاسم الكامل للمدير..."
                     value={form.fullName}
                     onChange={(e) => setForm({ ...form, fullName: e.target.value })}
@@ -706,9 +746,12 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                   />
                 </div>
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">المسمى الوظيفي:</label>
+                  <label htmlFor="edit-user-title-input" className="block text-[#0c3e35] font-bold mb-1">المسمى الوظيفي:</label>
                   <input
+                    id="edit-user-title-input"
+                    name="title"
                     type="text"
+                    autoComplete="off"
                     required
                     value={form.title}
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -719,9 +762,13 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">البريد الإلكتروني:</label>
+                  <label htmlFor="edit-user-email" className="block text-[#0c3e35] font-bold mb-1">البريد الإلكتروني:</label>
                   <input
+                    id="edit-user-email"
+                    name="email"
                     type="email"
+                    autoComplete="off"
+                    spellCheck={false}
                     required
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -729,9 +776,12 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                   />
                 </div>
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">رقم الهاتف:</label>
+                  <label htmlFor="edit-user-phone" className="block text-[#0c3e35] font-bold mb-1">رقم الهاتف:</label>
                   <input
-                    type="text"
+                    id="edit-user-phone"
+                    name="phone"
+                    type="tel"
+                    autoComplete="off"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] focus:outline-none focus:border-[#0c3e35]"
@@ -741,8 +791,10 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
 
               {form.role === 'DIRECTOR' && (
                 <div>
-                  <label className="block text-[#0c3e35] font-bold mb-1">المديرية المسندة:</label>
+                  <label htmlFor="edit-user-directorate" className="block text-[#0c3e35] font-bold mb-1">المديرية المسندة:</label>
                   <select
+                    id="edit-user-directorate"
+                    name="directorateId"
                     value={form.directorateId}
                     onChange={(e) => setForm({ ...form, directorateId: e.target.value })}
                     className="w-full p-2.5 rounded-xl bg-white border border-[#d2d1c9] text-[#0c3e35] font-bold focus:outline-none focus:border-[#0c3e35]"
@@ -788,18 +840,18 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 bg-[#05261e] text-white flex items-center justify-between border-b border-[#d2d1c9]">
-              <h3 className="text-sm font-bold flex items-center gap-2">
+              <h3 id="reset-user-password-title" className="text-sm font-bold flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-[#d4af37]" />
                 تعيين كلمة مرور جديدة للمدير
               </h3>
-              <button onClick={() => setShowResetModal(false)} className="text-[#8daaa2] hover:text-white cursor-pointer">
+              <button type="button" onClick={() => setShowResetModal(false)} aria-label="إغلاق تعيين كلمة المرور" className="text-[#8daaa2] hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleResetPassword} className="p-6 space-y-4 text-xs">
+            <form method="post" aria-labelledby="reset-user-password-title" onSubmit={handleResetPassword} className="p-6 space-y-4 text-xs">
               {formError && (
-                <div className="p-2.5 rounded-xl bg-red-50 text-red-800 border border-red-200 font-medium">
+                <div role="alert" className="p-2.5 rounded-xl bg-red-50 text-red-800 border border-red-200 font-medium">
                   {formError}
                 </div>
               )}
@@ -808,9 +860,13 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
                 <p className="text-[#5e736e] mb-2 font-medium">
                   أنت تقوم بتعيين كلمة مرور جديدة لحساب: <strong className="text-[#0c3e35]">{selectedUser.fullName}</strong> ({selectedUser.username})
                 </p>
-                <label className="block text-[#0c3e35] font-bold mb-1.5">كلمة المرور الجديدة (6 خانات على الأقل):</label>
+                <label htmlFor="reset-user-password" className="block text-[#0c3e35] font-bold mb-1.5">كلمة المرور الجديدة (6 خانات على الأقل):</label>
                 <input
+                  id="reset-user-password"
+                  name="newPassword"
                   type="password"
+                  autoComplete="new-password"
+                  minLength={6}
                   required
                   placeholder="••••••••"
                   value={resetPasswordValue}

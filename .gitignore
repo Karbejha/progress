@@ -35,6 +35,11 @@ yarn-error.log*
 # Coverage
 coverage/
 
+# Local tooling caches and browser test artifacts
+.cache/
+client/test-results/
+client/playwright-report/
+
 # Misc
 *.tsbuildinfo
 .turbo/

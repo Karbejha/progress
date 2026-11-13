@@ -100,12 +100,14 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
               <KeyRound className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">تغيير كلمة المرور الخاصة بك</h3>
+              <h3 id="change-password-title" className="text-base font-bold text-white">تغيير كلمة المرور الخاصة بك</h3>
               <p className="text-xs text-[#8daaa2] mt-0.5">قم بتعيين كلمة مرور جديدة لحسابك</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="إغلاق تغيير كلمة المرور"
             className="p-1.5 rounded-xl text-[#8daaa2] hover:text-white transition cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -113,17 +115,17 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form method="post" aria-labelledby="change-password-title" onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           
           {error && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 flex items-center gap-2 font-medium">
+            <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 flex items-center gap-2 font-medium">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2 font-bold">
+            <div role="status" className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2 font-bold">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{success}</span>
             </div>
@@ -131,10 +133,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
 
           {/* Current Password */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-[#0c3e35]">كلمة المرور الحالية:</label>
+            <label htmlFor="change-current-password" className="block text-xs font-bold text-[#0c3e35]">كلمة المرور الحالية:</label>
             <div className="relative">
               <input
+                id="change-current-password"
+                name="currentPassword"
                 type={showCurrent ? 'text' : 'password'}
+                autoComplete="current-password"
                 required
                 placeholder="••••••••"
                 value={currentPassword}
@@ -145,7 +150,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
                 type="button"
                 onClick={() => setShowCurrent(!showCurrent)}
                 className="absolute left-3 top-2.5 text-[#5e736e] hover:text-[#0c3e35]"
-                tabIndex={-1}
+                aria-label="إظهار كلمة المرور الحالية"
+                aria-pressed={showCurrent}
+                aria-controls="change-current-password"
               >
                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -154,10 +161,14 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
 
           {/* New Password */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-[#0c3e35]">كلمة المرور الجديدة (6 خانات على الأقل):</label>
+            <label htmlFor="change-new-password" className="block text-xs font-bold text-[#0c3e35]">كلمة المرور الجديدة (6 خانات على الأقل):</label>
             <div className="relative">
               <input
+                id="change-new-password"
+                name="newPassword"
                 type={showNew ? 'text' : 'password'}
+                autoComplete="new-password"
+                minLength={6}
                 required
                 placeholder="••••••••"
                 value={newPassword}
@@ -168,7 +179,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
                 type="button"
                 onClick={() => setShowNew(!showNew)}
                 className="absolute left-3 top-2.5 text-[#5e736e] hover:text-[#0c3e35]"
-                tabIndex={-1}
+                aria-label="إظهار كلمة المرور الجديدة"
+                aria-pressed={showNew}
+                aria-controls="change-new-password"
               >
                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -177,9 +190,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ isOpen
 
           {/* Confirm Password */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-[#0c3e35]">تأكيد كلمة المرور الجديدة:</label>
+            <label htmlFor="change-confirm-password" className="block text-xs font-bold text-[#0c3e35]">تأكيد كلمة المرور الجديدة:</label>
             <input
+              id="change-confirm-password"
+              name="confirmPassword"
               type="password"
+              autoComplete="new-password"
+              minLength={6}
               required
               placeholder="••••••••"
               value={confirmPassword}

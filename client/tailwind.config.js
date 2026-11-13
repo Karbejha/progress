@@ -74,5 +74,22 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  // Animation utilities are opt-in: reduced-motion users see the static state.
+  corePlugins: { animation: false },
+  plugins: [
+    function motionAwareAnimations({ matchUtilities, theme }) {
+      matchUtilities({
+        animate: (value) => {
+          const name = value.split(/\s+/)[0];
+          const frames = theme(`keyframes.${name}`);
+          return {
+            '@media (prefers-reduced-motion: no-preference)': {
+              ...(frames ? { [`@keyframes ${name}`]: frames } : {}),
+              animation: value,
+            },
+          };
+        },
+      }, { values: theme('animation') });
+    },
+  ],
 }

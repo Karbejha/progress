@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useMemo, useId } from 'react';
+import { NativeModal } from './NativeModal';
 import {
   X,
   Clock,
@@ -41,14 +41,10 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
   onDismissTask,
   alreadyAddedTitles = [],
 }) => {
-  const [mounted, setMounted] = useState(false);
+  const titleId = useId();
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
   const [dismissingId, setDismissingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const formatTaskDate = (dateStr: string | null) => {
     if (!dateStr) return 'تاريخ سابق';
@@ -138,17 +134,15 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
     }
   };
 
-  if (!isOpen || !mounted) return null;
+  if (!isOpen) return null;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[120] flex items-center justify-center p-2.5 sm:p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
-      onClick={onClose}
+  return (
+    <NativeModal
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId={titleId}
+      className="relative max-w-2xl sm:max-w-3xl bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[28px] shadow-2xl overflow-hidden text-right"
     >
-      <div
-        className="relative w-full max-w-2xl sm:max-w-3xl max-h-[94vh] sm:max-h-[90vh] flex flex-col bg-[#edece4] border border-[#d2d1c9] rounded-2xl sm:rounded-[28px] shadow-2xl overflow-hidden text-right"
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* Modal Header */}
         <div className="p-4 sm:p-6 border-b border-[#d2d1c9] bg-[#05261e] text-white flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
@@ -157,7 +151,7 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm sm:text-lg font-extrabold text-white">
+                <h2 id={titleId} className="text-sm sm:text-lg font-extrabold text-white">
                   المهام غير المكتملة والمرحّلة
                 </h2>
                 <span className="text-[11px] sm:text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-[#d4af37] text-[#05261e] shrink-0 whitespace-nowrap">
@@ -171,6 +165,8 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
           </div>
           <button
             type="button"
+            data-modal-autofocus
+            aria-label="إغلاق"
             onClick={onClose}
             className="p-2 rounded-xl text-[#8daaa2] hover:text-white hover:bg-[#0c3e35] transition cursor-pointer shrink-0"
             title="إغلاق"
@@ -393,9 +389,7 @@ export const IncompleteTasksModal: React.FC<IncompleteTasksModalProps> = ({
             إغلاق النافذة
           </button>
         </div>
-      </div>
-    </div>,
-    document.body
+    </NativeModal>
   );
 };
 

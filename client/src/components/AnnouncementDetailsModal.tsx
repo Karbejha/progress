@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useId } from 'react';
+import { NativeModal } from './NativeModal';
 import Image from 'next/image';
 import { X, Calendar, User, AlertTriangle, CheckCircle2, Eye, Clock, CheckCheck, Building2, Users, FileText } from 'lucide-react';
 import { api } from '../services/api';
@@ -32,7 +32,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
   currentUser,
   onClose,
 }) => {
-  const [mounted, setMounted] = useState(false);
+  const titleId = useId();
   const [readersData, setReadersData] = useState<AnnouncementReadersResponse | null>(null);
   const [loadingReaders, setLoadingReaders] = useState(false);
   const [activeTab, setActiveTab] = useState<'CONTENT' | 'READERS'>('CONTENT');
@@ -43,10 +43,6 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
   const isAnnouncement =
     data?.isAnnouncement === true ||
     (data?.isAnnouncement !== false && (!data?.type || data?.type === 'announcement'));
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!data || !data.id || !isAnnouncement) return;
@@ -76,27 +72,7 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
     }
   }, [data?.id, isAnnouncement, currentUser?.id, isExecutive]);
 
-  useEffect(() => {
-    if (!data) return;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [data, onClose]);
-
-  if (!mounted || !data) return null;
+  if (!data) return null;
 
   const formattedDate = data.createdAt
     ? new Date(data.createdAt).toLocaleDateString('ar-SY', {
@@ -146,15 +122,13 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
     }
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
-      onClick={onClose}
+  return (
+    <NativeModal
+      isOpen={!!data}
+      onClose={onClose}
+      titleId={titleId}
+      className="relative max-w-3xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
     >
-      <div
-        className="relative w-full max-w-3xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
 
         {/* Header */}
         <div className="p-6 bg-[#05261e] text-white flex items-center justify-between border-b border-[#0c3e35] shrink-0">
@@ -174,12 +148,15 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
                   الجمهورية العربية السورية • المديرية العامة للموانئ
                 </span>
               </div>
-              <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight mt-1">
+              <h2 id={titleId} className="text-base sm:text-lg font-extrabold text-white tracking-tight mt-1">
                 {isAnnouncement ? 'تفاصيل التعميم الإداري الرسمي' : 'تفاصيل التوجيه والملاحظات الإدارية'}
               </h2>
             </div>
           </div>
           <button
+            type="button"
+            data-modal-autofocus
+            aria-label="إغلاق"
             onClick={onClose}
             className="p-2 rounded-xl text-[#8daaa2] hover:text-white hover:bg-[#0c3e35] transition cursor-pointer"
           >
@@ -393,8 +370,6 @@ export const AnnouncementDetailsModal: React.FC<AnnouncementDetailsModalProps> =
           </button>
         </div>
 
-      </div>
-    </div>,
-    document.body
+    </NativeModal>
   );
 };

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useId } from 'react';
+import { NativeModal } from './NativeModal';
 import { DirectorateOverviewItem, ExecutiveTask, Priority, TaskStatus } from '../types';
 import { api } from '../services/api';
 import {
@@ -49,7 +49,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
   const [rating, setRating] = useState<number>(5);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const titleId = useId();
 
   // Executive tasks state
   const [executiveTasks, setExecutiveTasks] = useState<ExecutiveTask[]>([]);
@@ -70,30 +70,10 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
   const [taskSubmitting, setTaskSubmitting] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
     if (!item) return;
 
     loadDirectorateTasks();
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [item, onClose]);
+  }, [item]);
 
   const loadDirectorateTasks = async () => {
     if (!item) return;
@@ -139,7 +119,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
     }
   };
 
-  if (!mounted || !item) return null;
+  if (!item) return null;
 
   const handleSendFeedback = async () => {
     if (!feedbackText.trim()) return;
@@ -189,15 +169,13 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
     }
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#031814]/80 backdrop-blur-sm animate-fadeIn font-sans"
-      onClick={onClose}
+  return (
+    <NativeModal
+      isOpen={!!item}
+      onClose={onClose}
+      titleId={titleId}
+      className="relative max-w-4xl bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
     >
-      <div
-        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-[#edece4] border border-[#d2d1c9] rounded-[28px] shadow-2xl overflow-hidden text-right"
-        onClick={(e) => e.stopPropagation()}
-      >
         
         {/* Header */}
         <div className="p-6 border-b border-[#d2d1c9] bg-[#05261e] text-white flex items-center justify-between">
@@ -207,7 +185,7 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-extrabold text-white">{item.directorateName}</h2>
+                <h2 id={titleId} className="text-lg sm:text-xl font-extrabold text-white">{item.directorateName}</h2>
                 {item.urgentFlag && (
                   <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-500/30 border border-red-400 text-red-300 animate-pulse">
                     تنبيه عاجل
@@ -226,6 +204,9 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
+            data-modal-autofocus
+            aria-label="إغلاق"
             onClick={onClose}
             className="p-2 rounded-xl text-[#8daaa2] hover:text-white hover:bg-[#0c3e35] transition cursor-pointer"
           >
@@ -688,8 +669,6 @@ export const DirectorateDetailModal: React.FC<DirectorateDetailModalProps> = ({
           </button>
         </div>
 
-      </div>
-    </div>,
-    document.body
+    </NativeModal>
   );
 };

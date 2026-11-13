@@ -1,0 +1,23 @@
+.modal {
+  width: calc(100% - 2rem);
+  max-block-size: min(90vh, calc(100dvh - 2rem));
+  margin: auto;
+  padding: 0;
+  color: inherit;
+}
+
+.modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal:modal {
+  overscroll-behavior: contain;
+}
+
+.modal::backdrop {
+  background: rgb(3 24 20 / 80%);
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
